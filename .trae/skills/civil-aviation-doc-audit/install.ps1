@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
@@ -24,10 +24,12 @@ $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
 $TOOLS_DIR = Join-Path $SKILL_DIR "tools"
 $REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
 $SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_VERSION = "v1.5"
+$SKILL_VERSION = "v1.7.1"
 
-# ── 输出目录（在 Skill 上级的 workspace 下） ──
-$WORKSPACE = Split-Path -Parent $SKILL_DIR
+# ── 输出目录（在 workspace 根目录下） ──
+# SKILL_DIR = workspace\.trae\skills\civil-aviation-doc-audit
+# 向上 3 级回到 workspace 根目录
+$WORKSPACE = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $SKILL_DIR))
 $AUDIT_OUT = Join-Path $WORKSPACE "audit_output"
 
 # ── Poppler 配置 ──
@@ -388,7 +390,7 @@ if (-not (Test-Path $profileDir)) { New-Item -ItemType Directory -Path $profileD
 
 $profileFunc = @"
 
-#region audit function for civil-aviation-doc-audit Skill (v1.5)
+#region audit function for civil-aviation-doc-audit Skill (v1.7.1)
 function audit {
     param([string]`$Command, [string]`$FilePath)
     `$d = "$SKILL_DIR"

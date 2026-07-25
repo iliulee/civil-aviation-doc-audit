@@ -1,0 +1,41 @@
+# ──── 项目资料（不纳入版本管理）────
+# 施工图纸、变更通知、PDF扫描件
+04碎石桩变更PDF/
+扫描件.pdf
+未命名*.pdf
+*.pdf
+
+# 施工数据
+2026年4月 施工日志.xlsx
+*.xlsx
+
+# ──── 审核输出（每次运行生成）────
+audit_output/
+reports/
+analysis/
+transcripts/
+
+# ──── 旧版脚本（根目录残留）────
+audit.bat
+install_audit_shell.ps1
+
+# ──── 仪表盘 / 报告页面（独立项目）────
+gravel-pile-audit-*/
+gravel-pile-comprehensive-audit/
+.trae-html-share-packages/
+
+# ──── 上传包（每次重新生成）────
+# civil-aviation-doc-audit-skill.zip 保留，手动更新
+
+# ──── 操作系统 ────
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# ──── Python ────
+__pycache__/
+*.pyc
+*.pyo
+
+# ──── 工具二进制（由 install.ps1 自动下载）────
+.trae/skills/civil-aviation-doc-audit/tools/poppler/
