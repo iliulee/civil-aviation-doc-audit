@@ -1,0 +1,125 @@
+{
+  "task_id": "AU-20260724-T03",
+  "step": 4,
+  "step_name": "规范匹配与审核项建立",
+  "applicable_specs": [
+    {
+      "spec_id": "MH/T 5078.1-2024",
+      "chapter": "第6章",
+      "scope": "施工日志管理要求"
+    },
+    {
+      "spec_id": "MH/T 5078.2-2024",
+      "chapter": "第7章",
+      "scope": "场道工程质量验收资料"
+    },
+    {
+      "spec_id": "JGJ 79-2012",
+      "chapter": "第7章",
+      "scope": "建筑地基处理技术规范—振冲碎石桩"
+    },
+    {
+      "spec_id": "MH 5007-2017",
+      "chapter": "第6章",
+      "scope": "质量检验评定标准"
+    }
+  ],
+  "audit_checklist": [
+    {
+      "item_id": "4.1",
+      "category": "资料完整性",
+      "check_content": "碎石桩施工记录表格代号是否填写完整",
+      "criterion": "MHCD-C.5.01.05-序号应填写",
+      "spec_ref": "MH/T 5078.2-2024 附录",
+      "applies_to": ["DOC-A", "DOC-B"]
+    },
+    {
+      "item_id": "4.2",
+      "category": "资料完整性",
+      "check_content": "工程代号是否填写",
+      "criterion": "不应空白",
+      "spec_ref": "MH/T 5078.1-2024 第8章",
+      "applies_to": ["DOC-A", "DOC-B", "DOC-C"]
+    },
+    {
+      "item_id": "4.3",
+      "category": "资料时效性",
+      "check_content": "施工日期与施工日志日期是否一致",
+      "criterion": "同一工序在不同资料中的日期应一致",
+      "spec_ref": "MH/T 5078.1-2024 第6章 + 铁律9.1.6",
+      "applies_to": ["DOC-A", "DOC-B", "DOC-C"]
+    },
+    {
+      "item_id": "4.4",
+      "category": "数据真实性",
+      "check_content": "实际桩长与设计桩长偏差是否有支撑材料",
+      "criterion": "桩长偏差应有地质变化说明/设计变更/签证/检测报告",
+      "spec_ref": "JGJ 79-2012 第7章 + MH/T 5078.2 第7章",
+      "applies_to": ["DOC-A", "DOC-B"]
+    },
+    {
+      "item_id": "4.5",
+      "category": "数量一致性",
+      "check_content": "施工记录桩数和合计米数与施工日志是否一致",
+      "criterion": "同一日施工记录桩数=施工日志记录桩数，米数偏差≤1%",
+      "spec_ref": "MH/T 5078.1-2024 第6章 + 铁律9.2.1",
+      "applies_to": ["DOC-A", "DOC-B", "DOC-C"]
+    },
+    {
+      "item_id": "4.6",
+      "category": "数据一致性",
+      "check_content": "同一桩号在不同文档中的数据是否一致",
+      "criterion": "同一桩号的桩长、充盈系数等参数在不同文档中应一致",
+      "spec_ref": "铁律9.4.1 状态描述一致性",
+      "applies_to": ["DOC-A", "DOC-B"]
+    },
+    {
+      "item_id": "4.7",
+      "category": "签字规范性",
+      "check_content": "施工员、质检员、技术负责人签字是否齐全",
+      "criterion": "三方签字齐全，签字日期完整",
+      "spec_ref": "MH/T 5078.1-2024 第8章",
+      "applies_to": ["DOC-A", "DOC-B"]
+    },
+    {
+      "item_id": "4.8",
+      "category": "施工日志规范性",
+      "check_content": "施工日志是否连续填写、关键工序是否有记录",
+      "criterion": "无大段空白，碎石桩施工有明确记录",
+      "spec_ref": "MH/T 5078.1-2024 第6章",
+      "applies_to": ["DOC-C"]
+    },
+    {
+      "item_id": "4.9",
+      "category": "桩号规范性",
+      "check_content": "桩号格式是否统一、编号是否连续",
+      "criterion": "同一批次桩号格式统一（如Z-xxx），编号连续递减",
+      "spec_ref": "JGJ 79-2012 第7章 + 铁律9.2.1",
+      "applies_to": ["DOC-A", "DOC-B"]
+    },
+    {
+      "item_id": "4.10",
+      "category": "充盈系数合理性",
+      "check_content": "充盈系数是否在合理范围（1.0~1.5）且自洽",
+      "criterion": "充盈系数=灌入量/(π×(d/2)²×实长)，偏差≤0.15",
+      "spec_ref": "JGJ 79-2012 第7章",
+      "applies_to": ["DOC-A"]
+    },
+    {
+      "item_id": "4.11",
+      "category": "竖直度合理性",
+      "check_content": "竖直度数据是否合理、是否有造假嫌疑",
+      "criterion": "竖直度≤1.5%，不应出现规律性交替值",
+      "spec_ref": "JGJ 79-2012 第7章",
+      "applies_to": ["DOC-A"]
+    },
+    {
+      "item_id": "4.12",
+      "category": "施工日志完整性",
+      "check_content": "施工日志填写人、项目技术负责人签字是否完整",
+      "criterion": "签字齐全",
+      "spec_ref": "MH/T 5078.1-2024 第8章",
+      "applies_to": ["DOC-C"]
+    }
+  ]
+}

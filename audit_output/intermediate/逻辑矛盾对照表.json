@@ -1,0 +1,88 @@
+{
+  "task_id": "AU-20260724-T03",
+  "step": 6,
+  "step_name": "逻辑一致性专项检查",
+  "documents_compared": ["DOC-A(未命名1.pdf)", "DOC-B(扫描件.pdf)", "DOC-C(施工日志4月20日)"],
+  "conflicts": [
+    {
+      "id": "LC-01",
+      "type": "9.1 时间轴一致性",
+      "severity": "严重",
+      "doc_a_value": "2016.4.20",
+      "doc_b_value": "4月20日（无年份）",
+      "doc_c_value": "2026-04-20",
+      "description": "DOC-A手写日期与DOC-C电子档日期相差10年",
+      "possible_cause": "手写笔误（2016→2026）",
+      "rectification": "核实真实施工日期，修正后重新签认"
+    },
+    {
+      "id": "LC-02",
+      "type": "9.2 数量累计一致性",
+      "severity": "严重",
+      "doc_a_value": "6根，67.1m",
+      "doc_b_value": "33根，489.9m",
+      "doc_c_value": "33根，489.9m",
+      "description": "DOC-A桩数和米数与DOC-C严重不符",
+      "possible_cause": "DOC-A可能为DOC-B P14页的单独复印件，但数据不一致（67.1m vs 62.4m）",
+      "rectification": "确认DOC-A来源，核实数据差异"
+    },
+    {
+      "id": "LC-03",
+      "type": "9.2 数量累计一致性",
+      "severity": "一致（无矛盾）",
+      "doc_a_value": "-",
+      "doc_b_value": "33根，489.9m",
+      "doc_c_value": "33根，489.9m",
+      "description": "DOC-B与DOC-C桩数和米数完全吻合",
+      "possible_cause": "-",
+      "rectification": "-"
+    },
+    {
+      "id": "LC-04",
+      "type": "9.3 人员交叉一致性",
+      "severity": "中等",
+      "doc_a_value": "OCR无法识别签字",
+      "doc_b_value": "OCR无法识别签字",
+      "doc_c_value": "填写人/技术负责人空白",
+      "description": "施工日志签字栏空白",
+      "possible_cause": "遗漏签字",
+      "rectification": "补签"
+    },
+    {
+      "id": "LC-05",
+      "type": "9.4 状态描述一致性",
+      "severity": "严重",
+      "doc_a_value": "Z418: 实长13.2m, 充盈1.37, 竖直度0.2",
+      "doc_b_value": "Z418: 实长9.0m, 充盈1.27, 竖直度0.1",
+      "doc_c_value": "未记录单桩数据",
+      "description": "同一桩号在两份文档中数据完全矛盾，实长差异4.2m",
+      "possible_cause": "其中一份文档数据被修改",
+      "rectification": "调取原始底稿或现场取芯验证"
+    },
+    {
+      "id": "LC-06",
+      "type": "9.6 因果逻辑一致性",
+      "severity": "严重",
+      "doc_a_value": "6根桩全部<20m，无说明",
+      "doc_b_value": "30/33根桩<20m，无说明",
+      "doc_c_value": "其他情况栏填'无'",
+      "description": "桩长大幅偏差无任何书面说明，违反因果逻辑",
+      "possible_cause": "管理疏漏，未及时记录地质变化",
+      "rectification": "补充持力层验收记录/设计变更/签证"
+    }
+  ],
+  "cross_doc_data_comparison": {
+    "description": "DOC-A与DOC-B P14相同桩号数据对照",
+    "piles": [
+      {"pile_no": "Z420", "doc_a_length": 13.7, "doc_b_length": 13.7, "diff": 0, "doc_a_filling": 1.37, "doc_b_filling": 1.37, "doc_a_vert": 0.2, "doc_b_vert": 0.1},
+      {"pile_no": "Z419", "doc_a_length": 13.7, "doc_b_length": 13.2, "diff": 0.5, "doc_a_filling": 1.39, "doc_b_filling": 1.39, "doc_a_vert": 0.3, "doc_b_vert": 0.1},
+      {"pile_no": "Z418", "doc_a_length": 13.2, "doc_b_length": 9.0, "diff": 4.2, "doc_a_filling": 1.37, "doc_b_filling": 1.27, "doc_a_vert": 0.2, "doc_b_vert": 0.1},
+      {"pile_no": "Z417", "doc_a_length": 9.0, "doc_b_length": 9.0, "diff": 0, "doc_a_filling": 1.39, "doc_b_filling": 1.39, "doc_a_vert": 0.3, "doc_b_vert": 0.1},
+      {"pile_no": "Z416", "doc_a_length": 9.0, "doc_b_length": 9.0, "diff": 0, "doc_a_filling": 1.44, "doc_b_filling": 1.44, "doc_a_vert": 0.2, "doc_b_vert": 0.1},
+      {"pile_no": "Z415", "doc_a_length": 8.5, "doc_b_length": 8.5, "diff": 0, "doc_a_filling": 1.37, "doc_b_filling": 1.37, "doc_a_vert": 0.3, "doc_b_vert": 0.1}
+    ],
+    "doc_a_total": 67.1,
+    "doc_b_p14_total": 62.4,
+    "total_diff": 4.7
+  }
+}

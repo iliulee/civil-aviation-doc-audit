@@ -1,0 +1,52 @@
+{
+  "task_id": "AU-20260724-T03",
+  "audit_date": "2026-07-24",
+  "documents": [
+    {
+      "doc_id": "DOC-A",
+      "file_name": "未命名1.pdf",
+      "format": "PDF扫描件",
+      "has_text_layer": false,
+      "ocr_required": true,
+      "engineering_category": "场道工程",
+      "doc_type": "碎石桩施工记录",
+      "table_code": "MHCD-C.5.01.05-(序号未填)",
+      "doc_date": "2016.4.20（手写）",
+      "pile_range": "Z420 ~ Z415",
+      "pile_count": 6,
+      "design_length": 20.0,
+      "diameter": 0.6,
+      "scope": "单页施工记录"
+    },
+    {
+      "doc_id": "DOC-B",
+      "file_name": "扫描件.pdf",
+      "format": "PDF扫描件",
+      "has_text_layer": false,
+      "ocr_required": true,
+      "engineering_category": "场道工程",
+      "doc_type": "碎石桩施工记录（多页）",
+      "table_code": "MHCD-C.5.01.05-(序号未填)",
+      "doc_date": "4月20日（多页汇总）",
+      "pile_range": "P14:Z420~Z415, P15:2446~2479, P16:2480~2485, P17:2486~2491, P18:Z492~Z497, P19:Z498~Z500",
+      "pile_count": 33,
+      "design_length": 20.0,
+      "diameter": 0.6,
+      "scope": "4月20日全部施工记录"
+    },
+    {
+      "doc_id": "DOC-C",
+      "file_name": "2026年4月 施工日志.xlsx",
+      "format": "Excel电子档",
+      "has_text_layer": true,
+      "ocr_required": false,
+      "engineering_category": "场道工程",
+      "doc_type": "施工日志",
+      "table_code": "MHCD-C.1.00.16-423",
+      "doc_date": "2026-04-20",
+      "scope": "4月全月施工日志，重点审核4月20日",
+      "key_record": "边坡三区碎石桩生产施工共计：33根，合计米数：489.9m"
+    }
+  ],
+  "audit_scope": "全流程8步审核，跨资料逻辑一致性检查"
+}

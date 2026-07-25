@@ -1,0 +1,49 @@
+# =============================================================
+# 民航施工资料合规审核 Skill — Python 依赖
+# =============================================================
+# 验证方式：pip install -r requirements.txt
+# 安装后运行 python scripts/run_audit.py info <任意文件> 验证
+
+# ----- PDF 文字提取（主力：PyMuPDF）-----
+# 实际测试对中文 PDF 字符识别 100%，比 pdfplumber / MarkItDown 更稳定
+PyMuPDF>=1.23.0
+
+# ----- OCR（Tesseract 主力）-----
+# pytesseract 是 Tesseract 的 Python 绑定
+# 注意：还需要单独安装 Tesseract 引擎本体（系统级）
+# Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   安装时勾选 "Chinese (Simplified)" 和 "English" 语言包
+#   安装路径不要含中文或空格
+pytesseract>=0.3.10
+pdf2image>=1.16.3
+
+# pdf2image 依赖 poppler（PDF 拆图用）
+# ✅ Skill 已自带: tools/poppler/poppler-26.02.0/Library/bin/
+# 脚本会自动指向自带路径，无需配置系统环境变量
+# 如果自带目录被删，可手动重装：
+#   下载: https://github.com/oschwartz10612/poppler-windows/releases
+#   解压到 tools/poppler/ 目录下，目录名带版本号即可
+
+# Pillow 是 pytesseract / pdf2image 共同依赖
+Pillow>=10.0.0
+
+# ----- docx 读取（如需审核 .docx 资料）-----
+python-docx>=1.1.0
+
+# =============================================================
+# 可选依赖（v1.1+ 启用）
+# =============================================================
+# PaddleOCR — 准确率更高，但 v3.x 在 Windows 上有兼容问题
+# （首次安装可能报 OSError: [WinError 473] 虚拟地址资源不足）
+# v1 默认不开 PaddleOCR，v1.1 视情况启用
+# paddleocr>=3.0.0
+# paddlepaddle>=3.0.0
+
+# =============================================================
+# 验证清单
+# =============================================================
+# 安装完成后可运行以下命令验证：
+#   python scripts/extract_pdf.py <任意中文 PDF>
+#   python scripts/ocr_image.py <任意扫描件图片>
+#   python scripts/postprocess.py <任意文本文件>
+#   python scripts/run_audit.py info <任意审核文件>
