@@ -1,11 +1,13 @@
-﻿<#
+<#
 .SYNOPSIS
-    民航建设施工资料合规审核大师 - 全局安装脚本
+    民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
-    将 Skill 安装到系统中，提供全局命令行入口和桌面快捷方式。
+    自动完成 Python 依赖、Poppler、Tesseract OCR 的全部安装和配置。
+    支持一键安装、卸载、静默模式。
+    安装完成后无需任何手动操作即可使用。
 .NOTES
-    版本: v1.4
-    需要管理员权限
+    版本: v1.5
+    需要管理员权限（仅 Tesseract 安装和系统 PATH 配置需要）
 #>
 
 #Requires -Version 5.1
@@ -15,20 +17,43 @@ param(
     [switch]$Silent
 )
 
-$SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_DIR = "d:\2026年7月22日 民航资料skill\.trae\skills\civil-aviation-doc-audit"
-$WORKSPACE = "d:\2026年7月22日 民航资料skill"
+# ── 自动检测 Skill 目录 ──
+$SKILL_DIR = $PSScriptRoot
+if (-not $SKILL_DIR) { $SKILL_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
+$TOOLS_DIR = Join-Path $SKILL_DIR "tools"
+$REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
+$SKILL_NAME = "民航建设施工资料合规审核大师"
+$SKILL_VERSION = "v1.5"
+
+# ── 输出目录（在 Skill 上级的 workspace 下） ──
+$WORKSPACE = Split-Path -Parent $SKILL_DIR
 $AUDIT_OUT = Join-Path $WORKSPACE "audit_output"
-$SKILL_VERSION = "v1.4"
+
+# ── Poppler 配置 ──
+$POPPLER_DIR = Join-Path $TOOLS_DIR "poppler"
+$POPPLER_BIN = Join-Path $POPPLER_DIR "Library\bin"
+$POPPLER_URL = "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip"
+$POPPLER_ZIP = Join-Path $env:TEMP "poppler-release.zip"
+
+# ── Tesseract 配置 ──
+$TESSERACT_INSTALLER = "tesseract-ocr-w64-setup-5.5.0.20241111.exe"
+$TESSERACT_URL = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.5.0.20241111/$TESSERACT_INSTALLER"
+$TESSERACT_INSTALLER_PATH = Join-Path $env:TEMP $TESSERACT_INSTALLER
+$TESSERACT_DEFAULT_PATH = "${env:ProgramFiles}\Tesseract-OCR"
+$TESSDATA_URL = "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata"
+
+# ── 系统路径 ──
 $DESKTOP = [Environment]::GetFolderPath("Desktop")
 $STARTMENU = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\民航施工资料审核"
 $PROFILE_PATH = $PROFILE.CurrentUserAllHosts
 
+# ── 辅助函数 ──
 function Write-Step   { param([string]$M, [string]$C = "Cyan"); if (-not $Silent) { Write-Host "-> $M" -ForegroundColor $C } }
 function Write-Success { param([string]$M); if (-not $Silent) { Write-Host "  [OK] $M" -ForegroundColor Green } }
 function Write-Warn    { param([string]$M); if (-not $Silent) { Write-Host "  [!] $M" -ForegroundColor Yellow } }
-function Write-Error   { param([string]$M); if (-not $Silent) { Write-Host "  [X] $M" -ForegroundColor Red } }
+function Write-ErrorMsg{ param([string]$M); if (-not $Silent) { Write-Host "  [X] $M" -ForegroundColor Red } }
+function Write-Info    { param([string]$M); if (-not $Silent) { Write-Host "  [i] $M" -ForegroundColor Gray } }
 
 function Test-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -36,15 +61,43 @@ function Test-Admin {
     return $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Test-CommandExists {
+    param([string]$Cmd)
+    try { Get-Command $Cmd -ErrorAction Stop | Out-Null; return $true }
+    catch { return $false }
+}
+
+function Invoke-Download {
+    param([string]$Url, [string]$OutFile, [string]$Description)
+    Write-Step "下载 $Description ..."
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+        $sizeMB = [math]::Round((Get-Item $OutFile).Length / 1MB, 1)
+        Write-Success "$Description 下载完成 ($sizeMB MB)"
+        return $true
+    } catch {
+        Write-ErrorMsg "$Description 下载失败: $_"
+        return $false
+    }
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# 卸载模式
+# ══════════════════════════════════════════════════════════════════════
 if ($Uninstall) {
     Write-Host "--- 卸载 $SKILL_NAME ---" -ForegroundColor Yellow
+
+    # 移除 PATH
     $cp = [Environment]::GetEnvironmentVariable("Path", "Machine")
     if ($cp -and $cp.Contains($SKILL_DIR)) {
-        $np = ($cp -split ";") | Where-Object { $_ -ne $SKILL_DIR -and $_ -ne $SCRIPTS_DIR }
+        $np = ($cp -split ";") | Where-Object { $_ -ne $SKILL_DIR -and $_ -ne $SCRIPTS_DIR -and $_ -ne $POPPLER_BIN }
         $np = $np -join ";"
         [Environment]::SetEnvironmentVariable("Path", $np, "Machine")
         Write-Success "已从系统 PATH 移除"
     }
+
+    # 移除 Profile 函数
     if (Test-Path $PROFILE_PATH) {
         $pc = Get-Content $PROFILE_PATH -Raw
         if ($pc -match "audit function for civil-aviation") {
@@ -53,30 +106,51 @@ if ($Uninstall) {
             Write-Success "已从 PowerShell Profile 移除"
         }
     }
+
+    # 移除快捷方式
     $sc = Join-Path $DESKTOP "民航施工资料审核.lnk"
     if (Test-Path $sc) { Remove-Item $sc -Force; Write-Success "已删除桌面快捷方式" }
     if (Test-Path $STARTMENU) { Remove-Item $STARTMENU -Recurse -Force -ErrorAction SilentlyContinue; Write-Success "已删除开始菜单" }
     $ab = "$env:SystemRoot\audit.bat"
     if (Test-Path $ab) { Remove-Item $ab -Force -ErrorAction SilentlyContinue; Write-Success "已删除 audit.bat" }
+
     Write-Host "[完成] 卸载成功，请重启 PowerShell" -ForegroundColor Green
     return
 }
 
-Write-Host "=== $SKILL_NAME $SKILL_VERSION 全局安装 ===" -ForegroundColor Cyan
+# ══════════════════════════════════════════════════════════════════════
+# 安装模式
+# ══════════════════════════════════════════════════════════════════════
+
+Write-Host ""
+Write-Host "=== $SKILL_NAME $SKILL_VERSION 一键安装 ===" -ForegroundColor Cyan
+Write-Host "  Skill 目录: $SKILL_DIR" -ForegroundColor Gray
 Write-Host ""
 
-# 1. 检查目录
-Write-Step "检查 Skill 目录"
-if (-not (Test-Path $SKILL_DIR)) { Write-Error "目录不存在: $SKILL_DIR"; exit 1 }
-Write-Success "Skill 目录: $SKILL_DIR"
+$isAdmin = Test-Admin
+if (-not $isAdmin) {
+    Write-Warn "非管理员权限运行，Tesseract 安装和系统 PATH 配置可能需要管理员权限"
+    Write-Warn "建议右键 → 以管理员身份运行 PowerShell 后重新执行"
+    Write-Host ""
+}
 
-# 2. 检查 Python
-Write-Step "检查 Python 环境"
-try { $pv = python --version 2>&1; Write-Success "Python: $($pv.Trim())" }
-catch { Write-Error "Python 未安装"; exit 1 }
+# ────────────────────────────────────────────────
+# 1. 检查 Python
+# ────────────────────────────────────────────────
+Write-Step "1/7 检查 Python 环境"
+try {
+    $pv = python --version 2>&1
+    Write-Success "Python: $($pv.Trim())"
+} catch {
+    Write-ErrorMsg "Python 未安装。请先安装 Python 3.9+ 并添加到 PATH"
+    Write-ErrorMsg "下载: https://www.python.org/downloads/"
+    exit 1
+}
 
-# 3. 检查依赖
-Write-Step "检查 Python 依赖"
+# ────────────────────────────────────────────────
+# 2. Python 依赖
+# ────────────────────────────────────────────────
+Write-Step "2/7 安装 Python 依赖"
 $deps = @("PyMuPDF", "pytesseract", "pdf2image", "Pillow", "python-docx")
 $missing = @()
 foreach ($dep in $deps) {
@@ -84,114 +158,268 @@ foreach ($dep in $deps) {
     if ($LASTEXITCODE -ne 0) { $missing += $dep }
 }
 if ($missing.Count -gt 0) {
-    Write-Warn "缺少依赖: $($missing -join ", ")"
-    pip install $missing
-    if ($LASTEXITCODE -ne 0) { Write-Error "安装失败"; exit 1 }
+    Write-Warn "缺少 $($missing.Count) 个依赖: $($missing -join ", ")"
+    Write-Info "pip install $($missing -join " ")"
+    pip install $missing 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-ErrorMsg "依赖安装失败，请检查网络连接后重试"
+        exit 1
+    }
     Write-Success "依赖安装完成"
 } else {
-    foreach ($dep in $deps) {
-        $v = pip show $dep 2>&1 | Select-String "^Version:" | ForEach-Object { $_ -replace "Version: ", "" }
-        Write-Success "$dep $v"
+    Write-Success "全部 $($deps.Count) 个依赖已就绪"
+}
+
+# ────────────────────────────────────────────────
+# 3. Poppler（自动下载便携版）
+# ────────────────────────────────────────────────
+Write-Step "3/7 安装 Poppler（PDF 处理引擎）"
+
+$popplerReady = $false
+
+# 先检查是否已存在
+if (Test-Path (Join-Path $POPPLER_BIN "pdftotext.exe")) {
+    Write-Success "Poppler 已存在: $POPPLER_BIN"
+    $popplerReady = $true
+}
+# 再检查系统 PATH 中是否有
+elseif (Test-CommandExists "pdftotext") {
+    Write-Success "Poppler 已在系统 PATH 中"
+    $popplerReady = $true
+}
+else {
+    Write-Info "Poppler 未安装，开始自动下载（~30MB）..."
+    Write-Info "来源: $POPPLER_URL"
+
+    if (-not (Test-Path $POPPLER_DIR)) {
+        New-Item -ItemType Directory -Path $POPPLER_DIR -Force | Out-Null
+    }
+
+    if (Invoke-Download -Url $POPPLER_URL -OutFile $POPPLER_ZIP -Description "Poppler 便携版") {
+        Write-Step "解压 Poppler ..."
+        try {
+            Expand-Archive -Path $POPPLER_ZIP -DestinationPath $POPPLER_DIR -Force
+            Remove-Item $POPPLER_ZIP -Force -ErrorAction SilentlyContinue
+
+            # 解压后查找 bin 目录（Release-24.08.0-0 解压后结构不同）
+            $foundBin = Get-ChildItem -Path $POPPLER_DIR -Recurse -Filter "pdftotext.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($foundBin) {
+                $POPPLER_BIN = $foundBin.DirectoryName
+                Write-Success "Poppler 安装完成: $POPPLER_BIN"
+                $popplerReady = $true
+            } else {
+                Write-ErrorMsg "Poppler 解压成功但未找到 pdftotext.exe，请手动检查 $POPPLER_DIR"
+            }
+        } catch {
+            Write-ErrorMsg "Poppler 解压失败: $_"
+        }
     }
 }
 
-# 4. 检查 Tesseract
-Write-Step "检查 Tesseract OCR"
-try {
-    $tv = tesseract --version 2>&1 | Select-Object -First 1
-    Write-Success "Tesseract: $($tv.Trim())"
-    $langs = tesseract --list-langs 2>&1
-    if ($langs -match "chi_sim") { Write-Success "中文语言包: 已安装" }
-    else { Write-Warn "中文语言包未安装" }
-} catch {
-    Write-Error "Tesseract 未安装，OCR 功能不可用"
-    Write-Error "请下载: https://github.com/UB-Mannheim/tesseract/wiki"
+# ────────────────────────────────────────────────
+# 4. Tesseract OCR（自动下载安装）
+# ────────────────────────────────────────────────
+Write-Step "4/7 安装 Tesseract OCR（扫描件识别引擎）"
+
+$tesseractReady = $false
+
+# 先检查是否已安装
+if (Test-CommandExists "tesseract") {
+    try {
+        $tv = tesseract --version 2>&1 | Select-Object -First 1
+        Write-Success "Tesseract 已安装: $($tv.Trim())"
+        $tesseractReady = $true
+    } catch {
+        Write-Warn "Tesseract 命令存在但无法执行"
+    }
 }
 
-# 5. 检查 Poppler
-Write-Step "检查 Poppler"
-$pp = Join-Path $SKILL_DIR "tools\poppler\poppler-26.02.0\Library\bin"
-if (Test-Path $pp) { Write-Success "Poppler 已集成" }
-else { Write-Warn "Poppler 未集成" }
+if (-not $tesseractReady) {
+    Write-Info "Tesseract 未安装，开始自动下载（~50MB）..."
+    Write-Info "来源: $TESSERACT_URL"
 
-# 6. 创建输出目录
-Write-Step "创建输出目录"
+    if (Invoke-Download -Url $TESSERACT_URL -OutFile $TESSERACT_INSTALLER_PATH -Description "Tesseract OCR") {
+        Write-Step "安装 Tesseract（可能需要管理员权限）..."
+        try {
+            $installArgs = "/S"
+            $proc = Start-Process -FilePath $TESSERACT_INSTALLER_PATH -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+            if ($proc.ExitCode -eq 0) {
+                Write-Success "Tesseract 安装完成"
+                Remove-Item $TESSERACT_INSTALLER_PATH -Force -ErrorAction SilentlyContinue
+
+                # 刷新 PATH
+                $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+
+                if (Test-CommandExists "tesseract") {
+                    $tesseractReady = $true
+                } else {
+                    Write-Warn "Tesseract 安装完成但未在 PATH 中找到，可能需要重启终端"
+                    # 尝试直接路径
+                    $tesseractExe = Join-Path $TESSERACT_DEFAULT_PATH "tesseract.exe"
+                    if (Test-Path $tesseractExe) {
+                        $env:Path = "$TESSERACT_DEFAULT_PATH;$env:Path"
+                        $tesseractReady = $true
+                        Write-Success "手动添加到当前会话 PATH"
+                    }
+                }
+            } else {
+                Write-ErrorMsg "Tesseract 安装失败，退出码: $($proc.ExitCode)"
+            }
+        } catch {
+            Write-ErrorMsg "Tesseract 安装失败: $_"
+            Write-Info "请手动下载安装: https://github.com/UB-Mannheim/tesseract/wiki"
+        }
+    }
+}
+
+# 检查中文语言包
+if ($tesseractReady) {
+    Write-Step "检查 Tesseract 中文语言包"
+    $langs = tesseract --list-langs 2>&1
+    if ($langs -match "chi_sim") {
+        Write-Success "中文语言包已安装"
+    } else {
+        Write-Warn "中文语言包缺失，正在下载..."
+        $tessdataDir = if (Test-Path (Join-Path $TESSERACT_DEFAULT_PATH "tessdata")) {
+            Join-Path $TESSERACT_DEFAULT_PATH "tessdata"
+        } else {
+            $env:TESSDATA_PREFIX = Join-Path $SKILL_DIR "tools\tessdata"
+            if (-not (Test-Path $env:TESSDATA_PREFIX)) { New-Item -ItemType Directory -Path $env:TESSDATA_PREFIX -Force | Out-Null }
+            $env:TESSDATA_PREFIX
+        }
+        $traineddataPath = Join-Path $tessdataDir "chi_sim.traineddata"
+        if (Invoke-Download -Url $TESSDATA_URL -OutFile $traineddataPath -Description "中文语言包") {
+            Write-Success "中文语言包安装完成"
+            # 设置环境变量以便运行时找到
+            [Environment]::SetEnvironmentVariable("TESSDATA_PREFIX", $tessdataDir, "User")
+        }
+    }
+}
+
+# ────────────────────────────────────────────────
+# 5. 创建输出目录
+# ────────────────────────────────────────────────
+Write-Step "5/7 创建输出目录"
 foreach ($sub in @("reports","notices","checklists","logs","intermediate","audit_history")) {
     $d = Join-Path $AUDIT_OUT $sub
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 Write-Success "输出目录: $AUDIT_OUT"
 
-# 7. 添加系统 PATH
-Write-Step "配置系统 PATH"
-$isAdmin = Test-Admin
-if ($isAdmin) {
-    $cp = [Environment]::GetEnvironmentVariable("Path", "Machine")
-    if ($cp -notlike "*$SKILL_DIR*") {
-        [Environment]::SetEnvironmentVariable("Path", "$cp;$SKILL_DIR", "Machine")
-        Write-Success "已添加到系统 PATH"
-    } else { Write-Success "系统 PATH 中已存在" }
+# ────────────────────────────────────────────────
+# 6. 配置系统 PATH
+# ────────────────────────────────────────────────
+Write-Step "6/7 配置系统 PATH"
+
+$pathsToAdd = @()
+if ($popplerReady -and $POPPLER_BIN) { $pathsToAdd += $POPPLER_BIN }
+
+foreach ($p in $pathsToAdd) {
+    if ($isAdmin) {
+        $cp = [Environment]::GetEnvironmentVariable("Path", "Machine")
+        if ($cp -notlike "*$p*") {
+            [Environment]::SetEnvironmentVariable("Path", "$cp;$p", "Machine")
+            Write-Success "已添加: $p"
+        } else {
+            Write-Success "已在 PATH 中: $p"
+        }
+    } else {
+        $cp = [Environment]::GetEnvironmentVariable("Path", "User")
+        if ($cp -notlike "*$p*") {
+            [Environment]::SetEnvironmentVariable("Path", "$cp;$p", "User")
+            Write-Success "已添加（用户级）: $p"
+        } else {
+            Write-Success "已在 PATH 中: $p"
+        }
+    }
+}
+
+# ────────────────────────────────────────────────
+# 7. 验证所有组件
+# ────────────────────────────────────────────────
+Write-Step "7/7 验证所有组件"
+
+$allPassed = $true
+$results = @()
+
+# Python
+try { python -c "print('OK')" 2>&1 | Out-Null; $results += "Python: OK" }
+catch { $results += "Python: FAIL"; $allPassed = $false }
+
+# PyMuPDF
+try { python -c "import fitz" 2>&1 | Out-Null; $results += "PyMuPDF: OK" }
+catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
+
+# pytesseract
+try { python -c "import pytesseract" 2>&1 | Out-Null; $results += "pytesseract: OK" }
+catch { $results += "pytesseract: FAIL"; $allPassed = $false }
+
+# pdf2image
+try { python -c "import pdf2image" 2>&1 | Out-Null; $results += "pdf2image: OK" }
+catch { $results += "pdf2image: FAIL（Poppler 缺失时可能失败）" }
+
+# Poppler
+if ($popplerReady) {
+    $results += "Poppler: OK"
 } else {
-    $cp = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($cp -notlike "*$SKILL_DIR*") {
-        [Environment]::SetEnvironmentVariable("Path", "$cp;$SKILL_DIR", "User")
-        Write-Success "已添加到用户 PATH"
-    } else { Write-Success "用户 PATH 中已存在" }
-    Write-Warn "非管理员，建议以管理员身份重新运行"
+    $results += "Poppler: 未安装（PDF 转图片功能不可用）"
 }
 
-# 8. 安装 audit.bat
-Write-Step "安装 audit.bat 命令行入口"
-$auditBatSrc = Join-Path $SKILL_DIR "audit.bat"
-$auditBatDst = "$env:SystemRoot\audit.bat"
-try {
-    Copy-Item $auditBatSrc $auditBatDst -Force
-    Write-Success "audit.bat 已安装到 $auditBatDst"
-} catch {
-    Write-Warn "无法写入系统目录，复制到桌面"
-    Copy-Item $auditBatSrc "$DESKTOP\audit.bat" -Force
-    Write-Success "audit.bat 已复制到桌面"
+# Tesseract
+if ($tesseractReady) {
+    $results += "Tesseract: OK"
+} else {
+    $results += "Tesseract: 未安装（OCR 扫描件识别不可用）"
 }
 
-# 9. 更新 PowerShell Profile
-Write-Step "更新 PowerShell Profile"
+foreach ($r in $results) {
+    if ($r -match "FAIL") { Write-ErrorMsg $r }
+    elseif ($r -match "未安装") { Write-Warn $r }
+    else { Write-Success $r }
+}
+
+# ────────────────────────────────────────────────
+# 安装 PowerShell Profile 函数
+# ────────────────────────────────────────────────
+Write-Step "安装 audit 命令行函数"
+
 $profileDir = Split-Path $PROFILE_PATH -Parent
 if (-not (Test-Path $profileDir)) { New-Item -ItemType Directory -Path $profileDir -Force | Out-Null }
 
-# Define the profile function as a here-string
-$profileFunc = @'
-#region audit function for civil-aviation-doc-audit Skill (v1.4)
+$profileFunc = @"
+
+#region audit function for civil-aviation-doc-audit Skill (v1.5)
 function audit {
-    param([string]$Command, [string]$FilePath)
-    $d = "d:\2026年7月22日 民航资料skill\.trae\skills\civil-aviation-doc-audit"
-    $s = "$d\scripts"
-    if (-not $Command) {
-        Write-Host "=== 民航建设施工资料合规审核大师 v1.4 ===" -ForegroundColor Cyan
+    param([string]`$Command, [string]`$FilePath)
+    `$d = "$SKILL_DIR"
+    `$s = "`$d\scripts"
+    if (-not `$Command) {
+        Write-Host "=== $SKILL_NAME $SKILL_VERSION ===" -ForegroundColor Cyan
         Write-Host "audit <命令> <文件路径>" -ForegroundColor Yellow
-        Write-Host "  info   - 查看资料信息"
-        Write-Host "  extract- 提取文字"
-        Write-Host "  ocr    - 扫描件OCR"
-        Write-Host "  quality- 数据质量检测"
-        Write-Host "  batch  - 批量审核"
-        Write-Host "  install- 运行安装脚本"
+        Write-Host "  info     - 查看资料信息"
+        Write-Host "  extract  - 提取文字"
+        Write-Host "  ocr      - 扫描件OCR"
+        Write-Host "  quality  - 数据质量检测"
+        Write-Host "  batch    - 批量审核"
+        Write-Host "  install  - 运行安装脚本"
         Write-Host "  uninstall- 卸载"
-        Write-Host "  clean  - 清理临时文件"
+        Write-Host "  clean    - 清理临时文件"
         return
     }
-    switch ($Command.ToLower()) {
-        "info"     { if (-not $FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "$s\run_audit.py" info $FilePath }
-        "extract"  { if (-not $FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "$s\extract_pdf.py" $FilePath }
-        "ocr"      { if (-not $FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "$s\ocr_image.py" $FilePath }
-        "quality"  { if (-not $FilePath) { Write-Host "请指定 JSON 文件路径" -ForegroundColor Red; return }; python "$s\data_quality_check.py" $FilePath }
-        "batch"    { if (-not $FilePath) { Write-Host "请指定目录路径" -ForegroundColor Red; return }; python "$s\run_audit.py" batch $FilePath }
-        "install"  { powershell -ExecutionPolicy Bypass -File "$d\install.ps1" }
-        "uninstall"{ powershell -ExecutionPolicy Bypass -File "$d\install.ps1" -Uninstall }
-        "clean"    { Remove-Item "d:\2026年7月22日 民航资料skill\audit_output\intermediate\*.json" -ErrorAction SilentlyContinue; Write-Host "已清理" -ForegroundColor Green }
-        default    { Write-Host "未知命令: $Command" -ForegroundColor Red }
+    switch (`$Command.ToLower()) {
+        "info"      { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" info `$FilePath }
+        "extract"   { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\extract_pdf.py" `$FilePath }
+        "ocr"       { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\ocr_image.py" `$FilePath }
+        "quality"   { if (-not `$FilePath) { Write-Host "请指定 JSON 文件路径" -ForegroundColor Red; return }; python "`$s\data_quality_check.py" `$FilePath }
+        "batch"     { if (-not `$FilePath) { Write-Host "请指定目录路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" batch `$FilePath }
+        "install"   { powershell -ExecutionPolicy Bypass -File "`$d\install.ps1" }
+        "uninstall" { powershell -ExecutionPolicy Bypass -File "`$d\install.ps1" -Uninstall }
+        "clean"     { Remove-Item "$AUDIT_OUT\intermediate\*.json" -ErrorAction SilentlyContinue; Write-Host "已清理" -ForegroundColor Green }
+        default     { Write-Host "未知命令: `$Command" -ForegroundColor Red }
     }
 }
 #endregion
-'@
+"@
 
 if (Test-Path $PROFILE_PATH) {
     $ec = Get-Content $PROFILE_PATH -Raw
@@ -205,48 +433,22 @@ if (Test-Path $PROFILE_PATH) {
 }
 Write-Success "PowerShell Profile 已更新: $PROFILE_PATH"
 
-# 10. 桌面快捷方式
-Write-Step "配置桌面快捷方式"
-$scPath = Join-Path $DESKTOP "民航施工资料审核.lnk"
-$ws = New-Object -ComObject WScript.Shell
-$sc = $ws.CreateShortcut($scPath)
-$sc.TargetPath = "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe"
-$sc.Arguments = "-NoExit -Command Write-Host === 民航建设施工资料合规审核大师 v1.4 === -ForegroundColor Cyan; Write-Host 输入 audit 查看帮助 -ForegroundColor Yellow; cd $WORKSPACE"
-$sc.WorkingDirectory = $WORKSPACE
-$sc.Description = "民航建设施工资料合规审核大师"
-$sc.Save()
-Write-Success "桌面快捷方式已更新"
-
-# 11. 开始菜单
-Write-Step "配置开始菜单"
-if (-not (Test-Path $STARTMENU)) { New-Item -ItemType Directory -Path $STARTMENU -Force | Out-Null }
-$sm = $ws.CreateShortcut((Join-Path $STARTMENU "民航施工资料审核.lnk"))
-$sm.TargetPath = "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe"
-$sm.Arguments = "-NoExit -Command cd $WORKSPACE; Write-Host 欢迎使用民航施工资料审核大师 -ForegroundColor Cyan"
-$sm.WorkingDirectory = $WORKSPACE
-$sm.Save()
-Write-Success "开始菜单快捷方式已创建"
-
-# 12. 验证
-Write-Step "运行安装验证"
-try {
-    python "$SCRIPTS_DIR\run_audit.py" info --help 2>&1 | Out-Null
-    Write-Success "run_audit.py 正常运行"
-} catch { Write-Warn "run_audit.py 验证失败" }
-try {
-    python -c "import fitz; print(OK)" 2>&1 | Out-Null
-    Write-Success "PyMuPDF 导入正常"
-} catch { Write-Warn "PyMuPDF 导入失败" }
-
+# ────────────────────────────────────────────────
+# 完成
+# ────────────────────────────────────────────────
 Write-Host ""
-Write-Host "=== 安装完成！===" -ForegroundColor Green
+Write-Host "=== 安装完成 ===" -ForegroundColor Green
 Write-Host ""
-Write-Host "使用方法:" -ForegroundColor Yellow
-Write-Host "  [PowerShell/CMD] audit info `"d:\资料\检验批.pdf`""
-Write-Host "  [Win+R]         audit 回车"
-Write-Host "  [桌面]          双击 民航施工资料审核.lnk"
-Write-Host "  [立即生效]      在 PowerShell 中执行: . $PROFILE"
+Write-Host "组件状态:" -ForegroundColor Yellow
+foreach ($r in $results) { Write-Host "  $r" }
 Write-Host ""
 Write-Host "Skill 目录: $SKILL_DIR"
 Write-Host "输出目录:  $AUDIT_OUT"
-Write-Host "如需卸载:  audit uninstall"
+Write-Host ""
+Write-Host "立即生效: . $PROFILE_PATH" -ForegroundColor Yellow
+Write-Host ""
+
+if (-not $allPassed) {
+    Write-Warn "部分组件未通过验证，详见上方输出。"
+    Write-Warn "核心审核功能（规范对账、逻辑检查）不受影响，仅 OCR 和 PDF 转图片功能可能受限。"
+}
