@@ -3,26 +3,24 @@
 ================================================================
 
 用途：对扫描件图片或 PDF 进行 OCR 识别。
-策略（v2.0 三级降级）：
-- 第一层：RapidOCR（ONNX Runtime 后端）— pip 一条命令，跨平台，
-  基于PaddleOCR模型，中文手写体 85%+，表格识别输出 HTML 结构
+策略（v2.1 三级降级 + 内存优化）：
+- 第一层：RapidOCR（ONNX Runtime 后端）— pip 一条命令，跨平台
+  内存优化：限制图片长边≤1280px、限制线程数、逐页处理+gc回收
 - 第二层：Tesseract — 备选，当 RapidOCR 不可用时降级使用
 - 第三层：通用 HTTP API — 兜底，不依赖任何平台特有工具
-  支持 OpenAI GPT-4o / Claude Vision / Gemini / 硅基流动等
 
 使用方式：
-    python scripts/ocr_image.py <图片或PDF路径> [--lang chi_sim+eng] [--out <输出>]
+    python scripts/ocr_image.py <图片或PDF路径> [--lang chi_sim+eng] [--out <输出>] [--dpi 150]
 
 前置依赖：
     pip install rapidocr-onnxruntime Pillow pdf2image
-    # 备选 OCR：
-    pip install pytesseract  +  安装 Tesseract-OCR 引擎
 """
 
 import sys
 import argparse
 import base64
 import os
+import gc
 from pathlib import Path
 
 # ═══════════════════════════════════════════════════
@@ -67,11 +65,42 @@ except ImportError:
     HAS_PDF2IMAGE = False
 
 
+# ── 内存优化：图片预处理 ──
+MAX_IMAGE_SIDE = 1280  # OCR 前限制图片长边，防止内存爆炸
+
+
+def _resize_for_ocr(img):
+    """将 PIL 图片长边限制在 MAX_IMAGE_SIDE 以内，减少内存占用。"""
+    if not hasattr(img, 'size'):
+        return img
+    w, h = img.size
+    long_side = max(w, h)
+    if long_side <= MAX_IMAGE_SIDE:
+        return img
+    scale = MAX_IMAGE_SIDE / long_side
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    return img.resize((new_w, new_h), Image.LANCZOS)
+
+
 def _get_rapidocr_engine():
-    """延迟初始化 RapidOCR 引擎（首次调用时加载模型）。"""
+    """延迟初始化 RapidOCR 引擎，配置内存优化参数。"""
     global _rapidocr_engine
     if _rapidocr_engine is None:
-        _rapidocr_engine = RapidOCR()
+        # RapidOCR 构造参数（v1.x rapidocr-onnxruntime）
+        # 限制检测图片长边，限制线程数，防止内存爆炸
+        try:
+            _rapidocr_engine = RapidOCR(
+                # 检测阶段图片长边限制（默认736，降到960平衡精度和内存）
+                det_limit_side_len=960,
+                det_limit_type="max",
+                # 线程数限制（-1=自动用全部核心，容易爆内存；固定为2更稳定）
+                intra_op_num_threads=2,
+                inter_op_num_threads=2,
+            )
+        except TypeError:
+            # 某些版本不支持这些参数，用默认配置
+            _rapidocr_engine = RapidOCR()
     return _rapidocr_engine
 
 
@@ -103,10 +132,9 @@ def ocr_image_rapidocr(image_path: str) -> tuple:
     return (text, avg_score)
 
 
-def _safe_convert_pdf(pdf_path: str, dpi: int = 200, first_page=None, last_page=None):
+def _safe_convert_pdf(pdf_path: str, dpi: int = 150, first_page=None, last_page=None):
     """处理中文路径：poppler 不支持中文路径，自动复制到临时目录再转换。"""
     import tempfile, shutil as _shutil, re
-    # 判断路径是否含非 ASCII 字符
     has_non_ascii = bool(re.search(r'[^\x00-\x7F]', str(pdf_path)))
     poppler_path = _get_poppler_path()
     kwargs = {"dpi": dpi}
@@ -120,7 +148,6 @@ def _safe_convert_pdf(pdf_path: str, dpi: int = 200, first_page=None, last_page=
     if not has_non_ascii:
         return convert_from_path(pdf_path, **kwargs)
 
-    # 路径含中文 → 复制到临时目录（纯 ASCII 路径）
     tmp_dir = Path(tempfile.gettempdir()) / "trae_ocr_tmp"
     tmp_dir.mkdir(exist_ok=True)
     tmp_pdf = tmp_dir / "input.pdf"
@@ -128,26 +155,50 @@ def _safe_convert_pdf(pdf_path: str, dpi: int = 200, first_page=None, last_page=
         _shutil.copy2(pdf_path, tmp_pdf)
         return convert_from_path(str(tmp_pdf), **kwargs)
     finally:
-        # 不立即删除 tmp_pdf，因为可能还在用；下次会覆盖
         pass
 
 
-def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200) -> tuple:
-    """用 RapidOCR 识别 PDF 每页，返回 (文本, 置信度)。"""
-    images = _safe_convert_pdf(pdf_path, dpi)
+def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 150) -> tuple:
+    """
+    用 RapidOCR 识别 PDF 每页，返回 (文本, 置信度)。
+    内存优化：逐页处理，每页处理完立即释放。
+    """
+    engine = _get_rapidocr_engine()
     parts = []
     all_scores = []
-    engine = _get_rapidocr_engine()
-    for i, img in enumerate(images, 1):
-        # RapidOCR 直接接受 PIL.Image，不需要 BytesIO
-        result, elapse = engine(img)
-        if result:
-            lines = [text for box, text, score in result]
-            scores = [score for box, text, score in result]
-            parts.append(f"=== 第 {i} 页 ===\n" + "\n".join(lines) + "\n")
-            all_scores.extend(scores)
-        else:
-            parts.append(f"=== 第 {i} 页 ===\n（识别为空）\n")
+
+    # 逐页转换+识别，不一次性加载所有页
+    from pdf2image import pdfinfo_from_path
+    info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path() or None)
+    total_pages = info.get("Pages", 1)
+
+    for page_num in range(1, total_pages + 1):
+        # 只转换当前页（1页），不是全部
+        images = _safe_convert_pdf(pdf_path, dpi=dpi, first_page=page_num, last_page=page_num)
+        if not images:
+            parts.append(f"=== 第 {page_num} 页 ===\n（转换失败）\n")
+            continue
+
+        img = images[0]
+        # 预处理：限制图片尺寸
+        img = _resize_for_ocr(img)
+
+        try:
+            result, elapse = engine(img)
+            if result:
+                lines = [text for box, text, score in result]
+                scores = [score for box, text, score in result]
+                parts.append(f"=== 第 {page_num} 页 ===\n" + "\n".join(lines) + "\n")
+                all_scores.extend(scores)
+            else:
+                parts.append(f"=== 第 {page_num} 页 ===\n（识别为空）\n")
+        except Exception as e:
+            parts.append(f"=== 第 {page_num} 页 ===\n（识别失败: {e}）\n")
+
+        # 立即释放当前页内存
+        del img, images
+        gc.collect()
+
     text = "\n".join(parts)
     avg_score = sum(all_scores) / len(all_scores) if all_scores else 0.0
     return (text, avg_score)
@@ -159,39 +210,44 @@ def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200) -> tuple:
 def ocr_image_tesseract(image_path: str, lang: str = "chi_sim+eng") -> str:
     """用 Tesseract 识别单张图片。"""
     img = Image.open(image_path)
+    img = _resize_for_ocr(img)
     return pytesseract.image_to_string(img, lang=lang)
 
 
-def ocr_pdf_tesseract(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> str:
-    """用 Tesseract 识别 PDF 每页。"""
-    images = _safe_convert_pdf(pdf_path, dpi)
+def ocr_pdf_tesseract(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 150) -> str:
+    """用 Tesseract 识别 PDF 每页（逐页处理）。"""
+    from pdf2image import pdfinfo_from_path
+    info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path() or None)
+    total_pages = info.get("Pages", 1)
+
     parts = []
-    for i, img in enumerate(images, 1):
-        text = pytesseract.image_to_string(img, lang=lang)
-        parts.append(f"=== 第 {i} 页 ===\n{text}\n")
+    for page_num in range(1, total_pages + 1):
+        images = _safe_convert_pdf(pdf_path, dpi=dpi, first_page=page_num, last_page=page_num)
+        if not images:
+            parts.append(f"=== 第 {page_num} 页 ===\n（转换失败）\n")
+            continue
+        img = images[0]
+        img = _resize_for_ocr(img)
+        try:
+            text = pytesseract.image_to_string(img, lang=lang)
+            parts.append(f"=== 第 {page_num} 页 ===\n{text}\n")
+        except Exception as e:
+            parts.append(f"=== 第 {page_num} 页 ===\n（识别失败: {e}）\n")
+        del img, images
+        gc.collect()
     return "\n".join(parts)
 
 
 # ═══════════════════════════════════════════════════
-# 第三层：通用 HTTP API 兜底（跨平台，不依赖任何 Agent 平台）
+# 第三层：通用 HTTP API 兜底
 # ═══════════════════════════════════════════════════
 def ocr_image_api(image_path: str, api_type: str = None, api_key: str = None) -> str:
-    """
-    用云端视觉 API 识别图片，不依赖任何平台特有工具。
-    
-    支持的 api_type：
-    - "openai"   — GPT-4o Vision（需 OPENAI_API_KEY）
-    - "gemini"   — Google Gemini（需 GEMINI_API_KEY）
-    - "siliconflow" — 硅基流动（需 SILICONFLOW_API_KEY）
-    
-    api_key 参数优先于环境变量。
-    """
+    """用云端视觉 API 识别图片。"""
     import requests
 
     with open(image_path, "rb") as f:
         img_b64 = base64.b64encode(f.read()).decode()
 
-    # 自动选择 API
     if not api_type:
         api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if api_key:
@@ -268,10 +324,7 @@ def ocr_image_api(image_path: str, api_type: str = None, api_key: str = None) ->
 # 主入口：三级降级
 # ═══════════════════════════════════════════════════
 def ocr_image(image_path: str, lang: str = "chi_sim+eng") -> dict:
-    """
-    三级降级 OCR 识别单张图片。
-    返回: {"text": str, "engine": str, "confidence": float}
-    """
+    """三级降级 OCR 识别单张图片。"""
     # 第一层：RapidOCR
     if HAS_RAPIDOCR:
         try:
@@ -280,6 +333,8 @@ def ocr_image(image_path: str, lang: str = "chi_sim+eng") -> dict:
                 return {"text": text, "engine": "RapidOCR", "confidence": score}
         except Exception as e:
             print(f"  [!] RapidOCR 失败: {e}", file=sys.stderr)
+        finally:
+            gc.collect()
 
     # 第二层：Tesseract
     if HAS_TESSERACT_DEPS:
@@ -289,6 +344,8 @@ def ocr_image(image_path: str, lang: str = "chi_sim+eng") -> dict:
                 return {"text": text, "engine": "Tesseract", "confidence": 0.8}
         except Exception as e:
             print(f"  [!] Tesseract 失败: {e}", file=sys.stderr)
+        finally:
+            gc.collect()
 
     # 第三层：HTTP API
     try:
@@ -301,11 +358,8 @@ def ocr_image(image_path: str, lang: str = "chi_sim+eng") -> dict:
     return {"text": "", "engine": "none", "confidence": 0.0}
 
 
-def ocr_pdf(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> dict:
-    """
-    三级降级 OCR 识别 PDF。
-    返回: {"text": str, "engine": str, "confidence": float}
-    """
+def ocr_pdf(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 150) -> dict:
+    """三级降级 OCR 识别 PDF（逐页处理，内存优化）。"""
     # 第一层：RapidOCR
     if HAS_RAPIDOCR and HAS_PDF2IMAGE:
         try:
@@ -314,6 +368,8 @@ def ocr_pdf(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> dict:
                 return {"text": text, "engine": "RapidOCR", "confidence": score}
         except Exception as e:
             print(f"  [!] RapidOCR PDF 失败: {e}", file=sys.stderr)
+        finally:
+            gc.collect()
 
     # 第二层：Tesseract
     if HAS_TESSERACT_DEPS and HAS_PDF2IMAGE:
@@ -323,22 +379,28 @@ def ocr_pdf(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> dict:
                 return {"text": text, "engine": "Tesseract", "confidence": 0.8}
         except Exception as e:
             print(f"  [!] Tesseract PDF 失败: {e}", file=sys.stderr)
+        finally:
+            gc.collect()
 
     # 第三层：HTTP API（逐页）
     if HAS_PDF2IMAGE:
         try:
-            images = _safe_convert_pdf(pdf_path, dpi)
-            import io
+            from pdf2image import pdfinfo_from_path
+            info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path() or None)
+            total_pages = info.get("Pages", 1)
             parts = []
-            for i, img in enumerate(images, 1):
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
-                buf.seek(0)
-                tmp_path = Path(image_path).parent / f"_tmp_page_{i}.png"
+            for page_num in range(1, total_pages + 1):
+                images = _safe_convert_pdf(pdf_path, dpi=dpi, first_page=page_num, last_page=page_num)
+                if not images:
+                    continue
+                img = images[0]
+                tmp_path = Path(image_path).parent / f"_tmp_page_{page_num}.png"
                 img.save(tmp_path)
                 text = ocr_image_api(str(tmp_path))
                 tmp_path.unlink(missing_ok=True)
-                parts.append(f"=== 第 {i} 页 ===\n{text}\n")
+                parts.append(f"=== 第 {page_num} 页 ===\n{text}\n")
+                del img, images
+                gc.collect()
             return {"text": "\n".join(parts), "engine": "HTTP API", "confidence": 0.9}
         except Exception as e:
             print(f"  [!] HTTP API PDF 失败: {e}", file=sys.stderr)
@@ -347,11 +409,11 @@ def ocr_pdf(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="扫描件 OCR（RapidOCR 主力，三级降级）")
+    parser = argparse.ArgumentParser(description="扫描件 OCR（RapidOCR 主力，三级降级，内存优化）")
     parser.add_argument("file", help="图片或 PDF 文件路径")
-    parser.add_argument("--lang", default="chi_sim+eng", help="OCR 语言（Tesseract 备选用），默认 chi_sim+eng")
+    parser.add_argument("--lang", default="chi_sim+eng", help="OCR 语言（Tesseract 备选用）")
     parser.add_argument("--out", help="输出文本文件路径（默认 stdout）")
-    parser.add_argument("--dpi", type=int, default=200, help="PDF 转图 DPI，默认 200")
+    parser.add_argument("--dpi", type=int, default=150, help="PDF 转图 DPI，默认 150（内存优化）")
     args = parser.parse_args()
 
     if not Path(args.file).exists():
@@ -372,10 +434,13 @@ def main():
         print(
             "❌ 未安装任何 OCR 引擎。请运行：\n"
             "   pip install rapidocr-onnxruntime Pillow pdf2image\n"
-            "   或设置环境变量 OPENAI_API_KEY / GEMINI_API_KEY 使用云端 API",
+            "   或设置环境变量 OPENAI_API_KEY / GEMINI_API_KEY",
             file=sys.stderr,
         )
         sys.exit(1)
+
+    print(f"  [i] 可用引擎: {', '.join(engines)}", file=sys.stderr)
+    print(f"  [i] DPI: {args.dpi} | 图片长边限制: {MAX_IMAGE_SIDE}px", file=sys.stderr)
 
     suffix = Path(args.file).suffix.lower()
     if suffix == ".pdf":
