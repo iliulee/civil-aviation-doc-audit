@@ -46,3 +46,9 @@ __pycache__/
 
 # ──── 工具二进制（由 install.ps1 自动下载）────
 .trae/skills/civil-aviation-doc-audit/tools/poppler/
+.trae/skills/civil-aviation-doc-audit/tools/poppler.zip
+
+# ──── 临时分析产物 ────
+data_quality_input.json
+*_数据分析报告.md
+*_完整提取结果*.md

@@ -103,22 +103,44 @@ def ocr_image_rapidocr(image_path: str) -> tuple:
     return (text, avg_score)
 
 
-def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200) -> tuple:
-    """用 RapidOCR 识别 PDF 每页，返回 (文本, 置信度)。"""
+def _safe_convert_pdf(pdf_path: str, dpi: int = 200, first_page=None, last_page=None):
+    """处理中文路径：poppler 不支持中文路径，自动复制到临时目录再转换。"""
+    import tempfile, shutil as _shutil, re
+    # 判断路径是否含非 ASCII 字符
+    has_non_ascii = bool(re.search(r'[^\x00-\x7F]', str(pdf_path)))
     poppler_path = _get_poppler_path()
     kwargs = {"dpi": dpi}
     if poppler_path:
         kwargs["poppler_path"] = poppler_path
-    images = convert_from_path(pdf_path, **kwargs)
+    if first_page:
+        kwargs["first_page"] = first_page
+    if last_page:
+        kwargs["last_page"] = last_page
+
+    if not has_non_ascii:
+        return convert_from_path(pdf_path, **kwargs)
+
+    # 路径含中文 → 复制到临时目录（纯 ASCII 路径）
+    tmp_dir = Path(tempfile.gettempdir()) / "trae_ocr_tmp"
+    tmp_dir.mkdir(exist_ok=True)
+    tmp_pdf = tmp_dir / "input.pdf"
+    try:
+        _shutil.copy2(pdf_path, tmp_pdf)
+        return convert_from_path(str(tmp_pdf), **kwargs)
+    finally:
+        # 不立即删除 tmp_pdf，因为可能还在用；下次会覆盖
+        pass
+
+
+def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200) -> tuple:
+    """用 RapidOCR 识别 PDF 每页，返回 (文本, 置信度)。"""
+    images = _safe_convert_pdf(pdf_path, dpi)
     parts = []
     all_scores = []
+    engine = _get_rapidocr_engine()
     for i, img in enumerate(images, 1):
-        import io
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        engine = _get_rapidocr_engine()
-        result, elapse = engine(buf)
+        # RapidOCR 直接接受 PIL.Image，不需要 BytesIO
+        result, elapse = engine(img)
         if result:
             lines = [text for box, text, score in result]
             scores = [score for box, text, score in result]
@@ -142,11 +164,7 @@ def ocr_image_tesseract(image_path: str, lang: str = "chi_sim+eng") -> str:
 
 def ocr_pdf_tesseract(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> str:
     """用 Tesseract 识别 PDF 每页。"""
-    poppler_path = _get_poppler_path()
-    kwargs = {"dpi": dpi}
-    if poppler_path:
-        kwargs["poppler_path"] = poppler_path
-    images = convert_from_path(pdf_path, **kwargs)
+    images = _safe_convert_pdf(pdf_path, dpi)
     parts = []
     for i, img in enumerate(images, 1):
         text = pytesseract.image_to_string(img, lang=lang)
@@ -309,11 +327,7 @@ def ocr_pdf(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> dict:
     # 第三层：HTTP API（逐页）
     if HAS_PDF2IMAGE:
         try:
-            poppler_path = _get_poppler_path()
-            kwargs = {"dpi": dpi}
-            if poppler_path:
-                kwargs["poppler_path"] = poppler_path
-            images = convert_from_path(pdf_path, **kwargs)
+            images = _safe_convert_pdf(pdf_path, dpi)
             import io
             parts = []
             for i, img in enumerate(images, 1):
