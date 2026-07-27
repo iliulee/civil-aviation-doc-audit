@@ -100,6 +100,39 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 ---
 
+## 脚本执行指南（AI 必须用命令行调用，不要 import）
+
+> **关键规则**：审核过程中需要 OCR、PDF 提取、数据质量检测时，**必须用 RunCommand 执行以下命令**，不要尝试 import Python 模块或自己写代码实现。
+
+| 场景 | 执行命令 | 说明 |
+|------|---------|------|
+| 识别资料类型 | `python {SKILL_DIR}/scripts/run_audit.py info "<文件路径>"` | 返回格式、页数、是否扫描件 |
+| 提取 PDF 文字 | `python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"` | 电子档 PDF 用 PyMuPDF 提取 |
+| OCR 扫描件 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 三级降级：RapidOCR→Tesseract→HTTP API |
+| 批量识别目录 | `python {SKILL_DIR}/scripts/run_audit.py batch "<目录路径>"` | 遍历目录所有文件 |
+| 数据质量检测 | `python {SKILL_DIR}/scripts/data_quality_check.py "<JSON文件>"` | 四类检测：REPEAT/JUMP/ALTER/SELF |
+| 文本后处理 | `python {SKILL_DIR}/scripts/postprocess.py "<文本文件>"` | 全角转半角、PUA 替换 |
+
+**`{SKILL_DIR}` 替换为本 Skill 的实际安装路径**（即 `SKILL.md` 所在目录）。
+
+### 执行规则
+
+1. **先识别再处理**：收到文件后，先跑 `run_audit.py info` 判断是否扫描件
+2. **电子档**：`is_scanned: False` → 用 `extract_pdf.py` 提取文字
+3. **扫描件**：`is_scanned: True` → 用 `ocr_image.py` 做 OCR
+4. **OCR 结果必须输出到文件**：用 `--out` 参数，方便后续读取
+5. **读取 OCR 结果**：OCR 完成后用 Read 工具读取输出文件
+6. **数据质量检测**：将提取的表格数据整理为 JSON，再跑 `data_quality_check.py`
+
+### 安装命令
+
+用户说"安装""安装依赖""初始化"时，执行：
+```powershell
+powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
+```
+
+---
+
 ## 知识库查询策略（Obsidian 优先，分层兜底）
 
 > **核心原则**：审核必须全面、专业、有章可循。每个数据、每个判定都要能追溯到规范原文的具体条款。Obsidian 知识库是规范原文的第一来源，Skill 的 references 文件是固化知识的缓存层。
@@ -276,6 +309,12 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 > **设计意图**：审核前必须了解资料的背景上下文，避免因信息不对称导致误判。文件分类和上下文信息合并为一次确认，减少打断用户的次数。全流程仅两次人工确认：本步骤（开始时）+ OCR后（扫描件核对）。
 
+**硬性执行规则**：
+- 第 0 步（本次确认）后，才开始走第 1~6 步
+- 第 6 步 OCR 完成后，**必须停下**，输出"OCR 校对确认表"，等用户确认或修正
+- 用户未确认前，**禁止进入第 7 步（数据质量检测）和第 8 步（报告生成）**
+- 这条规则不因对话上下文已加载而豁免——即使 AI 觉得自己"知道"OCR 结果是对的，也必须让用户确认一遍
+
 **输入**：用户触发审核请求
 **处理**：审核启动时，一次性完成文件分类和前置信息收集。
 
@@ -353,37 +392,33 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 **输入**：第 1 步判定的非电子档文件
 **处理**（v2.0 三级降级策略）：
-1. **优先 PyMuPDF 提取**（电子档 PDF）：
-   - 准确率 100%（中文部分）
-   - 全自动，无 OCR
-2. **第一层：RapidOCR（主力 OCR）**（扫描件）：
-   - 基于 PaddleOCR 模型 + ONNX Runtime 推理，pip 一条命令安装
-   - 中文手写体 85%+，表格识别输出 HTML 结构
-   - 命令：`rapidocr_onnxruntime.RapidOCR(image_path)`
-3. **第二层：Tesseract（备选 OCR）**：
-   - RapidOCR 不可用时降级使用
-   - 命令：`pytesseract.image_to_string(image, lang='chi_sim+eng')`
-   - 中文+英文混排，置信度约 80%+
-4. **第三层：HTTP API 兜底**（跨平台）：
-   - 支持 OpenAI GPT-4o Vision / Gemini / 硅基流动
-   - 不依赖任何 Agent 平台特有工具
-5. **文字后处理**（关键）：
-   - 全角英文 → 半角英文（`ＭＨ` → `MH`）
-   - 私有区字符替换（`` → `.`）
-   - 中文标点规范化
-6. **提取完整性校验**（铁律 16）：
+
+> **执行方式**：必须用 RunCommand 调用脚本，不要自己写 Python 代码。
+
+1. **优先 PyMuPDF 提取**（电子档 PDF，`is_scanned: False`）：
+   - 执行：`python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"`
+   - 准确率 100%（中文部分），全自动，无需 OCR
+2. **扫描件 OCR**（`is_scanned: True`）：
+   - 执行：`python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"`
+   - 脚本内部三级降级：RapidOCR（主力，中文手写 85%+）→ Tesseract（备选）→ HTTP API（兜底）
+3. **文字后处理**：
+   - 执行：`python {SKILL_DIR}/scripts/postprocess.py "<提取的文本文件>"`
+   - 全角英文 → 半角英文（`ＭＨ` → `MH`）、私有区字符替换、中文标点规范化
+4. **读取提取结果**：用 Read 工具读取 `--out` 指定的输出文件
+5. **提取完整性校验**（铁律 16）：
    - 行数校验：预期行数 vs 实际提取行数
-   - 不通过 → 自动触发重新提取（换引擎）
+   - 不通过 → 自动触发重新提取（换引擎，`ocr_image.py` 会自动降级）
    - 重试仍失败 → 标记"提取不完整"，停止后续审核
-7. **输出**：结构化文字 + 置信度标记 + 使用引擎 + 提取校验结果
+6. **输出**：结构化文字 + 置信度标记 + 使用引擎 + 提取校验结果
 
 ### 第 3 步：数据质量审查（铁律 10，前置硬门槛）
 
 **输入**：第 2 步提取的结构化数据（JSON 格式）
 **触发条件**：资料中含表格数据（施工记录、检验批、检测报告等）
 **处理**：
-1. **数据集构建**：将 OCR/AI 提取的表格数据整理为 `data_quality_check.py` 要求的 JSON 格式
-2. **四类检测**（调用 `scripts/data_quality_check.py`）：
+1. **数据集构建**：将 OCR/AI 提取的表格数据整理为 JSON 格式（含 `records` 数组，每条记录含桩号、桩长、灌入量、充盈系数等字段）
+2. **四类检测**（执行命令）：
+   - 执行：`python {SKILL_DIR}/scripts/data_quality_check.py "<JSON文件路径>"`
    - DQ-REPEAT — 重复值模式（造假检测：交替循环、值分布集中）
    - DQ-JUMP — 突变检测（断崖下跌：桩长、灌入量、充盈系数等关键参数）
    - DQ-ALTER — 涂改痕迹检测（逻辑层面：充盈系数自洽失败、桩长自洽失败）
@@ -409,9 +444,9 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
    - 按工程类别加载专项审核文件（如 `references/atc-engineering-audit.md`）
    - 使用文件中已固化的条款+参数阈值
    - 按 `references/specification-mapping.md` 的映射关系建立审核检查清单
-3. **第 3 级 — 外部补充**（前两级均未覆盖）：
-   - WebSearch 搜索公开可查的规范信息
-   - 明确标注来源为"外部搜索，未经 Obsidian 原文验证"
+3. **第 3 级 — 工程惯例标注**（前两级均未覆盖）：
+   - 标注"该条款无规范原文支撑，判定依据为工程惯例"
+   - **禁止使用 WebSearch 兜底**（知识分区红线 1）
 4. 如用户指定分部分项，精准定位到对应规范章节
 5. **输出**：审核检查清单（含每项检查内容、判定标准、对应条款、来源层级标记）
 
@@ -498,6 +533,7 @@ d:\2026年7月22日 民航资料skill\audit_output\
 ```
 
 **输出完整性自检清单**（第 8 步完成前必须逐项打勾）：
+- [ ] **OCR 后人工确认已完成**（铁律 20，硬门槛）— 扫描件 OCR 完成后必须停下来等用户确认，未确认前不得进入数据质量检测
 - [ ] HTML 报告已生成，含全部 9 个章节
 - [ ] 审核日志 JSON 已保存
 - [ ] 资料分类结果 JSON 已保存
@@ -505,6 +541,8 @@ d:\2026年7月22日 民航资料skill\audit_output\
 - [ ] OCR 识别结果 MD 已保存
 - [ ] 逻辑矛盾对照表 JSON 已保存
 - [ ] OCR 待核实清单（第八章）已生成，低置信度项已标注
+
+> **硬性规则**：扫描件 OCR 完成后、进入数据质量检测前，AI 必须停下，输出"OCR 校对确认表"（或 OCR 待核实清单），等待用户确认。**未确认前，禁止调用 `data_quality_check.py`、禁止进行规范比对、禁止生成最终报告**。这一条是 v1.9 强制门槛，跳过即视为审核流程不完整。
 
 ---
 
