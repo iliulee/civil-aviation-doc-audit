@@ -24,7 +24,7 @@ $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
 $TOOLS_DIR = Join-Path $SKILL_DIR "tools"
 $REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
 $SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_VERSION = "v1.7.1"
+$SKILL_VERSION = "v2.0"
 
 # ── 输出目录（在 workspace 根目录下） ──
 # SKILL_DIR = workspace\.trae\skills\civil-aviation-doc-audit
@@ -153,7 +153,7 @@ try {
 # 2. Python 依赖
 # ────────────────────────────────────────────────
 Write-Step "2/7 安装 Python 依赖"
-$deps = @("PyMuPDF", "pytesseract", "pdf2image", "Pillow", "python-docx")
+$deps = @("PyMuPDF", "rapidocr-onnxruntime", "pytesseract", "pdf2image", "Pillow", "python-docx")
 $missing = @()
 foreach ($dep in $deps) {
     pip show $dep 2>&1 | Out-Null
@@ -352,6 +352,10 @@ catch { $results += "Python: FAIL"; $allPassed = $false }
 try { python -c "import fitz" 2>&1 | Out-Null; $results += "PyMuPDF: OK" }
 catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
 
+# RapidOCR（主力 OCR 引擎）
+try { python -c "from rapidocr_onnxruntime import RapidOCR" 2>&1 | Out-Null; $results += "RapidOCR: OK" }
+catch { $results += "RapidOCR: FAIL"; $allPassed = $false }
+
 # pytesseract
 try { python -c "import pytesseract" 2>&1 | Out-Null; $results += "pytesseract: OK" }
 catch { $results += "pytesseract: FAIL"; $allPassed = $false }
@@ -390,7 +394,7 @@ if (-not (Test-Path $profileDir)) { New-Item -ItemType Directory -Path $profileD
 
 $profileFunc = @"
 
-#region audit function for civil-aviation-doc-audit Skill (v1.7.1)
+#region audit function for civil-aviation-doc-audit Skill (v2.0)
 function audit {
     param([string]`$Command, [string]`$FilePath)
     `$d = "$SKILL_DIR"

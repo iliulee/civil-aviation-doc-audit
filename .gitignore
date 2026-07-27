@@ -27,6 +27,13 @@ gravel-pile-comprehensive-audit/
 # ──── 上传包（每次重新生成）────
 # civil-aviation-doc-audit-skill.zip 保留，手动更新
 
+# ──── 微信发布配置（含API密钥）────
+.baoyu-skills/
+
+# ──── 非skill的辅助产物（文章、对比报告）────
+wechat-skill-announce/
+skill-comparison-report/
+
 # ──── 操作系统 ────
 Thumbs.db
 .DS_Store

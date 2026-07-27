@@ -1,7 +1,8 @@
 # 民航建设施工资料合规审核大师 (civil-aviation-doc-audit)
 
-> 民航工程施工资料合规性审核 Skill v1
-> 适用：MH/T 5078.1~5078.6-2024 系列 + CCAR-165-R1 等民航规范
+> 民航工程施工资料合规性审核 Skill v1.9
+> 适用：MH/T 5078.1~5078.6-2024 系列 + CCAR-165-R1 + MH 5031-2025 等民航规范
+> 五大专业全覆盖：场道 / 空管 / 助航 / 弱电 / 供油
 
 ---
 
@@ -9,23 +10,56 @@
 
 ```
 civil-aviation-doc-audit/
-├── SKILL.md                       # 主 Skill 文件（必读）
-├── requirements.txt               # Python 依赖
-├── references/                    # 8 个参考文件
-│   ├── audit-checklists.md        # 分专业审核检查清单
-│   ├── specification-mapping.md   # 资料类型→规范条款映射
+├── SKILL.md                          # 主 Skill 文件（必读）
+├── README.md                         # 本文件
+├── requirements.txt                  # Python 依赖
+├── install.ps1                       # 一键安装脚本（Python+RapidOCR+Poppler+Tesseract）
+├── audit.bat                         # Windows 快捷入口
+├── .gitignore
+│
+├── references/                       # 14 个参考文件
+│   ├── audit-checklists.md           # 分专业审核检查清单
+│   ├── specification-mapping.md      # 资料类型→规范条款映射
 │   ├── specification-quick-reference.md  # 规范条款速查表
-│   ├── calculation-standards.md   # 运算规范性审核（不替设计复算）
-│   ├── airfield-engineering-audit.md  # 场道工程专项要点
-│   ├── high-frequency-errors.md   # 高频错误模式库
-│   ├── logic-conflict-patterns.md # 逻辑矛盾识别模式库（铁律 9）
-│   └── document-templates.md      # 审核报告/整改通知/日志模板
-└── scripts/                       # 4 个集成脚本
-    ├── run_audit.py               # Skill 入口（一键启动审核）
-    ├── extract_pdf.py             # PDF 文字提取（PyMuPDF）
-    ├── ocr_image.py               # 扫描件 OCR（Tesseract）
-    └── postprocess.py             # 文本后处理（全角转半角、PUA 替换）
+│   ├── calculation-standards.md      # 运算规范性审核
+│   ├── airfield-engineering-audit.md # 场道工程专项审核要点
+│   ├── atc-engineering-audit.md      # 空管工程专项审核要点
+│   ├── visual-aids-audit.md          # 目视助航设施专项审核要点
+│   ├── weak-electricity-audit.md     # 弱电系统专项审核要点
+│   ├── fuel-supply-audit.md          # 供油工程专项审核要点
+│   ├── high-frequency-errors.md      # 高频错误模式库
+│   ├── logic-conflict-patterns.md    # 逻辑矛盾识别模式库（铁律 9，含 9.10 监理-施工方对照）
+│   ├── data-quality-patterns.md      # 数据质量检测模式库（铁律 10）
+│   ├── document-templates.md         # 审核报告/日志模板
+│   └── html-report-template.html     # HTML 报告标准模板
+│
+├── scripts/                          # 5 个脚本
+│   ├── run_audit.py                  # Skill 入口（一键启动审核）
+│   ├── extract_pdf.py                # PDF 文字提取（PyMuPDF）
+│   ├── ocr_image.py                  # 扫描件 OCR（三级策略：RapidOCR→Tesseract→HTTP API）
+│   ├── postprocess.py                # 文本后处理（全角转半角、PUA 替换）
+│   └── data_quality_check.py         # 数据质量检测（铁律 10 配套）
+│
+├── templates/
+│   └── audit-scope-template.html     # 审核范围模板
+│
+└── test/                             # 测试样本（.gitignore 排除）
+    └── sample_5078_1.*
 ```
+
+---
+
+## 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| OCR 识别扫描件 | 三级策略：RapidOCR（主力，中文手写 85%+）→ Tesseract（备选）→ HTTP API（跨平台兜底） |
+| 规范逐条对账 | 对着 MH/T 5078 系列逐条比对，每条引规范编号和条款号 |
+| 数据质量检测 | 自动识别造假、涂改、异常模式（DQ-REPEAT/JUMP/ALTER/SELF） |
+| 逻辑一致性检查 | 10 个子项 57+ 条规则，含监理-施工方跨单位日期对照（9.10，17 条规则） |
+| 运算规范审核 | 只做规范性检查，不做数值复算 |
+| 自动生成审核报告 | 三级输出：🔴Fatal / 🟡Sanity Check / 🔵Best Practice |
+| 知识分区红线 | 三条红线防幻觉，推理边界决策树，输出前自检清单 |
 
 ---
 
@@ -33,12 +67,15 @@ civil-aviation-doc-audit/
 
 ### 1. 安装依赖
 
+```powershell
+# 一键安装（Python 依赖 + Poppler + Tesseract）
+.\install.ps1
+```
+
+或手动安装：
+
 ```bash
 pip install -r requirements.txt
-
-# Windows 还需要单独安装 Tesseract 引擎本体
-# https://github.com/UB-Mannheim/tesseract/wiki
-# 安装时勾选 Chinese (Simplified) + English
 ```
 
 ### 2. 验证 Skill 可用
@@ -52,9 +89,6 @@ python scripts/run_audit.py batch "H:\path\to\资料目录"
 
 # 提取文字（自动判断是否扫描件）
 python scripts/run_audit.py extract "H:\path\to\检验批.pdf" --out 检验批.txt
-
-# 清洗乱码文本
-python scripts/run_audit.py postprocess 检验批.txt
 ```
 
 ### 3. 在 AI 对话中触发
@@ -68,10 +102,22 @@ python scripts/run_audit.py postprocess 检验批.txt
 - "高填方沉降计算书运算审核"
 - "生成整改通知书"
 - "这是扫描件，做 OCR 后审核"
+- "安装这个skill" / "安装依赖" / "初始化"
 
 ---
 
-## 19 条铁律速查
+## 知识库连接
+
+| 来源 | 角色 | 覆盖范围 |
+|------|------|---------|
+| `references/`（内置） | 高速缓存层 | 14 个文件，100+ 条检查项，200+ 个参数阈值 |
+| Obsidian vault（外部） | 规范原文库 | 200+ 个规范 markdown 文件，MH/T 5078.1~5078.6 全覆盖 + 石化国标 + 设备规范 |
+
+查询优先级：references 缓存（80%条款直接覆盖）→ Obsidian 回源读原文（3~5次/审核）→ 标注"无规范原文支撑"（禁止 WebSearch 兜底）
+
+---
+
+## 铁律体系（v1.9）
 
 | # | 铁律 | 简述 |
 |---|------|------|
@@ -83,112 +129,46 @@ python scripts/run_audit.py postprocess 检验批.txt
 | 6 | 拒为伪证背书 | 资料有伪造嫌疑必须明确指出 |
 | 7 | 留痕 | 每次审核生成日志文件 |
 | 8 | 阴 ≠ 阳 | 没发现问题需写"未发现不符合项" |
-| 9 | **逻辑矛盾专项** | ⭐ ≥2 份资料必查 9 维一致性 |
+| 9 | **逻辑矛盾专项** | 10 个子项 57+ 条规则，含监理-施工方跨单位对照 |
 | 10 | **数据质量前置** | 规范对账前先做 4 类数据质量检测 |
-| 11 | **全列提取** | 结果列+计算列一起读，不读计算列不得跨资料对比 |
-| 12 | **高程自洽** | 实长 = 桩顶高程 − 桩底高程，误差 > 2m = 数据被修改 |
-| 13 | **缺合计行判定** | 无合计行 = 资料非原始记录，可能是誊抄件 |
-| 14 | **多参数联检** | 实长/灌入量/充盈系数同时校验，造假者只改一个会漏其他 |
-| 15 | **原始底稿追溯** | 多资料矛盾时，按"三个一致"原则追溯原始记录 |
-| 16 | **提取-验证-重试** | 提取后先做行数校验，不通过自动触发生成提取 |
-| 17 | **合计值反向验证** | 施工日志有合计值 → 与施工记录逐项核对 |
-| 18 | **置信度分级** | 审核结论分四级：高/中/低/存疑，存疑不下确定性结论 |
-| 19 | **用户标记闭环** | 用户标记的问题必须追溯AI为什么没发现，补充检测规则 |
+| 11 | **全列提取** | 结果列+计算列一起读 |
+| 12 | **高程自洽** | 实长 = 桩顶高程 − 桩底高程 |
+| 13 | **缺合计行判定** | 无合计行 = 资料非原始记录 |
+| 14 | **多参数联检** | 实长/灌入量/充盈系数同时校验 |
+| 15 | **原始底稿追溯** | 多资料矛盾时追溯原始记录 |
+| 16 | **提取-验证-重试** | 提取后先做行数校验 |
+| 17 | **合计值反向验证** | 施工日志合计值 → 与施工记录逐项核对 |
+| 18 | **置信度分级** | 高/中/低/存疑，存疑不下确定性结论 |
+| 19 | **用户标记闭环** | 追溯AI为什么没发现，补充检测规则 |
 
----
+### 铁律 9 子项（v1.9 升级）
 
-## 触发逻辑矛盾专项检查的情形（铁律 9）
-
-满足任一即触发：
-
-- 多份资料时间轴需对齐（施工日志 vs 监理日志 vs 检验批 vs 材料报审）
-- 工程量累计需吻合（材料报审 vs 施工记录 vs 检验批 vs 结算）
-- 同一工序多专业人员签字
-- 同一对象多份报告（材料复试 vs 施工配合比 vs 施工记录）
-- 前后资料引用同一规范/图纸版本
-- 试验/检测数据需与施工工况匹配
-- 隐蔽/签认需与后续工序时间匹配
-- 整改前后资料需闭环
-
-详见 `references/logic-conflict-patterns.md`。
-
----
-
-## 8 维度输入兼容
-
-| 输入形式 | 入口 |
-|---------|------|
-| 单份 PDF 资料 | 从第 1 步格式识别开始 |
-| 扫描件图片 | 从第 1 步→触发 OCR |
-| 多份资料成批 | 从第 1 步→批量识别→批量审核 |
-| 指定条款/分部分项 | 跳到第 3 步精准定位 |
-| 资料 + 计算书 | 启动运算审核（仅规范性） |
-| 仅做合规性核对 | 输出合规性检查清单（不生成整改通知） |
-| 资料 + 历史审核记录 | 触发复查 / 整改闭环验证 |
-| 资料 + 飞书/MCP 集成 | 通过 lark-cli 上传/通知 |
-
----
-
-## 输出物
-
-| 模板 | 编号 | 触发条件 | 归档路径 |
-|------|------|---------|---------|
-| 审核报告 | AU-YYYYMMDD-XXX | 单次审核完成 | `d:\2026年7月22日 民航资料skill\reports\` |
-| 整改通知书 | ZG-YYYYMMDD-XXX | 发现不符合项 | 同上 |
-| 合规性检查清单 | CL-YYYYMMDD-XXX | 仅做合规核对 | 同上 |
-| 批量审核汇总报告 | BAT-YYYYMMDD-XXX | 批量审核 | 同上 |
-| 审核日志 | LOG-YYYYMMDD-HHMMSS | 每次审核 | 同上 |
-| 中间产物 | — | 全过程 | `c:\Users\Administrator\.trae-cn\work\...\audit_YYYYMMDD\` |
-
-详见 `references/document-templates.md`。
+| 子项 | 检查内容 |
+|------|---------|
+| 9.1 | 时间轴一致性（8 条规则） |
+| 9.2 | 数量累计一致性（6 条规则） |
+| 9.3 | 人员交叉一致性（6 条规则） |
+| 9.4 | 状态描述一致性（4 条规则） |
+| 9.5 | 签字一致性（4 条规则） |
+| 9.6 | 因果逻辑一致性（7 条规则） |
+| 9.7 | 规范引用一致性（3 条规则） |
+| 9.8 | 试验检测逻辑一致性（4 条规则） |
+| 9.9 | 跨资料合计值反向验证（3 条规则） |
+| **9.10** | **监理-施工方跨单位日期对照（17 条规则，自动触发）** |
 
 ---
 
 ## GitHub 仓库
 
 ```bash
-# 仓库地址（私有）
+# 仓库地址
 https://github.com/iliulee/civil-aviation-doc-audit
 
 # 克隆到本地
 git clone https://github.com/iliulee/civil-aviation-doc-audit.git
 ```
 
-## 更新 Skill
-
-### 日常更新流程
-
-```bash
-# 1. 修改文件后，查看变动
-git status
-
-# 2. 暂存改动
-git add -A
-
-# 3. 提交（用中文写清楚改了啥）
-git commit -m "feat: 新增XXX功能 / fix: 修复XXX问题"
-
-# 4. 推送
-git push
-```
-
-### 版本号规则
-
-- **v1.0.x**：初始版本，小修小补
-- **v1.1.x**：新增功能（PaddleOCR、自动复查、飞书集成等）
-- **v2.x**：模板生成、AI 自学习等大版本
-
-### 更新什么内容
-
-以下内容应纳入版本管理：
-
-| 应提交 | 不应提交 |
-|--------|---------|
-| `SKILL.md` / `README.md` | `audit_output/`（审核报告，每次生成不同）|
-| `references/` 下所有 .md | `tools/poppler/`（二进制，手动下载）|
-| `scripts/` 下所有 .py | `__pycache__/` |
-| `requirements.txt` | `_scanned.*`（测试临时文件）|
-| `.gitignore` | |
+---
 
 ## 版本历史
 
@@ -196,22 +176,11 @@ git push
 |------|------|------|
 | v1.0 | 2026-07-24 | 初始版本，8 步工作流 + 9 条铁律 |
 | v1.1 | 2026-07-24 | 新增铁律 10（数据质量审查）+ 4 个检测脚本 |
-| v1.2 | 2026-07-24 | 安装脚本 + GitHub 仓库 + 更新工作流 |
-| v1.3 | 2026-07-24 | 新增铁律 11~15（高程自洽/全列提取/缺合计行判定/多参数联检/原始底稿追溯），补充 Z418 和缺合计行真实案例 |
-| **v1.4** | **2026-07-24** | **新增铁律 16~19（提取-验证-重试/跨资料合计值验证/置信度分级/用户标记闭环），补充对应参考文件，更新工作流** |
-
-## v1 vs v1.1 能力边界
-
-| 能力 | v1 | v1.1 |
-|------|-----|------|
-| 中文 PDF 文字提取 | ✅ PyMuPDF | + PaddleOCR |
-| 扫描件 OCR | ✅ Tesseract | + PaddleOCR |
-| 逻辑矛盾 8 维检查 | ✅ | + |
-| 运算规范性审核 | ✅ | + |
-| 批量审核汇总 | ✅ | + |
-| 整改闭环跟踪 | ✅ | + |
-| 历史审核查询 | ✅ | + |
-| 自动复查 | ⬜ | ✅ |
-| 飞书集成 | ⬜ | ✅ |
-| 模板生成新资料 | ⬜ | ⬜ 留待 v2 |
-| AI 自学习 | ⬜ | ⬜ |
+| v1.2 | 2026-07-24 | 安装脚本 + GitHub 仓库 |
+| v1.3 | 2026-07-24 | 新增铁律 11~15 |
+| v1.4 | 2026-07-24 | 新增铁律 16~19 |
+| v1.5 | 2026-07-25 | 五大专业专项审核文件补全（场道/空管/助航/弱电/供油） |
+| v1.6 | 2026-07-25 | HTML 报告标准模板，统一交付物 |
+| v1.7 | 2026-07-25 | 前置信息收集 + 文件分类确认 + 批量审核汇总 |
+| v1.8 | 2026-07-26 | 三层 9 步工作流重构 |
+| v1.9 | 2026-07-27 | 三级 OCR 策略（RapidOCR）、知识分区红线、三级输出格式、9.10 监理-施工方对照、Obsidian 知识库全量覆盖 |
