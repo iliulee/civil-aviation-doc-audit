@@ -2,11 +2,12 @@
 .SYNOPSIS
     民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
-    自动完成 Python 依赖、Poppler、Tesseract OCR 的全部安装和配置。
+    自动完成 Python 依赖、Poppler、Tesseract OCR、PaddleOCR、rapid-table 的全部安装和配置。
     支持一键安装、卸载、静默模式。
     安装完成后无需任何手动操作即可使用。
+    v3.4.2 变更：RapidOCR 默认启用桩号序列推断；PaddleOCR 仍为显式备选 OCR 引擎（默认不启用），rapid-table 用于表格结构感知。
 .NOTES
-    版本: v1.5
+    版本: v1.6
     需要管理员权限（仅 Tesseract 安装和系统 PATH 配置需要）
 #>
 
@@ -24,7 +25,7 @@ $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
 $TOOLS_DIR = Join-Path $SKILL_DIR "tools"
 $REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
 $SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_VERSION = "v2.0"
+$SKILL_VERSION = "v3.4.2"
 
 # ── 输出目录（在 workspace 根目录下） ──
 # SKILL_DIR = workspace\.trae\skills\civil-aviation-doc-audit
@@ -153,7 +154,7 @@ try {
 # 2. Python 依赖
 # ────────────────────────────────────────────────
 Write-Step "2/7 安装 Python 依赖"
-$deps = @("PyMuPDF", "rapidocr-onnxruntime", "pytesseract", "pdf2image", "Pillow", "python-docx")
+$deps = @("PyMuPDF", "rapidocr-onnxruntime", "paddleocr==2.8.1", "paddlepaddle==2.6.2", "opencv-python", "rapid-table", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
 $missing = @()
 foreach ($dep in $deps) {
     pip show $dep 2>&1 | Out-Null
@@ -162,7 +163,9 @@ foreach ($dep in $deps) {
 if ($missing.Count -gt 0) {
     Write-Warn "缺少 $($missing.Count) 个依赖: $($missing -join ", ")"
     Write-Info "pip install $($missing -join " ")"
-    pip install $missing 2>&1 | Out-Null
+    # PaddleOCR 体积较大，使用清华镜像加速
+    $pipArgs = @("install") + $missing + @("-i", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    & pip $pipArgs 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-ErrorMsg "依赖安装失败，请检查网络连接后重试"
         exit 1
@@ -356,6 +359,18 @@ catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
 try { python -c "from rapidocr_onnxruntime import RapidOCR" 2>&1 | Out-Null; $results += "RapidOCR: OK" }
 catch { $results += "RapidOCR: FAIL"; $allPassed = $false }
 
+# PaddleOCR（增强备选 OCR 引擎）
+try { python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null; $results += "PaddleOCR: OK" }
+catch { $results += "PaddleOCR: FAIL"; $allPassed = $false }
+
+# OpenCV（图像预处理依赖）
+try { python -c "import cv2" 2>&1 | Out-Null; $results += "OpenCV: OK" }
+catch { $results += "OpenCV: FAIL"; $allPassed = $false }
+
+# rapid-table（表格结构检测）
+try { python -c "from rapid_table import RapidTable" 2>&1 | Out-Null; $results += "rapid-table: OK" }
+catch { $results += "rapid-table: FAIL"; $allPassed = $false }
+
 # pytesseract
 try { python -c "import pytesseract" 2>&1 | Out-Null; $results += "pytesseract: OK" }
 catch { $results += "pytesseract: FAIL"; $allPassed = $false }
@@ -394,17 +409,18 @@ if (-not (Test-Path $profileDir)) { New-Item -ItemType Directory -Path $profileD
 
 $profileFunc = @"
 
-#region audit function for civil-aviation-doc-audit Skill (v2.0)
+#region audit function for civil-aviation-doc-audit Skill (v3.2)
 function audit {
-    param([string]`$Command, [string]`$FilePath)
+    param([string]`$Command, [string]`$FilePath, [string]`$DataPath)
     `$d = "$SKILL_DIR"
     `$s = "`$d\scripts"
     if (-not `$Command) {
         Write-Host "=== $SKILL_NAME $SKILL_VERSION ===" -ForegroundColor Cyan
-        Write-Host "audit <命令> <文件路径>" -ForegroundColor Yellow
+        Write-Host "audit <命令> <文件路径> [--data <结构化JSON>]" -ForegroundColor Yellow
         Write-Host "  info     - 查看资料信息"
         Write-Host "  extract  - 提取文字"
         Write-Host "  ocr      - 扫描件OCR"
+        Write-Host "  audit    - 一键审核（OCR + 混淆检测 + Vision复核）"
         Write-Host "  quality  - 数据质量检测"
         Write-Host "  batch    - 批量审核"
         Write-Host "  install  - 运行安装脚本"
@@ -416,6 +432,7 @@ function audit {
         "info"      { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" info `$FilePath }
         "extract"   { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\extract_pdf.py" `$FilePath }
         "ocr"       { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\ocr_image.py" `$FilePath }
+        "audit"     { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" audit `$FilePath }
         "quality"   { if (-not `$FilePath) { Write-Host "请指定 JSON 文件路径" -ForegroundColor Red; return }; python "`$s\data_quality_check.py" `$FilePath }
         "batch"     { if (-not `$FilePath) { Write-Host "请指定目录路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" batch `$FilePath }
         "install"   { powershell -ExecutionPolicy Bypass -File "`$d\install.ps1" }

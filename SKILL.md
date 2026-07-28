@@ -3,7 +3,7 @@ name: "civil-aviation-doc-audit"
 description: "民航建设施工资料合规审核大师。审核资料是否符合MH/T 5078等民航行业规范、验证结构运算是否符合运算规范、支持OCR识别扫描件、多Agent并行批量审核、三级输出格式（Fatal/Sanity Check/Best Practice）、知识分区红线防幻觉、可自动生成审核报告和整改通知。专门针对民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业的施工资料合规性审核场景。当用户要求审核民航施工资料、检查资料合规性、验证运算规范、识别扫描件资料、生成审核报告或整改通知时触发。"
 ---
 
-# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v2.0
+# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v3.4.2
 
 > 面向民航运输机场专业工程建设项目，基于 MH/T 5078.1~5078.6-2024 资料管理规程体系，提供资料合规性审核、结构运算规范审核、OCR扫描件识别、跨资料逻辑一致性检查、多Agent并行批量审核、文档生成等能力。五大专业全覆盖，每条审核意见有据可查。
 
@@ -67,13 +67,60 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 | 步骤 | 内容 | 说明 |
 |------|------|------|
-| 1 | Python 依赖 | `pip install -r requirements.txt`（含 RapidOCR） |
+| 1 | Python 依赖 | `pip install -r requirements.txt`（含 RapidOCR、PaddleOCR、OpenCV） |
 | 2 | Poppler | 自动下载 Windows 便携版（~30MB）到 `tools/poppler/` |
 | 3 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（备选引擎） |
-| 4 | 系统 PATH | 自动配置，无需手动 |
-| 5 | 验证 | 逐一检查所有组件可用 |
+| 4 | PaddleOCR | 自动安装 `paddleocr>=2.7.0` + `opencv-python>=4.8.0` |
+| 5 | 系统 PATH | 自动配置，无需手动 |
+| 6 | 验证 | 逐一检查所有组件可用 |
 
 安装完成后直接可用，无需任何手动操作。如果组件已安装则自动跳过。
+
+---
+
+## OCR 引擎策略（v3.4.2）
+
+v3.4.2 继续以 RapidOCR 为默认引擎，并新增**桩号序列推断**，专门解决手写桩号末位数字漏识别（如 Z41 → 推断为 Z419）。
+PaddleOCR 仍作为显式备选，只有用户指定 `--engine paddle` 或 `--engine auto` 时才启用。
+
+```
+PDF / 图片
+   │
+   ▼
+预处理管道（缩放 → 灰度 → 去噪 → 对比度增强 → 自适应二值化）
+   │
+   ▼
+默认层：RapidOCR（ONNX Runtime，本地，零成本）
+   │   ├─ 参数针对手写表格优化：det_limit_side_len=1920, det_db_thresh=0.22
+   │   ├─ 多策略重试：default → enhance → binarize
+   │   ├─ 空页自动提高 DPI 重跑
+   │   ├─ 行聚类后处理：按 bbox 纵坐标组织成表格行，减少漏行
+   │   └─ 桩号序列推断：按同行有效桩号趋势补全漏识别（Z41 → Z419）
+   │
+   ▼ --use-table 启用时
+表格结构层：rapid_table 检测单元格 → RapidOCR 逐格识别
+   │   └─ 对密集表格行丢失问题最有效
+   │
+   ▼ --engine paddle / --engine auto 且 RapidOCR 结果极差
+备选层：PaddleOCR（install.ps1 自动安装，默认不加载）
+   │
+   ▼ --engine tesseract
+备选层：Tesseract（本地，需中文语言包）
+   │
+   ▼ --engine vision
+视觉层：Vision API / HTTP API（按需付费，支持 7 家）
+```
+
+### 何时用哪种模式
+
+| 场景 | 推荐命令 |
+|------|---------|
+| 普通打印扫描件 | `ocr_image.py "<文件>" --out out.txt` |
+| 手写施工记录、表格密集 | `ocr_image.py "<文件>" --use-table --out out.txt` |
+| 褪色/模糊/低对比度 | `ocr_image.py "<文件>" --preprocess binarize --out out.txt` |
+| RapidOCR 实在不行 | `ocr_image.py "<文件>" --engine paddle --out out.txt` |
+| 关键数据复核（不惜成本） | `ocr_image.py "<文件>" --engine vision --out out.txt` |
+| 一键审核（默认 RapidOCR） | `run_audit.py audit "<文件>" --data <JSON> --out <目录>` |
 
 ---
 
@@ -108,9 +155,13 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 |------|---------|------|
 | 识别资料类型 | `python {SKILL_DIR}/scripts/run_audit.py info "<文件路径>"` | 返回格式、页数、是否扫描件 |
 | 提取 PDF 文字 | `python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"` | 电子档 PDF 用 PyMuPDF 提取 |
-| OCR 扫描件（自动） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 三级降级：RapidOCR→Tesseract→HTTP API |
-| OCR 扫描件（视觉优先） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --mode vision --out "<输出.txt>"` | AI 视觉模型直接识别，手写件推荐（需 API Key） |
-| OCR 复核指定页 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --mode vision --page 5 --out "<输出.txt>"` | 用 AI 视觉复核第 5 页 |
+| OCR 扫描件（默认 RapidOCR） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 默认只跑 RapidOCR，多策略重试 |
+| OCR 扫描件（表格结构感知） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --use-table --out "<输出.txt>"` | rapid_table 检测单元格后逐格 OCR，适合密集表格 |
+| OCR 扫描件（PaddleOCR 备选） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine paddle --out "<输出.txt>"` | 显式启用 PaddleOCR，RapidOCR 不行时再用 |
+| OCR 扫描件（增强预处理） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --preprocess binarize --out "<输出.txt>"` | 自适应二值化，适合褪色/模糊手写件 |
+| OCR 扫描件（视觉优先） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"` | AI 视觉模型直接识别（需 API Key） |
+| OCR 复核指定页 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --page 5 --out "<输出.txt>"` | 用 AI 视觉复核第 5 页 |
+| 一键审核 | `python {SKILL_DIR}/scripts/run_audit.py audit "<文件路径>" --data "<结构化JSON>" --out "<输出目录>"` | OCR + 混淆检测 + Vision复核，一步完成 |
 | 批量识别目录 | `python {SKILL_DIR}/scripts/run_audit.py batch "<目录路径>"` | 遍历目录所有文件 |
 | OCR 混淆检测 | `python {SKILL_DIR}/scripts/ocr_confusion_check.py "<JSON文件>" --pretty` | 检测 Z→2、4→0 等常见 OCR 误读，生成待核实清单 |
 | 存疑字段自动复核 | `python {SKILL_DIR}/scripts/verify_fields.py auto "<原始文件>" "<混淆检测JSON>" --data "<数据JSON>" --out "<输出目录>"` | 默认路径 B：裁剪图片+输出任务清单，AI 智能体自动读图验证 |
@@ -125,8 +176,11 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 1. **先识别再处理**：收到文件后，先跑 `run_audit.py info` 判断是否扫描件
 2. **电子档**：`is_scanned: False` → 用 `extract_pdf.py` 提取文字
 3. **扫描件**：`is_scanned: True` → 用 `ocr_image.py` 做 OCR
-   - **手写施工资料推荐用 `--mode vision`**：AI 视觉模型对手写中文识别率约 95%，远高于 RapidOCR 的 85%
-   - 无 API Key 时用默认 `auto` 模式（三级降级）
+   - **默认 `rapid` 模式**：只跑 RapidOCR，多策略重试 + 桩号序列推断 + 表格自恢复
+   - **需要自动降级时显式用 `--engine auto`**：RapidOCR 结果极差时才会尝试 PaddleOCR
+   - **手写施工资料推荐用 `--engine vision`**：AI 视觉模型对手写中文识别率约 95%，远高于 RapidOCR 的 85%（需 API Key）
+   - 可附加 `--preprocess enhance` 或 `--preprocess binarize` 提升手写体识别率
+   - 可附加 `--json-out` 输出结构化结果（含每个字框的坐标和置信度）
 4. **OCR 结果必须输出到文件**：用 `--out` 参数，方便后续读取
 5. **读取 OCR 结果**：OCR 完成后用 Read 工具读取输出文件
 6. **OCR 混淆检测**（扫描件必做）：将 OCR 提取的表格数据整理为 JSON，跑 `ocr_confusion_check.py`，生成待核实清单
@@ -418,11 +472,11 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
    - 准确率 100%（中文部分），全自动，无需 OCR
 2. **扫描件 OCR**（`is_scanned: True`）：
    - **手写施工资料推荐用 vision 模式**：
-     `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --mode vision --out "<输出.txt>"`
+     `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"`
      AI 视觉模型（GPT-4o/Gemini/Qwen2-VL）对手写中文识别率约 95%，远高于 RapidOCR 的 85%
-   - **无 API Key 时用默认 auto 模式**：
+   - **无 API Key 时用默认 rapid 模式**：
      `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"`
-     三级降级：RapidOCR（主力，中文手写 85%+）→ Tesseract（备选）→ HTTP API（兜底）
+     只跑 RapidOCR（主力，中文手写 85%+），多策略重试 + 桩号序列推断；如需降级可显式用 `--engine auto`
 3. **文字后处理**：
    - 执行：`python {SKILL_DIR}/scripts/postprocess.py "<提取的文本文件>"`
    - 全角英文 → 半角英文（`ＭＨ` → `MH`）、私有区字符替换、中文标点规范化

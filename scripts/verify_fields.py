@@ -177,6 +177,31 @@ def crop_field_region(
 
 # ========== 步骤 1：准备复核任务 ==========
 
+def _find_bbox_for_suspect(suspect: dict, ocr_items: list, padding: int = 20) -> Optional[list]:
+    """
+    根据 suspect 的 ocr_value 在 OCR items 中查找匹配的 bbox。
+
+    Returns:
+        [x1-pad, y1-pad, x2+pad, y2+pad] 或 None
+    """
+    if not ocr_items:
+        return None
+    ocr_value = str(suspect.get("ocr_value", "")).strip()
+    if not ocr_value:
+        return None
+
+    for item in ocr_items:
+        text = str(item.get("text", "")).strip()
+        bbox = item.get("bbox")
+        if not bbox or len(bbox) != 4:
+            continue
+        # 文本包含关系：OCR 结果包含 suspect 值，或 suspect 值包含 OCR 结果
+        if ocr_value in text or text in ocr_value:
+            x1, y1, x2, y2 = [float(v) for v in bbox]
+            return [x1 - padding, y1 - padding, x2 + padding, y2 + padding]
+    return None
+
+
 def prepare_verify_tasks(
     source_file: str,
     confusion_result: dict,
@@ -190,7 +215,7 @@ def prepare_verify_tasks(
     Args:
         source_file: 原始 PDF 或图片路径
         confusion_result: ocr_confusion_check.py 的输出结果
-        data: 原始数据 JSON（含 rows）
+        data: 原始数据 JSON（含 rows，v3.3 起可能含 _ocr_items）
         out_dir: 输出目录
         dpi: PDF 转图 DPI
 
@@ -206,6 +231,8 @@ def prepare_verify_tasks(
     crops_dir = out_dir / "crops"
     crops_dir.mkdir(exist_ok=True)
 
+    ocr_items = data.get("_ocr_items", [])
+
     tasks = []
     for i, suspect in enumerate(suspects):
         field = suspect.get("field", "")
@@ -216,15 +243,17 @@ def prepare_verify_tasks(
         code = suspect.get("code", "")
         confidence = suspect.get("confidence", "")
 
-        # 裁剪整页图片（如果没有 bbox 信息）
-        # TODO: 如果 ocr_image.py 输出了 bbox，可以用精确裁剪
-        # 当前版本：裁剪整页，让智能体/API 自己定位
-        page_num = suspect.get("page", 1)  # 如果有页码信息用页码，否则默认第 1 页
+        page_num = suspect.get("page", 1)
+
+        # v3.3：尝试用 OCR items 中的 bbox 做精确裁剪
+        bbox = _find_bbox_for_suspect(suspect, ocr_items)
+        if bbox:
+            print(f"  [i] task {i+1} 使用 bbox 精确裁剪: {bbox}", file=sys.stderr)
 
         crop_path = None
         try:
             crop_path = crop_field_region(
-                source_file, page_num, bbox=None,
+                source_file, page_num, bbox=bbox,
                 out_path=str(crops_dir / f"task_{i+1}_p{page_num}.png"),
                 dpi=dpi,
             )
@@ -244,6 +273,7 @@ def prepare_verify_tasks(
             "reason": reason,
             "code": code,
             "confidence": confidence,
+            "bbox": bbox,
             "image_path": crop_path or "",
             "question": question,
         }
