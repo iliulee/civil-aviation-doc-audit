@@ -1,54 +1,25 @@
-# ──── 项目资料（不纳入版本管理）────
-# 施工图纸、变更通知、PDF扫描件
-04碎石桩变更PDF/
-扫描件.pdf
-未命名*.pdf
-*.pdf
-
-# 施工数据
-2026年4月 施工日志.xlsx
-*.xlsx
-
-# ──── 审核输出（每次运行生成）────
-audit_output/
-reports/
-analysis/
-transcripts/
-
-# ──── 旧版脚本（根目录残留）────
-audit.bat
-install_audit_shell.ps1
-
-# ──── 仪表盘 / 报告页面（独立项目）────
-gravel-pile-audit-*/
-gravel-pile-comprehensive-audit/
-.trae-html-share-packages/
-
-# ──── 上传包（每次重新生成）────
-# civil-aviation-doc-audit-skill.zip 保留，手动更新
-
-# ──── 微信发布配置（含API密钥）────
-.baoyu-skills/
-
-# ──── 非skill的辅助产物（文章、对比报告）────
-wechat-skill-announce/
-skill-comparison-report/
-
-# ──── 操作系统 ────
-Thumbs.db
-.DS_Store
-Desktop.ini
-
-# ──── Python ────
+# Python
 __pycache__/
 *.pyc
 *.pyo
 
-# ──── 工具二进制（由 install.ps1 自动下载）────
-.trae/skills/civil-aviation-doc-audit/tools/poppler/
-.trae/skills/civil-aviation-doc-audit/tools/poppler.zip
+# 第三方二进制工具（用户自行下载）
+tools/poppler/
+tools/poppler.zip
 
-# ──── 临时分析产物 ────
-data_quality_input.json
-*_数据分析报告.md
-*_完整提取结果*.md
+# 测试中间文件
+_scanned.*
+test/sample_*.pdf
+test/sample_*.txt
+
+# 审核输出（每次运行生成，不纳入版本管理）
+# 如需保留典型案例，手动复制到 examples/ 目录
+audit_output/
+
+# OCR 复核中间产物（verify_fields.py 生成）
+verify_output/
+crops/
+
+# 操作系统
+Thumbs.db
+.DS_Store
