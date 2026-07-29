@@ -474,9 +474,9 @@ def enhance_verify(
     dpi: int = 300,
 ) -> dict:
     """
-    用增强参数重新跑 RapidOCR（路径 C）。
+    用增强参数重新跑 PaddleOCR（路径 C）。
 
-    增强参数：DPI 300、det_limit_side_len 1280、二值化+去噪+对比度增强。
+    增强参数：DPI 300、det_max_side_len=2560、二值化+去噪+对比度增强。
     只重跑存疑字段所在的页，不整本重跑。
 
     Args:
@@ -487,38 +487,59 @@ def enhance_verify(
     Returns:
         verify_results dict
     """
+    import tempfile
+    import os
+    import gc
+    from pathlib import Path
     task_list = tasks.get("tasks", [])
     if not task_list:
         return {"status": "no_tasks", "results": []}
 
     try:
-        from rapidocr_onnxruntime import RapidOCR
+        from paddleocr import PaddleOCR
         from PIL import Image, ImageEnhance, ImageFilter
     except ImportError:
         return {
             "status": "error",
             "results": [],
-            "error": "RapidOCR 或 Pillow 未安装",
+            "error": "PaddleOCR 或 Pillow 未安装",
         }
 
     # 初始化增强引擎
     try:
-        engine = RapidOCR(
-            det_limit_side_len=1280,
-            det_limit_type="max",
-            intra_op_num_threads=2,
-            inter_op_num_threads=2,
+        engine = PaddleOCR(
+            use_angle_cls=True,
+            lang="ch",
+            ocr_version="PP-OCRv3",
+            use_gpu=False,
+            show_log=False,
+            enable_mkldnn=True,
+            cpu_threads=4,
+            det_max_side_len=2560,
+            det_db_thresh=0.1,
+            det_db_box_thresh=0.3,
+            drop_score=0.3,
+            rec_batch_num=1,
+            cls_batch_num=1,
         )
-    except TypeError:
-        engine = RapidOCR()
+    except Exception as e:
+        print(f"  [!] PaddleOCR 增强引擎初始化失败: {e}", file=sys.stderr)
+        return {
+            "status": "error",
+            "results": [],
+            "error": f"PaddleOCR 增强引擎初始化失败: {e}",
+        }
 
     # 收集需要重跑的页码（去重）
     pages_to_rerun = sorted(set(t.get("page", 1) for t in task_list))
-    print(f"  [i] 增强重跑：DPI={dpi}, det_limit=1280, 预处理=二值化+去噪+对比度", file=sys.stderr)
+    print(f"  [i] 增强重跑：DPI={dpi}, det_max_side_len=2560, 预处理=二值化+去噪+对比度", file=sys.stderr)
     print(f"  [i] 需重跑页: {pages_to_rerun}", file=sys.stderr)
 
     # 逐页增强重跑
     page_results = {}
+    tmp_dir = Path(tempfile.gettempdir()) / "trae_paddleocr_verify"
+    tmp_dir.mkdir(exist_ok=True)
+
     for page_num in pages_to_rerun:
         try:
             img = _safe_convert_pdf_page(source_file, page_num, dpi=dpi)
@@ -532,14 +553,28 @@ def enhance_verify(
         enhancer = ImageEnhance.Contrast(img)
         img = enhancer.enhance(1.5)  # 提升对比度
 
+        tmp_path = tmp_dir / f"verify_p{page_num}_{os.getpid()}.png"
         try:
-            result, elapse = engine(img)
-            if result:
-                lines = [text for box, text, score in result]
-                page_results[page_num] = lines
-                print(f"  [i] 第 {page_num} 页增强重跑：{len(lines)} 行", file=sys.stderr)
+            img.save(tmp_path, "PNG")
+            result = engine.ocr(str(tmp_path), cls=True)
+            lines = []
+            if result and isinstance(result, list):
+                page_res = result[0] if result and isinstance(result[0], list) else result
+                for line in page_res:
+                    if isinstance(line, (list, tuple)) and len(line) >= 2:
+                        text_info = line[1]
+                        if isinstance(text_info, (list, tuple)) and len(text_info) >= 1:
+                            lines.append(str(text_info[0]))
+            page_results[page_num] = lines
+            print(f"  [i] 第 {page_num} 页增强重跑：{len(lines)} 行", file=sys.stderr)
         except Exception as e:
             print(f"  [!] 第 {page_num} 页增强重跑失败: {e}", file=sys.stderr)
+        finally:
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+            gc.collect()
 
     # 将增强重跑结果与存疑字段匹配
     results = []
@@ -584,7 +619,7 @@ def enhance_verify(
 
     return {
         "status": "completed",
-        "method": "enhance_rerun",
+        "method": "paddleocr_enhance_rerun",
         "total": len(task_list),
         "results": results,
     }
@@ -788,7 +823,7 @@ def main():
     p_api.add_argument("--provider", "-p", default=None, help="指定 Provider")
 
     # verify-enhance：增强重跑
-    p_enhance = subparsers.add_parser("verify-enhance", help="增强 RapidOCR 重跑（路径 C）")
+    p_enhance = subparsers.add_parser("verify-enhance", help="增强 PaddleOCR 重跑（路径 C）")
     p_enhance.add_argument("source", help="原始 PDF 或图片路径")
     p_enhance.add_argument("tasks", help="verify_tasks.json 文件路径")
     p_enhance.add_argument("--dpi", type=int, default=300, help="增强 DPI（默认 300）")

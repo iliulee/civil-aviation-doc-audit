@@ -67,10 +67,10 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 | 步骤 | 内容 | 说明 |
 |------|------|------|
-| 1 | Python 依赖 | `pip install -r requirements.txt`（含 RapidOCR、PaddleOCR、OpenCV） |
+| 1 | Python 依赖 | `pip install -r requirements.txt`（含 PaddleOCR、PaddlePaddle、OpenCV） |
 | 2 | Poppler | 自动下载 Windows 便携版（~30MB）到 `tools/poppler/` |
-| 3 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（备选引擎） |
-| 4 | PaddleOCR | 自动安装 `paddleocr>=2.7.0` + `opencv-python>=4.8.0` |
+| 3 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（显式备选引擎） |
+| 4 | PaddleOCR | 自动安装 `paddleocr==2.8.1` + `paddlepaddle==2.6.2` + `opencv-python>=4.8.0` |
 | 5 | 系统 PATH | 自动配置，无需手动 |
 | 6 | 验证 | 逐一检查所有组件可用 |
 
@@ -78,49 +78,46 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 ---
 
-## OCR 引擎策略（v3.4.2）
+## OCR 引擎策略（v4.1）
 
-v3.4.2 继续以 RapidOCR 为默认引擎，并新增**桩号序列推断**，专门解决手写桩号末位数字漏识别（如 Z41 → 推断为 Z419）。
-PaddleOCR 仍作为显式备选，只有用户指定 `--engine paddle` 或 `--engine auto` 时才启用。
+v4.1 全面重构为 **PaddleOCR 单层主引擎 + Vision API 第三层兜底**。彻底移除 RapidOCR，不再作为任何默认 fallback。
+PaddleOCR 使用官方 release/2.8 推荐参数，并针对民航高 DPI 扫描件与手写桩号场景调优。
 
 ```
 PDF / 图片
    │
    ▼
-预处理管道（缩放 → 灰度 → 去噪 → 对比度增强 → 自适应二值化）
+预处理管道（PaddleOCR 模式跳过外部 resize，保留手写细节）
    │
    ▼
-默认层：RapidOCR（ONNX Runtime，本地，零成本）
-   │   ├─ 参数针对手写表格优化：det_limit_side_len=1920, det_db_thresh=0.22
-   │   ├─ 多策略重试：default → enhance → binarize
+主引擎：PaddleOCR（PaddlePaddle 推理，本地，零成本）
+   │   ├─ 官方参数优化：enable_mkldnn=True, cpu_threads=10
+   │   ├─ 高 DPI 适配：det_max_side_len=1920
+   │   ├─ 手写召回：det_db_thresh=0.2, det_db_box_thresh=0.4, drop_score=0.35
+   │   ├─ 速度平衡：rec_batch_num=6, cls_batch_num=6
+   │   ├─ 方向修正：use_angle_cls=True
    │   ├─ 空页自动提高 DPI 重跑
    │   ├─ 行聚类后处理：按 bbox 纵坐标组织成表格行，减少漏行
+   │   ├─ 桩号列检测 + Z/2 混淆自动修正
    │   └─ 桩号序列推断：按同行有效桩号趋势补全漏识别（Z41 → Z419）
    │
-   ▼ --use-table 启用时
-表格结构层：rapid_table 检测单元格 → RapidOCR 逐格识别
-   │   └─ 对密集表格行丢失问题最有效
-   │
-   ▼ --engine paddle / --engine auto 且 RapidOCR 结果极差
-备选层：PaddleOCR（install.ps1 自动安装，默认不加载）
-   │
    ▼ --engine tesseract
-备选层：Tesseract（本地，需中文语言包）
+显式备选：Tesseract（本地，需中文语言包）
    │
    ▼ --engine vision
-视觉层：Vision API / HTTP API（按需付费，支持 7 家）
+第三层兜底：Vision API / HTTP API（按需付费，支持 7 家）
 ```
 
 ### 何时用哪种模式
 
 | 场景 | 推荐命令 |
 |------|---------|
-| 普通打印扫描件 | `ocr_image.py "<文件>" --out out.txt` |
-| 手写施工记录、表格密集 | `ocr_image.py "<文件>" --use-table --out out.txt` |
+| 普通打印扫描件（默认） | `ocr_image.py "<文件>" --out out.txt` |
+| 手写施工记录、表格密集 | `ocr_image.py "<文件>" --out out.txt` |
 | 褪色/模糊/低对比度 | `ocr_image.py "<文件>" --preprocess binarize --out out.txt` |
-| RapidOCR 实在不行 | `ocr_image.py "<文件>" --engine paddle --out out.txt` |
+| PaddleOCR 本地不可用 | `ocr_image.py "<文件>" --engine tesseract --out out.txt` |
 | 关键数据复核（不惜成本） | `ocr_image.py "<文件>" --engine vision --out out.txt` |
-| 一键审核（默认 RapidOCR） | `run_audit.py audit "<文件>" --data <JSON> --out <目录>` |
+| 一键审核（默认 PaddleOCR） | `run_audit.py audit "<文件>" --data <JSON> --out <目录>` |
 
 ---
 
@@ -155,9 +152,9 @@ PDF / 图片
 |------|---------|------|
 | 识别资料类型 | `python {SKILL_DIR}/scripts/run_audit.py info "<文件路径>"` | 返回格式、页数、是否扫描件 |
 | 提取 PDF 文字 | `python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"` | 电子档 PDF 用 PyMuPDF 提取 |
-| OCR 扫描件（默认 RapidOCR） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 默认只跑 RapidOCR，多策略重试 |
-| OCR 扫描件（表格结构感知） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --use-table --out "<输出.txt>"` | rapid_table 检测单元格后逐格 OCR，适合密集表格 |
-| OCR 扫描件（PaddleOCR 备选） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine paddle --out "<输出.txt>"` | 显式启用 PaddleOCR，RapidOCR 不行时再用 |
+| OCR 扫描件（默认 PaddleOCR） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 默认跑 PaddleOCR，官方参数优化 |
+| OCR 扫描件（表格结构感知） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --use-table --out "<输出.txt>"` | --use-table 已废弃，保留兼容性 |
+| OCR 扫描件（Tesseract 备选） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine tesseract --out "<输出.txt>"` | 显式启用 Tesseract 备选 |
 | OCR 扫描件（增强预处理） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --preprocess binarize --out "<输出.txt>"` | 自适应二值化，适合褪色/模糊手写件 |
 | OCR 扫描件（视觉优先） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"` | AI 视觉模型直接识别（需 API Key） |
 | OCR 复核指定页 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --page 5 --out "<输出.txt>"` | 用 AI 视觉复核第 5 页 |
@@ -176,9 +173,9 @@ PDF / 图片
 1. **先识别再处理**：收到文件后，先跑 `run_audit.py info` 判断是否扫描件
 2. **电子档**：`is_scanned: False` → 用 `extract_pdf.py` 提取文字
 3. **扫描件**：`is_scanned: True` → 用 `ocr_image.py` 做 OCR
-   - **默认 `rapid` 模式**：只跑 RapidOCR，多策略重试 + 桩号序列推断 + 表格自恢复
-   - **需要自动降级时显式用 `--engine auto`**：RapidOCR 结果极差时才会尝试 PaddleOCR
-   - **手写施工资料推荐用 `--engine vision`**：AI 视觉模型对手写中文识别率约 95%，远高于 RapidOCR 的 85%（需 API Key）
+   - **默认 `paddle` 模式**：跑 PaddleOCR，官方参数优化 + 桩号列检测 + 桩号序列推断
+   - **显式 `--engine tesseract`**：PaddleOCR 不可用时启用 Tesseract
+    - **关键数据复核用 `--engine vision`**：AI 视觉模型对手写中文识别率约 95%（需 API Key）
    - 可附加 `--preprocess enhance` 或 `--preprocess binarize` 提升手写体识别率
    - 可附加 `--json-out` 输出结构化结果（含每个字框的坐标和置信度）
 4. **OCR 结果必须输出到文件**：用 `--out` 参数，方便后续读取
@@ -463,7 +460,7 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
 ### 第 2 步：OCR 文字提取 + 提取完整性校验（铁律 16）
 
 **输入**：第 1 步判定的非电子档文件
-**处理**（v3.0 混合 OCR 架构：RapidOCR 提取 → 混淆检测 → 智能体自动复核）：
+**处理**（v4.1 混合 OCR 架构：PaddleOCR 提取 → 混淆检测 → 智能体自动复核）：
 
 > **执行方式**：必须用 RunCommand 调用脚本，不要自己写 Python 代码。
 
@@ -473,10 +470,10 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
 2. **扫描件 OCR**（`is_scanned: True`）：
    - **手写施工资料推荐用 vision 模式**：
      `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"`
-     AI 视觉模型（GPT-4o/Gemini/Qwen2-VL）对手写中文识别率约 95%，远高于 RapidOCR 的 85%
-   - **无 API Key 时用默认 rapid 模式**：
+     AI 视觉模型（GPT-4o/Gemini/Qwen2-VL）对手写中文识别率约 95%
+   - **无 API Key 时用默认 paddle 模式**：
      `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"`
-     只跑 RapidOCR（主力，中文手写 85%+），多策略重试 + 桩号序列推断；如需降级可显式用 `--engine auto`
+     跑 PaddleOCR（主力，手写中文 90%+），官方参数优化 + 桩号列检测 + 桩号序列推断
 3. **文字后处理**：
    - 执行：`python {SKILL_DIR}/scripts/postprocess.py "<提取的文本文件>"`
    - 全角英文 → 半角英文（`ＭＨ` → `MH`）、私有区字符替换、中文标点规范化
@@ -1056,8 +1053,8 @@ Step 8 汇总（主 Agent 完成）：
 | Word .docx | markitdown / python-docx | 电子档 |
 | Excel .xlsx | markitdown / openpyxl | 电子档 |
 | PDF（电子档） | **PyMuPDF 提取** | 中文 100% 准确 |
-| PDF（扫描件） | PyMuPDF转图片 + RapidOCR | 85%+ 准确 |
-| 图片 | RapidOCR + Tesseract + HTTP API | 三级降级 |
+| PDF（扫描件） | PyMuPDF转图片 + PaddleOCR | 90%+ 准确 |
+| 图片 | PaddleOCR + Tesseract + Vision API | 单层主引擎 + 显式兜底 |
 | 文字描述 | 直接解析 | 用户口述 |
 | 目录（批量） | 逐份走 1-8 步 | 自动生成汇总报告 |
 | 指定条款 | 精准审核 | 跳过部分步骤 |
@@ -1071,8 +1068,8 @@ Step 8 汇总（主 Agent 完成）：
 | 工具 | 来源 | 用途 |
 |------|------|------|
 | **PyMuPDF (fitz)** | 开源 | PDF 电子档提取 |
-| **RapidOCR (rapidocr-onnxruntime)** | 开源 | 扫描件 OCR 主力引擎 |
-| **Tesseract (pytesseract)** | 开源 | 扫描件 OCR 备选引擎 |
+| **PaddleOCR (paddleocr)** | 开源 | 扫描件 OCR 主力引擎 |
+| **Tesseract (pytesseract)** | 开源 | 扫描件 OCR 显式备选引擎 |
 | **Pillow (PIL)** | 开源 | 图片处理 |
 | **obsidian-cli** | 已装 | 规范知识库查询 |
 | **lark-cli** | 已装 | 飞书云盘读取（v1 必要）|
@@ -1081,7 +1078,7 @@ Step 8 汇总（主 Agent 完成）：
 | **Write 工具** | TRAE 内置 | 文档输出 |
 | **data_quality_check.py** | Skill 自带 | 数据质量四类检测 |
 
-**v2.0 OCR 升级**：RapidOCR（基于 PaddleOCR 模型 + ONNX Runtime，已替代 Tesseract 成为主力引擎）
+**v4.1 OCR 升级**：PaddleOCR（PaddlePaddle 推理，启用 MKL-DNN，替代 RapidOCR 成为唯一默认主力引擎；Tesseract / Vision API 作为显式兜底）
 
 ---
 

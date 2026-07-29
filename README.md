@@ -1,6 +1,6 @@
 # 民航建设施工资料合规审核大师 (civil-aviation-doc-audit)
 
-> 民航工程施工资料合规性审核 Skill v1.9
+> 民航工程施工资料合规性审核 Skill v2.0
 > 适用：MH/T 5078.1~5078.6-2024 系列 + CCAR-165-R1 + MH 5031-2025 等民航规范
 > 五大专业全覆盖：场道 / 空管 / 助航 / 弱电 / 供油
 
@@ -13,7 +13,7 @@ civil-aviation-doc-audit/
 ├── SKILL.md                          # 主 Skill 文件（必读）
 ├── README.md                         # 本文件
 ├── requirements.txt                  # Python 依赖
-├── install.ps1                       # 一键安装脚本（Python+RapidOCR+Poppler+Tesseract）
+├── install.ps1                       # 一键安装脚本（Python+PaddleOCR+Poppler+Tesseract）
 ├── audit.bat                         # Windows 快捷入口
 ├── .gitignore
 │
@@ -36,7 +36,7 @@ civil-aviation-doc-audit/
 ├── scripts/                          # 5 个脚本
 │   ├── run_audit.py                  # Skill 入口（一键启动审核）
 │   ├── extract_pdf.py                # PDF 文字提取（PyMuPDF）
-│   ├── ocr_image.py                  # 扫描件 OCR（三级策略：RapidOCR→Tesseract→HTTP API）
+│   ├── ocr_image.py                  # 扫描件 OCR（PaddleOCR 单层主引擎 + Tesseract/Vision 显式兜底）
 │   ├── postprocess.py                # 文本后处理（全角转半角、PUA 替换）
 │   └── data_quality_check.py         # 数据质量检测（铁律 10 配套）
 │
@@ -53,7 +53,7 @@ civil-aviation-doc-audit/
 
 | 能力 | 说明 |
 |------|------|
-| OCR 识别扫描件 | 三级策略：RapidOCR（主力，中文手写 85%+）→ Tesseract（备选）→ HTTP API（跨平台兜底） |
+| OCR 识别扫描件 | PaddleOCR 单层主引擎（官方参数优化，适配手写中文）→ Tesseract（显式备选）→ Vision API（第三层兜底） |
 | 规范逐条对账 | 对着 MH/T 5078 系列逐条比对，每条引规范编号和条款号 |
 | 数据质量检测 | 自动识别造假、涂改、异常模式（DQ-REPEAT/JUMP/ALTER/SELF） |
 | 逻辑一致性检查 | 10 个子项 57+ 条规则，含监理-施工方跨单位日期对照（9.10，17 条规则） |
@@ -184,3 +184,4 @@ git clone https://github.com/iliulee/civil-aviation-doc-audit.git
 | v1.7 | 2026-07-25 | 前置信息收集 + 文件分类确认 + 批量审核汇总 |
 | v1.8 | 2026-07-26 | 三层 9 步工作流重构 |
 | v1.9 | 2026-07-27 | 三级 OCR 策略（RapidOCR）、知识分区红线、三级输出格式、9.10 监理-施工方对照、Obsidian 知识库全量覆盖 |
+| v2.0 | 2026-07-29 | OCR 引擎重构：PaddleOCR 单层主引擎 + Vision API 第三层兜底；彻底移除 RapidOCR；官方参数优化提速 |

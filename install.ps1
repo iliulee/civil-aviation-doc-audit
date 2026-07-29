@@ -2,12 +2,12 @@
 .SYNOPSIS
     民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
-    自动完成 Python 依赖、Poppler、Tesseract OCR、PaddleOCR、rapid-table 的全部安装和配置。
+    自动完成 Python 依赖、Poppler、Tesseract OCR、PaddleOCR 的全部安装和配置。
     支持一键安装、卸载、静默模式。
     安装完成后无需任何手动操作即可使用。
-    v3.4.2 变更：RapidOCR 默认启用桩号序列推断；PaddleOCR 仍为显式备选 OCR 引擎（默认不启用），rapid-table 用于表格结构感知。
+    v4.1 变更：PaddleOCR 成为唯一默认 OCR 主引擎；彻底移除 RapidOCR 相关依赖与逻辑；Tesseract 作为系统级紧急备选；Vision API 作为显式第三层兜底。
 .NOTES
-    版本: v1.6
+    版本: v2.1
     需要管理员权限（仅 Tesseract 安装和系统 PATH 配置需要）
 #>
 
@@ -25,7 +25,7 @@ $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
 $TOOLS_DIR = Join-Path $SKILL_DIR "tools"
 $REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
 $SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_VERSION = "v3.4.2"
+$SKILL_VERSION = "v4.1"
 
 # ── 输出目录（在 workspace 根目录下） ──
 # SKILL_DIR = workspace\.trae\skills\civil-aviation-doc-audit
@@ -154,7 +154,7 @@ try {
 # 2. Python 依赖
 # ────────────────────────────────────────────────
 Write-Step "2/7 安装 Python 依赖"
-$deps = @("PyMuPDF", "rapidocr-onnxruntime", "paddleocr==2.8.1", "paddlepaddle==2.6.2", "opencv-python", "rapid-table", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
+$deps = @("PyMuPDF", "paddleocr==2.8.1", "paddlepaddle==2.6.2", "opencv-python", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
 $missing = @()
 foreach ($dep in $deps) {
     pip show $dep 2>&1 | Out-Null
@@ -355,21 +355,13 @@ catch { $results += "Python: FAIL"; $allPassed = $false }
 try { python -c "import fitz" 2>&1 | Out-Null; $results += "PyMuPDF: OK" }
 catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
 
-# RapidOCR（主力 OCR 引擎）
-try { python -c "from rapidocr_onnxruntime import RapidOCR" 2>&1 | Out-Null; $results += "RapidOCR: OK" }
-catch { $results += "RapidOCR: FAIL"; $allPassed = $false }
-
-# PaddleOCR（增强备选 OCR 引擎）
+# PaddleOCR（主力 OCR 引擎）
 try { python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null; $results += "PaddleOCR: OK" }
 catch { $results += "PaddleOCR: FAIL"; $allPassed = $false }
 
 # OpenCV（图像预处理依赖）
 try { python -c "import cv2" 2>&1 | Out-Null; $results += "OpenCV: OK" }
 catch { $results += "OpenCV: FAIL"; $allPassed = $false }
-
-# rapid-table（表格结构检测）
-try { python -c "from rapid_table import RapidTable" 2>&1 | Out-Null; $results += "rapid-table: OK" }
-catch { $results += "rapid-table: FAIL"; $allPassed = $false }
 
 # pytesseract
 try { python -c "import pytesseract" 2>&1 | Out-Null; $results += "pytesseract: OK" }

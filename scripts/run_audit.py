@@ -110,16 +110,16 @@ def extract_text(
     lang: str = "chi_sim+eng",
     dpi: int = 200,
     verbose: bool = True,
-    engine: str = "rapid",
+    engine: str = "paddle",
     use_table: bool = False,
 ) -> dict:
     """
     根据 sniff_document 结果自动选择提取策略。
 
     Args:
-        engine: OCR 引擎，默认 rapid（RapidOCR 优先）。
-                可选：rapid / paddle / tesseract / vision / auto。
-        use_table: 是否启用表格结构感知（RapidOCR 模式下有效）。
+        engine: OCR 引擎，默认 paddle（PaddleOCR 单层主引擎）。
+                可选：paddle / tesseract / vision / auto。
+        use_table: 已废弃，保留兼容性（v4.1 移除 rapid-table）。
 
     Returns:
         {
@@ -140,12 +140,12 @@ def extract_text(
         return {"text": clean_text("\n".join(parts)), "engine": "PyMuPDF", "confidence": 1.0}
 
     if method == "ocr":
-        # v3.3：默认 RapidOCR，PaddleOCR 改为显式引擎
+        # v4.1：默认 PaddleOCR 单层主引擎
         import ocr_image as _ocr
         if info["suffix"] == ".pdf":
-            result = _ocr.ocr_pdf(file_path, lang=lang, dpi=dpi, engine=engine, use_table=use_table)
+            result = _ocr.ocr_pdf(file_path, lang=lang, dpi=dpi, engine=engine)
         else:
-            result = _ocr.ocr_image(file_path, lang=lang, engine=engine, use_table=use_table)
+            result = _ocr.ocr_image(file_path, lang=lang, engine=engine)
 
         if verbose:
             print(
@@ -430,12 +430,12 @@ def main():
     p_extract.add_argument("--dpi", type=int, default=200)
     p_extract.add_argument("--out")
     p_extract.add_argument(
-        "--engine", choices=["rapid", "paddle", "tesseract", "vision", "auto"], default="rapid",
-        help="OCR 引擎：rapid(默认)/paddle/tesseract/vision/auto"
+        "--engine", choices=["paddle", "tesseract", "vision", "auto"], default="paddle",
+        help="OCR 引擎：paddle(默认)/tesseract/vision/auto"
     )
     p_extract.add_argument(
         "--use-table", action="store_true",
-        help="启用表格结构感知（RapidOCR 模式下有效）"
+        help="已废弃，保留兼容性（v4.1 移除 rapid-table）"
     )
     p_extract.set_defaults(func=cmd_extract)
 
@@ -457,12 +457,12 @@ def main():
     p_audit.add_argument("--lang", default="chi_sim+eng")
     p_audit.add_argument("--dpi", type=int, default=200)
     p_audit.add_argument(
-        "--engine", choices=["rapid", "paddle", "tesseract", "vision", "auto"], default="rapid",
-        help="OCR 引擎：rapid(默认)/paddle/tesseract/vision/auto"
+        "--engine", choices=["paddle", "tesseract", "vision", "auto"], default="paddle",
+        help="OCR 引擎：paddle(默认)/tesseract/vision/auto"
     )
     p_audit.add_argument(
         "--use-table", action="store_true",
-        help="启用表格结构感知（RapidOCR 模式下有效）"
+        help="已废弃，保留兼容性（v4.1 移除 rapid-table）"
     )
     p_audit.add_argument("--verify-path", default=None, choices=["agent", "api", "enhance"])
     p_audit.add_argument("--provider", default=None)

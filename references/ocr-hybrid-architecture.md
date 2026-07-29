@@ -1,6 +1,6 @@
-# 混合 OCR 架构 v3.0
+# 混合 OCR 架构 v4.1
 
-> 核心思路：RapidOCR 做全量提取（快、免费）→ 混淆检测筛出存疑字段 → AI 智能体自动读图复核存疑字段（准、零成本）→ 合并结果。只在存疑字段上花精力，不做整页重复识别。
+> 核心思路：PaddleOCR 做全量提取（精、稳）→ 混淆检测筛出存疑字段 → AI 智能体自动读图复核存疑字段（准、零成本）→ 合并结果。只在存疑字段上花精力，不做整页重复识别。
 
 ## 架构总览
 
@@ -9,9 +9,10 @@
     │
     ▼
 ┌─────────────────────────────────────┐
-│ Layer 1: RapidOCR 全量提取          │
+│ Layer 1: PaddleOCR 全量提取         │
 │ ocr_image.py --out output.txt       │
-│ 三级降级：RapidOCR→Tesseract→API    │
+│ 单层主引擎：PaddleOCR               │
+│ 显式兜底：Tesseract / Vision API    │
 └──────────────┬──────────────────────┘
                │ 结构化 JSON
                ▼
@@ -225,7 +226,7 @@ python verify_fields.py auto <原始文件> <混淆检测JSON> --data <数据JSO
   │  → 只发存疑字段，省成本
   │
   └─ 用户手动指定 --verify-path enhance
-     → 增强参数重跑 RapidOCR
+     → 增强参数重跑 PaddleOCR
      → 免费但精度有限
 ```
 
@@ -236,7 +237,7 @@ python verify_fields.py auto <原始文件> <混淆检测JSON> --data <数据JSO
 | OCR 复核方式 | 手动用 `--mode vision --page N` 逐页重读 | 自动裁剪存疑字段 + 智能体读图验证 |
 | 用户参与度 | 需要用户判断哪页哪字段需要复核 | 全自动，脚本检测存疑字段并裁剪 |
 | 成本 | 整页发送给 API | 只发存疑字段的裁剪图片 |
-| 复核精度 | 依赖 RapidOCR 二次识别或整页 API | 智能体 Vision 精准识别裁剪区域 |
+| 复核精度 | 依赖 PaddleOCR 二次识别或整页 API | 智能体 Vision 精准识别裁剪区域 |
 | 多 API 支持 | 仅硅基流动 | 7 家主流 Vision API |
 | 智能体集成 | 无 | 默认路径，零成本全自动 |
 
@@ -244,7 +245,7 @@ python verify_fields.py auto <原始文件> <混淆检测JSON> --data <数据JSO
 
 | 文件 | 作用 |
 |------|------|
-| `scripts/ocr_image.py` | Layer 1: RapidOCR 全量提取 |
+| `scripts/ocr_image.py` | Layer 1: PaddleOCR 全量提取 |
 | `scripts/ocr_confusion_check.py` | Layer 2: OCR 混淆检测 |
 | `scripts/verify_fields.py` | Layer 3: 存疑字段自动复核编排 |
 | `scripts/vision_providers.py` | 路径 A: Vision API 统一配置层 |
