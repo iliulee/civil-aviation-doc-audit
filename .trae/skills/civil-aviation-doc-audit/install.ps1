@@ -2,11 +2,13 @@
 .SYNOPSIS
     民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
-    自动完成 Python 依赖、Poppler、Tesseract OCR 的全部安装和配置。
+    自动完成 Python 依赖、Poppler、Tesseract OCR 的安装和配置。
+    PaddleOCR 为可选本地备选引擎，仅在离线场景需要。
     支持一键安装、卸载、静默模式。
     安装完成后无需任何手动操作即可使用。
+    v5.0 API-First 变更：Vision API 成为默认 OCR 引擎；PaddleOCR 降级为可选本地备选；Tesseract 作为离线兜底。
 .NOTES
-    版本: v1.5
+    版本: v3.0
     需要管理员权限（仅 Tesseract 安装和系统 PATH 配置需要）
 #>
 
@@ -24,7 +26,7 @@ $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
 $TOOLS_DIR = Join-Path $SKILL_DIR "tools"
 $REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
 $SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_VERSION = "v2.0"
+$SKILL_VERSION = "v5.0-api"
 
 # ── 输出目录（在 workspace 根目录下） ──
 # SKILL_DIR = workspace\.trae\skills\civil-aviation-doc-audit
@@ -150,26 +152,37 @@ try {
 }
 
 # ────────────────────────────────────────────────
-# 2. Python 依赖
+# 2. Python 依赖（核心 + OCR 引擎）
 # ────────────────────────────────────────────────
-Write-Step "2/7 安装 Python 依赖"
-$deps = @("PyMuPDF", "rapidocr-onnxruntime", "pytesseract", "pdf2image", "Pillow", "python-docx")
+Write-Step "2/7 安装 Python 核心依赖"
+$coreDeps = @("PyMuPDF", "opencv-python", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
 $missing = @()
-foreach ($dep in $deps) {
+foreach ($dep in $coreDeps) {
     pip show $dep 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { $missing += $dep }
 }
 if ($missing.Count -gt 0) {
-    Write-Warn "缺少 $($missing.Count) 个依赖: $($missing -join ", ")"
+    Write-Warn "缺少 $($missing.Count) 个核心依赖: $($missing -join ", ")"
     Write-Info "pip install $($missing -join " ")"
-    pip install $missing 2>&1 | Out-Null
+    $pipArgs = @("install") + $missing + @("-i", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    & pip $pipArgs 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-ErrorMsg "依赖安装失败，请检查网络连接后重试"
+        Write-ErrorMsg "核心依赖安装失败，请检查网络连接后重试"
         exit 1
     }
-    Write-Success "依赖安装完成"
+    Write-Success "核心依赖安装完成"
 } else {
-    Write-Success "全部 $($deps.Count) 个依赖已就绪"
+    Write-Success "全部 $($coreDeps.Count) 个核心依赖已就绪"
+}
+
+# PaddleOCR 为可选本地备选引擎（仅离线场景需要）
+Write-Step "2b/7 检查 PaddleOCR（可选本地引擎）"
+try {
+    python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null
+    Write-Success "PaddleOCR 已安装（本地备选引擎可用）"
+} catch {
+    Write-Warn "PaddleOCR 未安装（默认使用 Vision API，无需 PaddleOCR）"
+    Write-Info "如需离线使用，运行: pip install paddleocr==2.8.1 paddlepaddle==2.6.2"
 }
 
 # ────────────────────────────────────────────────
@@ -352,9 +365,25 @@ catch { $results += "Python: FAIL"; $allPassed = $false }
 try { python -c "import fitz" 2>&1 | Out-Null; $results += "PyMuPDF: OK" }
 catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
 
-# RapidOCR（主力 OCR 引擎）
-try { python -c "from rapidocr_onnxruntime import RapidOCR" 2>&1 | Out-Null; $results += "RapidOCR: OK" }
-catch { $results += "RapidOCR: FAIL"; $allPassed = $false }
+# PaddleOCR（可选本地备选引擎）
+try { python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null; $results += "PaddleOCR: OK" }
+catch { $results += "PaddleOCR: 未安装（可选，默认使用 Vision API）" }
+
+# Vision API（默认 OCR 引擎）
+try {
+    python -c "from vision_providers import detect_available_providers; p=detect_available_providers(); print(f'{len(p)} providers')" 2>&1 | Out-Null
+    $providers = python -c "from vision_providers import detect_available_providers; p=detect_available_providers(); print(len(p))" 2>&1
+    if ([int]$providers -gt 0) {
+        $results += "Vision API: OK ($providers 个 Provider)"
+    } else {
+        $results += "Vision API: 未配置（设置 API Key 后可用）"
+    }
+}
+catch { $results += "Vision API: 未配置" }
+
+# OpenCV（图像预处理依赖）
+try { python -c "import cv2" 2>&1 | Out-Null; $results += "OpenCV: OK" }
+catch { $results += "OpenCV: FAIL"; $allPassed = $false }
 
 # pytesseract
 try { python -c "import pytesseract" 2>&1 | Out-Null; $results += "pytesseract: OK" }
@@ -394,17 +423,18 @@ if (-not (Test-Path $profileDir)) { New-Item -ItemType Directory -Path $profileD
 
 $profileFunc = @"
 
-#region audit function for civil-aviation-doc-audit Skill (v2.0)
+#region audit function for civil-aviation-doc-audit Skill (v3.2)
 function audit {
-    param([string]`$Command, [string]`$FilePath)
+    param([string]`$Command, [string]`$FilePath, [string]`$DataPath)
     `$d = "$SKILL_DIR"
     `$s = "`$d\scripts"
     if (-not `$Command) {
         Write-Host "=== $SKILL_NAME $SKILL_VERSION ===" -ForegroundColor Cyan
-        Write-Host "audit <命令> <文件路径>" -ForegroundColor Yellow
+        Write-Host "audit <命令> <文件路径> [--data <结构化JSON>]" -ForegroundColor Yellow
         Write-Host "  info     - 查看资料信息"
         Write-Host "  extract  - 提取文字"
         Write-Host "  ocr      - 扫描件OCR"
+        Write-Host "  audit    - 一键审核（OCR + 混淆检测 + Vision复核）"
         Write-Host "  quality  - 数据质量检测"
         Write-Host "  batch    - 批量审核"
         Write-Host "  install  - 运行安装脚本"
@@ -416,6 +446,7 @@ function audit {
         "info"      { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" info `$FilePath }
         "extract"   { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\extract_pdf.py" `$FilePath }
         "ocr"       { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\ocr_image.py" `$FilePath }
+        "audit"     { if (-not `$FilePath) { Write-Host "请指定文件路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" audit `$FilePath }
         "quality"   { if (-not `$FilePath) { Write-Host "请指定 JSON 文件路径" -ForegroundColor Red; return }; python "`$s\data_quality_check.py" `$FilePath }
         "batch"     { if (-not `$FilePath) { Write-Host "请指定目录路径" -ForegroundColor Red; return }; python "`$s\run_audit.py" batch `$FilePath }
         "install"   { powershell -ExecutionPolicy Bypass -File "`$d\install.ps1" }

@@ -3,7 +3,7 @@ name: "civil-aviation-doc-audit"
 description: "民航建设施工资料合规审核大师。审核资料是否符合MH/T 5078等民航行业规范、验证结构运算是否符合运算规范、支持OCR识别扫描件、多Agent并行批量审核、三级输出格式（Fatal/Sanity Check/Best Practice）、知识分区红线防幻觉、可自动生成审核报告和整改通知。专门针对民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业的施工资料合规性审核场景。当用户要求审核民航施工资料、检查资料合规性、验证运算规范、识别扫描件资料、生成审核报告或整改通知时触发。"
 ---
 
-# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v1.9
+# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v5.0-api
 
 > 面向民航运输机场专业工程建设项目，基于 MH/T 5078.1~5078.6-2024 资料管理规程体系，提供资料合规性审核、结构运算规范审核、OCR扫描件识别、跨资料逻辑一致性检查、多Agent并行批量审核、文档生成等能力。五大专业全覆盖，每条审核意见有据可查。
 
@@ -13,6 +13,7 @@ description: "民航建设施工资料合规审核大师。审核资料是否符
 |------|------|
 | 英文名 | `civil-aviation-doc-audit` |
 | 中文名 | 民航建设施工资料合规审核大师 |
+| 版本 | v5.0-api（API-First 分支） |
 | 适用领域 | 民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业全覆盖 |
 | 核心规范 | MH/T 5078.1~5078.6-2024 系列 + 各专业技术规范（MH 5004/5007/5012/5034/4006 等） |
 | 知识库 | 主引擎：`references/` 专项审核文件（13 个，已固化条款+参数阈值）；增强源：Obsidian（`H:\Obsidian notes\溜哥笔记\wiki\sources\`），按需查询原文，非硬依赖 |
@@ -67,13 +68,76 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 | 步骤 | 内容 | 说明 |
 |------|------|------|
-| 1 | Python 依赖 | `pip install -r requirements.txt`（含 RapidOCR） |
+| 1 | Python 依赖 | `pip install -r requirements.txt`（含 PaddleOCR、PaddlePaddle、OpenCV） |
 | 2 | Poppler | 自动下载 Windows 便携版（~30MB）到 `tools/poppler/` |
-| 3 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（备选引擎） |
-| 4 | 系统 PATH | 自动配置，无需手动 |
-| 5 | 验证 | 逐一检查所有组件可用 |
+| 3 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（显式备选引擎） |
+| 4 | PaddleOCR | 自动安装 `paddleocr==2.8.1` + `paddlepaddle==2.6.2` + `opencv-python>=4.8.0` |
+| 5 | 系统 PATH | 自动配置，无需手动 |
+| 6 | 验证 | 逐一检查所有组件可用 |
 
 安装完成后直接可用，无需任何手动操作。如果组件已安装则自动跳过。
+
+---
+
+## OCR 引擎策略（v5.0 API-First）
+
+v5.0 全面重构为 **API-First 策略**：Vision API 优先 → PaddleOCR 本地备选 → Tesseract 兜底。
+默认 auto 模式自动选择最佳可用引擎，无需手动选择。
+
+```
+PDF / 图片
+   │
+   ▼
+auto 模式自动检测可用引擎
+   │
+   ├─ 检测到 Vision API Key → 优先使用 Vision API（云端，按量付费）
+   │   ├─ 自动选择最便宜可用 Provider（Doubao > SiliconFlow > Qwen > ...）
+   │   ├─ 支持 7 家：doubao / qwen / glm / kimi / silicon / baidu / openai
+   │   ├─ 设置任一环境变量即可使用（详见 vision_providers.py）
+   │   └─ 推荐：Doubao Vision Pro（0.003元/千token，中文OCR最准最快）
+   │
+   ├─ 无 API Key → 降级为 PaddleOCR（本地，零成本）
+   │   ├─ PP-OCRv4 模型，需安装 paddleocr + paddlepaddle
+   │   ├─ enable_mkldnn=True, cpu_threads=10
+   │   ├─ 桩号列检测 + Z/2 混淆自动修正
+   │   └─ 桩号序列推断：按同行有效桩号趋势补全漏识别
+   │
+   └─ 无 PaddleOCR → 降级为 Tesseract（本地，需安装）
+```
+
+### 引擎选择指南
+
+| 场景 | 推荐引擎 | 命令 |
+|------|---------|------|
+| 有 API Key（默认） | auto | `ocr_image.py "<文件>" --out out.txt` |
+| 纯 API，不装本地依赖 | vision | `ocr_image.py "<文件>" --engine vision --out out.txt` |
+| 离线/内网，零成本 | paddle | `ocr_image.py "<文件>" --engine paddle --out out.txt` |
+| 关键数据复核（不惜成本） | vision | `ocr_image.py "<文件>" --engine vision --out out.txt` |
+| 一键审核（默认 API 优先） | auto | `run_audit.py audit "<文件>" --data <JSON> --out <目录>` |
+
+### 首次使用：设置 API Key
+
+```powershell
+# 推荐：豆包 Vision Pro（最便宜，中文OCR最准）
+$env:ARK_API_KEY = "你的火山引擎 API Key"
+
+# 或：通义千问 VL Max（阿里云）
+$env:DASHSCOPE_API_KEY = "你的阿里云 API Key"
+
+# 或：智谱 GLM-4V（国内合规）
+$env:ZHIPU_API_KEY = "你的智谱 API Key"
+
+# 验证可用 Provider
+python scripts/vision_providers.py --list
+```
+
+### 离线场景：安装 PaddleOCR
+
+```powershell
+# 如果需要在无网络环境使用，手动安装 PaddleOCR
+pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
+# 首次运行会自动下载 PP-OCRv4 模型（~30MB）
+```
 
 ---
 
@@ -108,9 +172,18 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 |------|---------|------|
 | 识别资料类型 | `python {SKILL_DIR}/scripts/run_audit.py info "<文件路径>"` | 返回格式、页数、是否扫描件 |
 | 提取 PDF 文字 | `python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"` | 电子档 PDF 用 PyMuPDF 提取 |
-| OCR 扫描件 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 三级降级：RapidOCR→Tesseract→HTTP API |
+| OCR 扫描件（默认 PaddleOCR） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 默认跑 PaddleOCR，官方参数优化 |
+| OCR 扫描件（表格结构感知） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --use-table --out "<输出.txt>"` | --use-table 已废弃，保留兼容性 |
+| OCR 扫描件（Tesseract 备选） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine tesseract --out "<输出.txt>"` | 显式启用 Tesseract 备选 |
+| OCR 扫描件（增强预处理） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --preprocess binarize --out "<输出.txt>"` | 自适应二值化，适合褪色/模糊手写件 |
+| OCR 扫描件（视觉优先） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"` | AI 视觉模型直接识别（需 API Key） |
+| OCR 复核指定页 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --page 5 --out "<输出.txt>"` | 用 AI 视觉复核第 5 页 |
+| 一键审核 | `python {SKILL_DIR}/scripts/run_audit.py audit "<文件路径>" --data "<结构化JSON>" --out "<输出目录>"` | OCR + 混淆检测 + Vision复核，一步完成 |
 | 批量识别目录 | `python {SKILL_DIR}/scripts/run_audit.py batch "<目录路径>"` | 遍历目录所有文件 |
-| 数据质量检测 | `python {SKILL_DIR}/scripts/data_quality_check.py "<JSON文件>"` | 四类检测：REPEAT/JUMP/ALTER/SELF |
+| OCR 混淆检测 | `python {SKILL_DIR}/scripts/ocr_confusion_check.py "<JSON文件>" --pretty` | 检测 Z→2、4→0 等常见 OCR 误读，生成待核实清单 |
+| 存疑字段自动复核 | `python {SKILL_DIR}/scripts/verify_fields.py auto "<原始文件>" "<混淆检测JSON>" --data "<数据JSON>" --out "<输出目录>"` | 默认路径 B：裁剪图片+输出任务清单，AI 智能体自动读图验证 |
+| 合并复核结果 | `python {SKILL_DIR}/scripts/verify_fields.py merge "<verify_results.json>" --data "<数据JSON>" --out "<修正后JSON>"` | 将 AI 智能体验证结果合并回原始数据 |
+| 数据质量检测 | `python {SKILL_DIR}/scripts/data_quality_check.py "<JSON文件>" --expected-pile-total 999` | 四类检测+致岩豁免+桩号总数校验 |
 | 文本后处理 | `python {SKILL_DIR}/scripts/postprocess.py "<文本文件>"` | 全角转半角、PUA 替换 |
 
 **`{SKILL_DIR}` 替换为本 Skill 的实际安装路径**（即 `SKILL.md` 所在目录）。
@@ -120,9 +193,25 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 1. **先识别再处理**：收到文件后，先跑 `run_audit.py info` 判断是否扫描件
 2. **电子档**：`is_scanned: False` → 用 `extract_pdf.py` 提取文字
 3. **扫描件**：`is_scanned: True` → 用 `ocr_image.py` 做 OCR
+   - **默认 `paddle` 模式**：跑 PaddleOCR，官方参数优化 + 桩号列检测 + 桩号序列推断
+   - **显式 `--engine tesseract`**：PaddleOCR 不可用时启用 Tesseract
+    - **关键数据复核用 `--engine vision`**：AI 视觉模型对手写中文识别率约 95%（需 API Key）
+   - 可附加 `--preprocess enhance` 或 `--preprocess binarize` 提升手写体识别率
+   - 可附加 `--json-out` 输出结构化结果（含每个字框的坐标和置信度）
 4. **OCR 结果必须输出到文件**：用 `--out` 参数，方便后续读取
 5. **读取 OCR 结果**：OCR 完成后用 Read 工具读取输出文件
-6. **数据质量检测**：将提取的表格数据整理为 JSON，再跑 `data_quality_check.py`
+6. **OCR 混淆检测**（扫描件必做）：将 OCR 提取的表格数据整理为 JSON，跑 `ocr_confusion_check.py`，生成待核实清单
+7. **存疑字段自动复核**（扫描件且有存疑字段时执行）：
+   - 执行：`python {SKILL_DIR}/scripts/verify_fields.py auto "<原始文件>" "<混淆检测JSON>" --data "<数据JSON>" --out "<输出目录>"`
+   - 默认路径 B（智能体复核）：脚本自动裁剪存疑字段对应的原图区域，输出结构化任务清单
+   - **AI 智能体自动读图验证**（无需用户参与）：
+     - 读取 `agent_verify_tasks.json` 获取任务清单
+     - 逐个读取 task 中的 `image_path` 图片（用 Read 工具读取图片文件）
+     - 用自身 Vision 能力识别图片中的字段值，判断 OCR 结果是否正确
+     - 输出 `verify_results.json`（格式：`{"results": [{"task_id": "VERIFY-001", "field": "pile_no", "row": 5, "verified_value": "Z370", "confidence": "high", "note": "..."}]}`）
+   - 执行合并：`python {SKILL_DIR}/scripts/verify_fields.py merge "<verify_results.json>" --data "<数据JSON>" --out "<修正后JSON>"`
+   - 无存疑字段时跳过此步骤
+8. **数据质量检测**：跑 `data_quality_check.py`，如知道设计总桩数用 `--expected-pile-total` 参数
 
 ### 安装命令
 
@@ -391,7 +480,7 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
 ### 第 2 步：OCR 文字提取 + 提取完整性校验（铁律 16）
 
 **输入**：第 1 步判定的非电子档文件
-**处理**（v2.0 三级降级策略）：
+**处理**（v4.1 混合 OCR 架构：PaddleOCR 提取 → 混淆检测 → 智能体自动复核）：
 
 > **执行方式**：必须用 RunCommand 调用脚本，不要自己写 Python 代码。
 
@@ -399,17 +488,34 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
    - 执行：`python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"`
    - 准确率 100%（中文部分），全自动，无需 OCR
 2. **扫描件 OCR**（`is_scanned: True`）：
-   - 执行：`python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"`
-   - 脚本内部三级降级：RapidOCR（主力，中文手写 85%+）→ Tesseract（备选）→ HTTP API（兜底）
+   - **手写施工资料推荐用 vision 模式**：
+     `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"`
+     AI 视觉模型（GPT-4o/Gemini/Qwen2-VL）对手写中文识别率约 95%
+   - **无 API Key 时用默认 paddle 模式**：
+     `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"`
+     跑 PaddleOCR（主力，手写中文 90%+），官方参数优化 + 桩号列检测 + 桩号序列推断
 3. **文字后处理**：
    - 执行：`python {SKILL_DIR}/scripts/postprocess.py "<提取的文本文件>"`
    - 全角英文 → 半角英文（`ＭＨ` → `MH`）、私有区字符替换、中文标点规范化
-4. **读取提取结果**：用 Read 工具读取 `--out` 指定的输出文件
-5. **提取完整性校验**（铁律 16）：
+4. **OCR 混淆校正**（扫描件必做，参考 `references/ocr-confusion-correction.md`）：
+   - 将 OCR 提取的表格数据整理为 JSON，执行：
+     `python {SKILL_DIR}/scripts/ocr_confusion_check.py "<JSON文件>" --pretty`
+   - 自动检测高频混淆对（Z→2、4→0、3→8、7→1 等）和上下文异常
+   - 命中混淆对 → 标注"OCR 存疑"，列入待核实清单，**不自动替换**
+5. **存疑字段自动复核**（有存疑字段时执行，参考 `references/ocr-hybrid-architecture.md`）：
+   - 执行：`python {SKILL_DIR}/scripts/verify_fields.py auto "<原始文件>" "<混淆检测JSON>" --data "<数据JSON>" --out "<输出目录>"`
+   - 默认路径 B（智能体复核）：脚本自动裁剪存疑字段对应的原图区域为 PNG，输出 `agent_verify_tasks.json`
+   - **AI 智能体自动读图验证**（全自动，无需用户参与）：
+     - 读取 `agent_verify_tasks.json`，逐个读取 `image_path` 指向的裁剪图片
+     - 用自身 Vision 能力识别图片中的字段值，判断 OCR 结果是否正确
+     - 输出 `verify_results.json`
+   - 执行合并：`python {SKILL_DIR}/scripts/verify_fields.py merge "<verify_results.json>" --data "<数据JSON>" --out "<修正后JSON>"`
+6. **读取提取结果**：用 Read 工具读取 `--out` 指定的输出文件
+7. **提取完整性校验**（铁律 16）：
    - 行数校验：预期行数 vs 实际提取行数
    - 不通过 → 自动触发重新提取（换引擎，`ocr_image.py` 会自动降级）
    - 重试仍失败 → 标记"提取不完整"，停止后续审核
-6. **输出**：结构化文字 + 置信度标记 + 使用引擎 + 提取校验结果
+8. **输出**：结构化文字 + 置信度标记 + 使用引擎 + 提取校验结果 + OCR 待核实清单 + 复核修正记录
 
 ### 第 3 步：数据质量审查（铁律 10，前置硬门槛）
 
@@ -418,11 +524,11 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
 **处理**：
 1. **数据集构建**：将 OCR/AI 提取的表格数据整理为 JSON 格式（含 `records` 数组，每条记录含桩号、桩长、灌入量、充盈系数等字段）
 2. **四类检测**（执行命令）：
-   - 执行：`python {SKILL_DIR}/scripts/data_quality_check.py "<JSON文件路径>"`
+   - 执行：`python {SKILL_DIR}/scripts/data_quality_check.py "<JSON文件路径>" --expected-pile-total <设计总桩数>`
    - DQ-REPEAT — 重复值模式（造假检测：交替循环、值分布集中）
-   - DQ-JUMP — 突变检测（断崖下跌：桩长、灌入量、充盈系数等关键参数）
+   - DQ-JUMP — 突变检测（断崖下跌：桩长、灌入量、充盈系数等关键参数，**含致岩豁免**）
    - DQ-ALTER — 涂改痕迹检测（逻辑层面：充盈系数自洽失败、桩长自洽失败）
-   - DQ-SELF — 数据自洽校验（行数、桩号连续性、桩长=高程差、充盈系数=灌入量/理论体积）
+   - DQ-SELF — 数据自洽校验（行数、**桩号总数校验（不强制连号）**、桩长=高程差、充盈系数=灌入量/理论体积）
 3. **AI 视觉复核**（扫描件表格）：OCR 表格提取失败时，使用 TRAE Read 工具逐格判读
 4. **判定逻辑**：
    - 有 error → 停止后续审核，要求重新提取数据
@@ -967,8 +1073,8 @@ Step 8 汇总（主 Agent 完成）：
 | Word .docx | markitdown / python-docx | 电子档 |
 | Excel .xlsx | markitdown / openpyxl | 电子档 |
 | PDF（电子档） | **PyMuPDF 提取** | 中文 100% 准确 |
-| PDF（扫描件） | PyMuPDF转图片 + RapidOCR | 85%+ 准确 |
-| 图片 | RapidOCR + Tesseract + HTTP API | 三级降级 |
+| PDF（扫描件） | PyMuPDF转图片 + PaddleOCR | 90%+ 准确 |
+| 图片 | PaddleOCR + Tesseract + Vision API | 单层主引擎 + 显式兜底 |
 | 文字描述 | 直接解析 | 用户口述 |
 | 目录（批量） | 逐份走 1-8 步 | 自动生成汇总报告 |
 | 指定条款 | 精准审核 | 跳过部分步骤 |
@@ -982,8 +1088,8 @@ Step 8 汇总（主 Agent 完成）：
 | 工具 | 来源 | 用途 |
 |------|------|------|
 | **PyMuPDF (fitz)** | 开源 | PDF 电子档提取 |
-| **RapidOCR (rapidocr-onnxruntime)** | 开源 | 扫描件 OCR 主力引擎 |
-| **Tesseract (pytesseract)** | 开源 | 扫描件 OCR 备选引擎 |
+| **PaddleOCR (paddleocr)** | 开源 | 扫描件 OCR 主力引擎 |
+| **Tesseract (pytesseract)** | 开源 | 扫描件 OCR 显式备选引擎 |
 | **Pillow (PIL)** | 开源 | 图片处理 |
 | **obsidian-cli** | 已装 | 规范知识库查询 |
 | **lark-cli** | 已装 | 飞书云盘读取（v1 必要）|
@@ -992,7 +1098,7 @@ Step 8 汇总（主 Agent 完成）：
 | **Write 工具** | TRAE 内置 | 文档输出 |
 | **data_quality_check.py** | Skill 自带 | 数据质量四类检测 |
 
-**v2.0 OCR 升级**：RapidOCR（基于 PaddleOCR 模型 + ONNX Runtime，已替代 Tesseract 成为主力引擎）
+**v4.1 OCR 升级**：PaddleOCR（PaddlePaddle 推理，启用 MKL-DNN，替代 RapidOCR 成为唯一默认主力引擎；Tesseract / Vision API 作为显式兜底）
 
 ---
 
