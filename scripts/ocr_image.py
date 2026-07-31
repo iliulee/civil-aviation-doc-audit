@@ -1,33 +1,35 @@
 """
-扫描件 OCR 脚本（v4.1：PaddleOCR 单层主引擎 + Vision 显式兜底）
-====================================================================
+扫描件 OCR 脚本（v5.0：API-First 策略，Vision API 优先 → PaddleOCR 备选 → Tesseract 兜底）
+============================================================================================
 
 用途：对扫描件图片或 PDF 进行 OCR 识别。
-策略（v4.1）：
-- 默认：PaddleOCR 单层主引擎，经官方参数优化
-- 显式 --engine vision：AI 视觉模型（第三层兜底，需 API Key）
+策略（v5.0 API-First）：
+- 默认 --engine auto：Vision API 优先（自动选择最便宜可用Provider）→ PaddleOCR 本地备选 → Tesseract 兜底
+- 显式 --engine vision：纯 API 模式，只用 Vision API（需 API Key）
+- 显式 --engine paddle：纯本地模式，只用 PaddleOCR（离线可用，需安装）
 - 显式 --engine tesseract：Tesseract 紧急备选
-- 彻底移除 RapidOCR 相关分支，不再作为第一层、第二层或任何默认 fallback
 
-v4.1 核心改进（PaddleOCR 官方最优配置）：
-- 默认引擎改为 PaddleOCR 2.8.1 + PaddlePaddle 2.6.2，模型版本 PP-OCRv4（release/2.8 默认最优）
-- enable_mkldnn=True / cpu_threads=10 开启 Intel CPU 加速（whl 包必须显式开启）
-- det_max_side_len=1920 适配高分辨率扫描件
-- det_db_thresh=0.2 / det_db_box_thresh=0.4 提高手写弱笔画召回，控制噪声框
-- drop_score=0.35 保留更多低分手写结果
-- rec_batch_num=6 / cls_batch_num=6 调低官方默认 30，降低单页峰值内存与卡顿
-- use_angle_cls=True 处理扫描件方向偏差
-- 局部重试限制每页最多 10 个低置信度框，避免极端慢
-- 保留领域后处理（桩号序列推断、Z/2 修正）
+v5.0 核心变更：
+- 默认引擎从 PaddleOCR 改为 auto（API 优先）
+- auto 模式自动降级：Vision API 不可用 → PaddleOCR → Tesseract
+- PaddleOCR 不再是硬依赖，仅在无 API Key 或无网络时作为本地备选
+- 如果只想用 API，设置环境变量后可直接运行，无需安装 PaddleOCR
+- 领域后处理（桩号序列推断、Z/2 修正）保留，但仅对 PaddleOCR 结果生效
+
+Vision API 支持 7 家 Provider（详见 vision_providers.py）：
+    doubao(豆包) / qwen(通义千问) / glm(智谱) / kimi / silicon(硅基流动) / baidu(百度千帆) / openai
+    设置任一环境变量即可使用，auto 模式自动选最便宜的。
 
 使用方式：
-    python scripts/ocr_image.py <图片或PDF路径> [--out <输出>]
-    python scripts/ocr_image.py <PDF路径> --engine paddle --out <输出>
-    python scripts/ocr_image.py <PDF路径> --engine vision --out <输出>
+    python scripts/ocr_image.py <文件> --out <输出>              # 默认 API 优先
+    python scripts/ocr_image.py <文件> --engine vision --out <输出>  # 纯 API
+    python scripts/ocr_image.py <文件> --engine paddle --out <输出>  # 纯本地
+    python scripts/ocr_image.py <文件> --engine tesseract --out <输出>  # Tesseract
 
 前置依赖：
-    pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python Pillow pdf2image requests
-    # install.ps1 会自动安装 PaddleOCR
+    pip install Pillow pdf2image requests opencv-python
+    # API 模式：只需设置环境变量，无需安装 PaddleOCR
+    # 本地模式（--engine paddle）：需额外 pip install paddleocr==2.8.1 paddlepaddle==2.6.2
 """
 
 import sys
@@ -265,10 +267,16 @@ def _get_paddleocr_engine():
 
 
 def _get_poppler_path():
+    # 1. 先检查 skill 自带目录
     p = Path(__file__).parent.parent / "tools" / "poppler"
     if p.exists():
         for bin_dir in p.rglob("pdftoppm.exe"):
             return str(bin_dir.parent)
+    # 2. 再检查系统 PATH（pdf2image 传 None 时会自动调用系统 PATH）
+    import shutil
+    if shutil.which("pdftoppm"):
+        return None
+    # 3. 都没有才返回 None（表示真的没装）
     return None
 
 
@@ -1335,19 +1343,42 @@ def _struct_to_text(items: List[Dict[str, Any]]) -> str:
 # ═══════════════════════════════════════════════════
 # 主入口
 # ═══════════════════════════════════════════════════
+def _has_api_provider() -> bool:
+    """检测是否有可用的 Vision API Provider。"""
+    try:
+        from vision_providers import detect_available_providers
+        return len(detect_available_providers()) > 0
+    except Exception:
+        return False
+
+
 def ocr_image(
     image_path: str,
     lang: str = "chi_sim+eng",
-    engine: str = "paddle",
+    engine: str = "auto",
     use_table: bool = False,
 ) -> dict:
-    """OCR 识别单张图片（v4.1：默认 PaddleOCR，可选 Vision/Tesseract）。"""
+    """OCR 识别单张图片（v5.0 API-First：auto=Vision API 优先 → PaddleOCR 备选 → Tesseract 兜底）。"""
     items = []
     engine_used = "none"
     score = 0.0
 
-    # v4.1: 默认且唯一主引擎 = PaddleOCR
-    if engine in ("paddle", "auto"):
+    if engine == "auto":
+        # auto 模式：Vision API 优先 → PaddleOCR 备选 → Tesseract 兜底
+        if _has_api_provider():
+            print("  [i] auto 模式：检测到 Vision API，优先使用", file=sys.stderr)
+            engine = "vision"
+        elif HAS_PADDLEOCR or _ensure_paddleocr_installed():
+            print("  [i] auto 模式：无 Vision API，降级为 PaddleOCR", file=sys.stderr)
+            engine = "paddle"
+        elif HAS_TESSERACT_DEPS:
+            print("  [i] auto 模式：无 Vision API 也无 PaddleOCR，降级为 Tesseract", file=sys.stderr)
+            engine = "tesseract"
+        else:
+            print("  [X] auto 模式：无可用 OCR 引擎", file=sys.stderr)
+            engine = "none"
+
+    if engine == "paddle":
         if not HAS_PADDLEOCR:
             _ensure_paddleocr_installed()
         try:
@@ -1394,11 +1425,11 @@ def ocr_pdf(
     pdf_path: str,
     lang: str = "chi_sim+eng",
     dpi: int = 200,
-    engine: str = "paddle",
+    engine: str = "auto",
     use_table: bool = False,
     page: Optional[int] = None,
 ) -> dict:
-    """OCR 识别 PDF（v4.1：默认 PaddleOCR，可选 Vision/Tesseract）。
+    """OCR 识别 PDF（v5.0 API-First：auto=Vision API 优先 → PaddleOCR 备选 → Tesseract 兜底）。
 
     Args:
         page: 仅处理指定页码（从1开始）。None 则处理全部页。
@@ -1410,8 +1441,21 @@ def ocr_pdf(
     if not HAS_PDF2IMAGE:
         return {"text": "", "engine": "none", "confidence": 0.0, "items": [], "error": "pdf2image 未安装"}
 
-    # v4.0: 默认且唯一主引擎 = PaddleOCR
-    if engine in ("paddle", "auto"):
+    if engine == "auto":
+        if _has_api_provider():
+            print("  [i] auto 模式：检测到 Vision API，优先使用", file=sys.stderr)
+            engine = "vision"
+        elif HAS_PADDLEOCR or _ensure_paddleocr_installed():
+            print("  [i] auto 模式：无 Vision API，降级为 PaddleOCR", file=sys.stderr)
+            engine = "paddle"
+        elif HAS_TESSERACT_DEPS:
+            print("  [i] auto 模式：无 Vision API 也无 PaddleOCR，降级为 Tesseract", file=sys.stderr)
+            engine = "tesseract"
+        else:
+            print("  [X] auto 模式：无可用 OCR 引擎", file=sys.stderr)
+            engine = "none"
+
+    if engine == "paddle":
         if not HAS_PADDLEOCR:
             _ensure_paddleocr_installed()
         try:
@@ -1481,8 +1525,8 @@ def ocr_pdf(
 # ═══════════════════════════════════════════════════
 def main():
     parser = argparse.ArgumentParser(
-        description="扫描件 OCR（v4.1：PaddleOCR 单层主引擎 + Vision 显式第三层兜底）\n"
-                    "默认使用 PaddleOCR；Vision API 作为第三层显式兜底。",
+        description="扫描件 OCR（v5.0 API-First：Vision API 优先 → PaddleOCR 备选 → Tesseract 兜底）\n"
+                    "默认 auto 模式自动选择最佳可用引擎。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("file", help="图片或 PDF 文件路径")
@@ -1491,8 +1535,8 @@ def main():
     parser.add_argument("--json-out", help="输出结构化 JSON 文件路径（可选）")
     parser.add_argument("--dpi", type=int, default=200, help="PDF 转图 DPI，默认 200")
     parser.add_argument(
-        "--engine", choices=["paddle", "tesseract", "vision", "auto"], default="paddle",
-        help="OCR 引擎：paddle(默认)/tesseract/vision/auto"
+        "--engine", choices=["paddle", "tesseract", "vision", "auto"], default="auto",
+        help="OCR 引擎：auto(默认，API优先)/vision(纯API)/paddle(纯本地)/tesseract(备选)"
     )
     parser.add_argument(
         "--use-table", action="store_true",

@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-107",
+  "name": "沉降/变形监测频率符合方案规定",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "时间轴一致性",
+  "description": "监测方案规定频率：施工期多久一次、加载期多久一次，实际记录间隔应符合。矛盾表现：方案要求3天一次，实际出现10天间隔。",
+  "trigger_when": {
+    "doc_type": ["沉降监测方案", "变形监测方案", "监测记录"],
+    "field_required": ["监测频率", "监测日期"]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "all(相邻监测间隔天数 <= 方案规定频率天数 for 相邻监测间隔 in 监测记录)",
+    "language": "python_eval"
+  },
+  "error_template": "频率矛盾：监测方案规定 {方案规定频率天数}天一次，但 {监测开始日期}~{监测结束日期} 实际间隔 {实际间隔天数}天，超出规定",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查监测是否漏做，或频率填错；若因停工应附说明",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.1.7 迁移"
+    }
+  ]
+}

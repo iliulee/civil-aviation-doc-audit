@@ -2,12 +2,13 @@
 .SYNOPSIS
     民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
-    自动完成 Python 依赖、Poppler、Tesseract OCR、PaddleOCR 的全部安装和配置。
+    自动完成 Python 依赖、Poppler、Tesseract OCR 的安装和配置。
+    PaddleOCR 为可选本地备选引擎，仅在离线场景需要。
     支持一键安装、卸载、静默模式。
     安装完成后无需任何手动操作即可使用。
-    v4.1 变更：PaddleOCR 成为唯一默认 OCR 主引擎；彻底移除 RapidOCR 相关依赖与逻辑；Tesseract 作为系统级紧急备选；Vision API 作为显式第三层兜底。
+    v5.0 API-First 变更：Vision API 成为默认 OCR 引擎；PaddleOCR 降级为可选本地备选；Tesseract 作为离线兜底。
 .NOTES
-    版本: v2.1
+    版本: v3.0
     需要管理员权限（仅 Tesseract 安装和系统 PATH 配置需要）
 #>
 
@@ -25,7 +26,7 @@ $SCRIPTS_DIR = Join-Path $SKILL_DIR "scripts"
 $TOOLS_DIR = Join-Path $SKILL_DIR "tools"
 $REQUIREMENTS = Join-Path $SKILL_DIR "requirements.txt"
 $SKILL_NAME = "民航建设施工资料合规审核大师"
-$SKILL_VERSION = "v4.1"
+$SKILL_VERSION = "v5.0-api"
 
 # ── 输出目录（在 workspace 根目录下） ──
 # SKILL_DIR = workspace\.trae\skills\civil-aviation-doc-audit
@@ -151,28 +152,37 @@ try {
 }
 
 # ────────────────────────────────────────────────
-# 2. Python 依赖
+# 2. Python 依赖（核心 + OCR 引擎）
 # ────────────────────────────────────────────────
-Write-Step "2/7 安装 Python 依赖"
-$deps = @("PyMuPDF", "paddleocr==2.8.1", "paddlepaddle==2.6.2", "opencv-python", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
+Write-Step "2/7 安装 Python 核心依赖"
+$coreDeps = @("PyMuPDF", "opencv-python", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
 $missing = @()
-foreach ($dep in $deps) {
+foreach ($dep in $coreDeps) {
     pip show $dep 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { $missing += $dep }
 }
 if ($missing.Count -gt 0) {
-    Write-Warn "缺少 $($missing.Count) 个依赖: $($missing -join ", ")"
+    Write-Warn "缺少 $($missing.Count) 个核心依赖: $($missing -join ", ")"
     Write-Info "pip install $($missing -join " ")"
-    # PaddleOCR 体积较大，使用清华镜像加速
     $pipArgs = @("install") + $missing + @("-i", "https://pypi.tuna.tsinghua.edu.cn/simple")
     & pip $pipArgs 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-ErrorMsg "依赖安装失败，请检查网络连接后重试"
+        Write-ErrorMsg "核心依赖安装失败，请检查网络连接后重试"
         exit 1
     }
-    Write-Success "依赖安装完成"
+    Write-Success "核心依赖安装完成"
 } else {
-    Write-Success "全部 $($deps.Count) 个依赖已就绪"
+    Write-Success "全部 $($coreDeps.Count) 个核心依赖已就绪"
+}
+
+# PaddleOCR 为可选本地备选引擎（仅离线场景需要）
+Write-Step "2b/7 检查 PaddleOCR（可选本地引擎）"
+try {
+    python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null
+    Write-Success "PaddleOCR 已安装（本地备选引擎可用）"
+} catch {
+    Write-Warn "PaddleOCR 未安装（默认使用 Vision API，无需 PaddleOCR）"
+    Write-Info "如需离线使用，运行: pip install paddleocr==2.8.1 paddlepaddle==2.6.2"
 }
 
 # ────────────────────────────────────────────────
@@ -355,9 +365,21 @@ catch { $results += "Python: FAIL"; $allPassed = $false }
 try { python -c "import fitz" 2>&1 | Out-Null; $results += "PyMuPDF: OK" }
 catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
 
-# PaddleOCR（主力 OCR 引擎）
+# PaddleOCR（可选本地备选引擎）
 try { python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null; $results += "PaddleOCR: OK" }
-catch { $results += "PaddleOCR: FAIL"; $allPassed = $false }
+catch { $results += "PaddleOCR: 未安装（可选，默认使用 Vision API）" }
+
+# Vision API（默认 OCR 引擎）
+try {
+    python -c "from vision_providers import detect_available_providers; p=detect_available_providers(); print(f'{len(p)} providers')" 2>&1 | Out-Null
+    $providers = python -c "from vision_providers import detect_available_providers; p=detect_available_providers(); print(len(p))" 2>&1
+    if ([int]$providers -gt 0) {
+        $results += "Vision API: OK ($providers 个 Provider)"
+    } else {
+        $results += "Vision API: 未配置（设置 API Key 后可用）"
+    }
+}
+catch { $results += "Vision API: 未配置" }
 
 # OpenCV（图像预处理依赖）
 try { python -c "import cv2" 2>&1 | Out-Null; $results += "OpenCV: OK" }

@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civil-aviation-doc-audit.local/schemas/feedback-schema.json",
+  "title": "民航施工资料审核 — 反馈数据结构（单条）",
+  "description": "校验单条反馈 JSON 文件。参考 spec.md 第 7.1 节。支持 missed（漏审）/ false_positive（误报）两类反馈，用于驱动规则自成长闭环。",
+  "type": "object",
+  "required": [
+    "feedback_id",
+    "audit_id",
+    "type",
+    "user_id",
+    "timestamp",
+    "context",
+    "user_input",
+    "status"
+  ],
+  "properties": {
+    "feedback_id": {
+      "type": "string",
+      "pattern": "^FB-\\d{4}-\\d{2}-\\d{2}-\\d{3}$",
+      "description": "全局唯一反馈 ID，格式 FB-YYYY-MM-DD-NNN，由 FeedbackStore.create 自动生成"
+    },
+    "audit_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "关联的审核编号（AU-YYYY-MM-DD-NNN），从审核日志 JSON 中自动捕获"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["missed", "false_positive"],
+      "description": "反馈类型：missed=漏审（应触发未触发）；false_positive=误报（不该触发却触发）"
+    },
+    "rule_id": {
+      "type": ["string", "null"],
+      "description": "误报时填写被误报的规则ID；漏审时填期望触发的规则ID或 null"
+    },
+    "user_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "提交反馈的用户标识（如 admin / 审核员工号）"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}:\\d{2})?(Z|[+-]\\d{2}:\\d{2})?$",
+      "description": "反馈提交时间，ISO 8601 格式（如 2026-07-30T15:30:00+08:00）"
+    },
+    "context": {
+      "type": "object",
+      "required": ["other_hit_rules"],
+      "description": "反馈捕获的审核上下文快照",
+      "properties": {
+        "doc_id": {
+          "type": ["string", "null"],
+          "description": "涉及资料编号（如 DOC-018）"
+        },
+        "doc_file": {
+          "type": ["string", "null"],
+          "description": "涉及资料文件名（如 碎石桩施工记录.pdf）"
+        },
+        "page": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "涉及页码（从 1 开始）"
+        },
+        "row_index": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "涉及表格行号（0-based）"
+        },
+        "field": {
+          "type": ["string", "null"],
+          "description": "涉及字段名（如实长 / 灌入量）"
+        },
+        "field_value": {
+          "type": ["string", "null"],
+          "description": "涉及字段的实际值（字符串形式，便于 OCR 值一并保留）"
+        },
+        "other_hit_rules": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "description": "本次审核中同上下文下其他命中的规则ID列表，可为空数组",
+          "default": []
+        }
+      },
+      "additionalProperties": true
+    },
+    "user_input": {
+      "type": "object",
+      "required": ["summary"],
+      "description": "用户填写的内容",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "问题摘要：漏审时描述应触发而未触发的现象；误报时描述为何判定为误报"
+        },
+        "expected_rule_type": {
+          "type": ["string", "null"],
+          "enum": ["L1-IRON", "L2-LOGIC", "L3-BUSINESS", null],
+          "description": "漏审时填写期望触发的规则层级；误报时为 null"
+        },
+        "expected_severity": {
+          "type": ["string", "null"],
+          "enum": ["Fatal", "Sanity Check", "Best Practice", null],
+          "description": "期望严重度；可空"
+        },
+        "suggested_rule_description": {
+          "type": ["string", "null"],
+          "description": "建议规则的描述（自然语言），供 LLM 反思管道生成候选规则参考"
+        }
+      },
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "string",
+      "enum": ["new", "analyzed", "clustered", "resolved"],
+      "description": "反馈处理状态：new=新建 / analyzed=已分析 / clustered=已聚类 / resolved=已闭环",
+      "default": "new"
+    },
+    "analyzed_at": {
+      "type": ["string", "null"],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}:\\d{2})?(Z|[+-]\\d{2}:\\d{2})?$",
+      "description": "反馈被 LLM 分析管道处理的时间戳；未分析时为 null",
+      "default": null
+    },
+    "cluster_id": {
+      "type": ["string", "null"],
+      "description": "聚类编号（CL-{编号}），由 feedback_analyzer.py 写入；未聚类时为 null",
+      "default": null
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"type": {"const": "false_positive"}},
+        "required": ["type"]
+      },
+      "then": {
+        "description": "误报反馈：rule_id 必填（被误报的规则ID）",
+        "properties": {
+          "rule_id": {"type": "string", "minLength": 1}
+        },
+        "required": ["rule_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"type": {"const": "missed"}},
+        "required": ["type"]
+      },
+      "then": {
+        "description": "漏审反馈：建议填写 expected_rule_type 以辅助 LLM 生成候选规则",
+        "properties": {
+          "user_input": {
+            "properties": {
+              "expected_rule_type": {
+                "type": ["string", "null"],
+                "enum": ["L1-IRON", "L2-LOGIC", "L3-BUSINESS", null]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

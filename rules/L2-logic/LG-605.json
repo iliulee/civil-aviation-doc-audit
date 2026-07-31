@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-605",
+  "name": "桩长偏差无支撑材料（铁律 12/14 配套）",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "因果一致性",
+  "description": "实长 < 设计桩长且差值 > 20% → 必须有持力层验收记录、设计变更或现场签证。矛盾表现：施工日志\"其他情况\"填\"无\"，但 90% 以上桩长不足设计值。",
+  "trigger_when": {
+    "doc_type": ["桩基施工记录", "持力层验收记录", "设计变更通知单", "现场签证"],
+    "field_required": ["实长", "设计桩长", "其他情况"]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "(实长 >= 设计桩长 * 0.8) or exists(持力层验收记录 or 设计变更 or 现场签证 where 桩号 == 当前桩号)",
+    "language": "python_eval"
+  },
+  "error_template": "因果矛盾：桩号 {桩号} 实长 {实长}m < 设计桩长 {设计桩长}m 的 80%，差值 {差值}m > 20%，但无持力层验收记录/设计变更/现场签证",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查桩长不足原因，补办持力层验收或设计变更或现场签证",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["01_场道工程"],
+    "subdivision_codes": ["01-03"]
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.6.5 迁移"
+    }
+  ]
+}

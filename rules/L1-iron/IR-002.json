@@ -1,0 +1,54 @@
+{
+  "rule_id": "IR-002",
+  "name": "OCR 必复核",
+  "level": "L1-IRON",
+  "scope": "SINGLE_DOC",
+  "category": "数据校验",
+  "description": "扫描件 OCR 识别结果仅辅助参考，涉及数据、参数、签章的必须提示人工复核。阶段 2（人工核对）是硬闸门，未完成核对前 human_verified=false，阶段 3 的审核脚本会拒绝执行。人工执行要点：扫描件 OCR 完成后必须停下输出待核实清单，等用户确认或修正后才进入数据质量检测。",
+  "trigger_when": {
+    "doc_type": [
+      "*"
+    ],
+    "field_required": [
+      "ocr_status"
+    ]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "OCR 结果未经人工复核即进入后续审核：{issue}",
+  "severity_on_violation": "Fatal",
+  "remediation": "暂停审核，打开 data-editor.html 完成阶段 2 人工核对，确认后 human_verified=true",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-02 迁移"
+    }
+  ]
+}

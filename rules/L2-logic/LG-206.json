@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-206",
+  "name": "工程量清单 vs 合同清单 vs 结算清单逻辑一致",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "数量累计一致性",
+  "description": "三个清单的工程量应逻辑一致。矛盾表现：合同工程量与结算差异巨大，无变更依据。",
+  "trigger_when": {
+    "doc_type": ["工程量清单", "合同清单", "结算清单"],
+    "field_required": ["项目编码", "工程量"]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "abs(合同工程量 - 结算工程量) / 合同工程量 <= 0.05 or exists(设计变更记录 where 项目编码==清单项目编码)",
+    "language": "python_eval"
+  },
+  "error_template": "数量累计矛盾：项目 {项目编码} 合同工程量 {合同工程量}，结算工程量 {结算工程量}，差异 {diff_pct}% 超出 ±5% 且无变更依据",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查是否有未记录的变更或签证，或工程量计算错误",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.2.6 迁移"
+    }
+  ]
+}

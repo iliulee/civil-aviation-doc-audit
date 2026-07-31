@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>规则编辑器 — 民航施工资料审核</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --surface: #fff; --border: #e2e8f0;
+    --text: #1e293b; --text2: #64748b; --text3: #94a3b8;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --accent-light: #eff6ff;
+    --danger: #dc2626; --danger-light: #fef2f2;
+    --success: #0d9488; --success-light: #f0fdfa;
+    --warning: #d97706; --warning-light: #fffbeb;
+    --l1: #dc2626; --l2: #d97706; --l3: #2563eb; --cu: #7c3aed;
+    --radius: 6px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    --font: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font); font-size: 14px; color: var(--text);
+    background: var(--bg); min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: #0f172a; color: #f1f5f9; padding: 16px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header .sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; padding: 12px 24px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .toolbar .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .toolbar .btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .toolbar .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .toolbar .btn-primary:hover { background: var(--accent-hover); }
+  .toolbar .btn-danger { color: var(--danger); }
+  .toolbar .btn-danger:hover { border-color: var(--danger); background: var(--danger-light); }
+  .toolbar .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .filter-group { display: flex; gap: 8px; align-items: center; }
+  .filter-group label { font-size: 12px; color: var(--text2); }
+  .filter-group select, .filter-group input {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+    font-size: 13px; background: var(--surface);
+  }
+
+  .status-bar {
+    margin-left: auto; font-size: 12px; color: var(--text2);
+  }
+
+  /* Main grid */
+  .main { padding: 16px 24px; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 80px 20px; color: var(--text2);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+  .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+  .empty-state p { font-size: 13px; max-width: 400px; margin: 0 auto; line-height: 1.6; }
+
+  /* Rule table */
+  .rule-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .rule-table th {
+    text-align: left; padding: 10px 12px; font-weight: 600; font-size: 12px;
+    color: var(--text2); border-bottom: 2px solid var(--border);
+    background: var(--surface); position: sticky; top: 0; cursor: pointer;
+    user-select: none;
+  }
+  .rule-table th:hover { color: var(--accent); }
+  .rule-table td {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .rule-table tr:hover td { background: #f8fafc; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-l1 { background: var(--l1); color: #fff; }
+  .badge-l2 { background: var(--l2); color: #fff; }
+  .badge-l3 { background: var(--l3); color: #fff; }
+  .badge-cu { background: var(--cu); color: #fff; }
+  .badge-active { background: #dcfce7; color: #166534; }
+  .badge-draft { background: #fef3c7; color: #92400e; }
+  .badge-deprecated { background: #fce4ec; color: #c62828; }
+
+  .rule-id { font-family: var(--mono); font-size: 12px; color: var(--accent); cursor: pointer; }
+  .rule-id:hover { text-decoration: underline; }
+  .rule-name { font-weight: 500; }
+  .actions { white-space: nowrap; }
+  .actions button {
+    background: none; border: none; cursor: pointer; padding: 4px 8px;
+    font-size: 12px; color: var(--text2); border-radius: 4px;
+  }
+  .actions button:hover { background: var(--accent-light); color: var(--accent); }
+  .actions .del:hover { background: var(--danger-light); color: var(--danger); }
+
+  /* Modal overlay */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: 8px; width: 90%; max-width: 800px;
+    max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.24);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+  }
+  .modal-header h2 { font-size: 16px; }
+  .modal-header .close-btn {
+    background: none; border: none; font-size: 20px; cursor: pointer;
+    color: var(--text2); padding: 4px; line-height: 1;
+  }
+  .modal-header .close-btn:hover { color: var(--text); }
+  .modal-body {
+    flex: 1; overflow-y: auto; padding: 20px;
+  }
+  .modal-footer {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 12px 20px; border-top: 1px solid var(--border);
+  }
+
+  /* Form in modal */
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+    font-size: 13px; font-family: var(--font);
+  }
+  .form-group textarea { font-family: var(--mono); font-size: 12px; min-height: 200px; resize: vertical; }
+  .form-row { display: flex; gap: 12px; }
+  .form-row .form-group { flex: 1; }
+
+  .tab-bar {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .tab-bar button {
+    padding: 8px 16px; border: none; background: none; cursor: pointer;
+    font-size: 13px; color: var(--text2); border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab-bar button:hover { color: var(--text); }
+  .tab-bar button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Notification toast */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+    border-radius: var(--radius); font-size: 13px; font-weight: 500;
+    box-shadow: var(--shadow); z-index: 2000; opacity: 0;
+    transform: translateY(10px); transition: all 0.3s;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast-success { background: var(--success-light); color: #166534; border: 1px solid #99f6e4; }
+  .toast-error { background: var(--danger-light); color: var(--danger); border: 1px solid #fecaca; }
+  .toast-info { background: var(--accent-light); color: var(--accent); border: 1px solid #bfdbfe; }
+
+  /* Loading */
+  .loading { text-align: center; padding: 40px; color: var(--text2); }
+  .loading .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .filter-group { flex-wrap: wrap; }
+    .rule-table { font-size: 12px; }
+    .rule-table th, .rule-table td { padding: 6px 8px; }
+    .modal { width: 95%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <h1>📋 规则编辑器</h1>
+    <div class="sub">离线版 · 无需启动服务 · 直接读写 rules/ 文件夹</div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <button class="btn btn-primary" id="btnOpenFolder">📂 选择 rules 文件夹</button>
+  <button class="btn" id="btnRefresh" disabled>🔄 刷新</button>
+  <button class="btn" id="btnNewRule" disabled>➕ 新建规则</button>
+  <button class="btn" id="btnSaveAll" disabled>💾 保存全部</button>
+  <span class="status-bar" id="statusBar">请先选择 rules 文件夹</span>
+</div>
+
+<!-- Filters -->
+<div class="toolbar" style="border-top:0;padding-top:0" id="filterBar">
+  <div class="filter-group">
+    <label>层级</label>
+    <select id="filterLevel">
+      <option value="all">全部</option>
+      <option value="L1-IRON">L1 铁律</option>
+      <option value="L2-LOGIC">L2 逻辑</option>
+      <option value="L3-BUSINESS">L3 业务</option>
+      <option value="CROSS_UNIT">跨单位</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>状态</label>
+    <select id="filterStatus">
+      <option value="all">全部</option>
+      <option value="active">active</option>
+      <option value="draft">draft</option>
+      <option value="deprecated">deprecated</option>
+      <option value="testing">testing</option>
+      <option value="incubating">incubating</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>搜索</label>
+    <input type="text" id="filterSearch" placeholder="规则ID / 名称..." style="width:200px">
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main" id="mainArea">
+  <div class="empty-state" id="emptyState">
+    <div class="icon">📁</div>
+    <h3>选择 rules 文件夹开始编辑</h3>
+    <p>点击上方「选择 rules 文件夹」按钮，选择本 skill 的 <code>rules/</code> 目录（含 L1-iron、L2-logic、L3-business、cross-unit 子目录），即可浏览、编辑、新建和删除规则。</p>
+  </div>
+  <div id="tableContainer" style="display:none">
+    <table class="rule-table" id="ruleTable">
+      <thead>
+        <tr>
+          <th data-sort="id">规则ID</th>
+          <th data-sort="name">名称</th>
+          <th data-sort="level">层级</th>
+          <th data-sort="scope">作用域</th>
+          <th data-sort="status">状态</th>
+          <th data-sort="category">分类</th>
+          <th style="width:80px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="ruleTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">编辑规则</h2>
+      <button class="close-btn" id="modalCloseBtn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="tab-bar">
+        <button class="active" data-tab="form">📝 简化表单</button>
+        <button data-tab="json">📄 原始 JSON</button>
+        <button data-tab="meta">📊 元数据</button>
+      </div>
+
+      <!-- Tab: Simplified Form -->
+      <div class="tab-content active" id="tabForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label>规则 ID</label>
+            <input type="text" id="editRuleId" placeholder="例: IR-001">
+          </div>
+          <div class="form-group">
+            <label>层级</label>
+            <select id="editLevel">
+              <option value="L1-IRON">L1-IRON（铁律）</option>
+              <option value="L2-LOGIC">L2-LOGIC（逻辑一致性）</option>
+              <option value="L3-BUSINESS">L3-BUSINESS（业务合理性）</option>
+              <option value="CROSS_UNIT">CROSS_UNIT（跨单位）</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>名称</label>
+          <input type="text" id="editName" placeholder="规则名称">
+        </div>
+        <div class="form-group">
+          <label>描述</label>
+          <input type="text" id="editDesc" placeholder="规则描述">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>作用域</label>
+            <select id="editScope">
+              <option value="SINGLE_DOC">SINGLE_DOC（单资料）</option>
+              <option value="CROSS_DOC">CROSS_DOC（跨资料）</option>
+              <option value="CROSS_UNIT">CROSS_UNIT（跨单位）</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>严重度</label>
+            <select id="editSeverity">
+              <option value="Fatal">Fatal（致命）</option>
+              <option value="Sanity Check">Sanity Check（逻辑检查）</option>
+              <option value="Best Practice">Best Practice（最佳实践）</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>触发条件 (trigger_when)</label>
+          <textarea id="editTrigger" rows="4" placeholder='{"doc_type": ["碎石桩施工记录"], "field_required": ["实长", "桩顶高程", "桩底高程"]}'></textarea>
+        </div>
+        <div class="form-group">
+          <label>检查表达式 (check_expr)</label>
+          <textarea id="editExpr" rows="4" placeholder='{"type": "expression", "expr": "abs(实长 - (桩顶高程 - 桩底高程)) <= 0.1", "language": "jinja-expr"}'></textarea>
+        </div>
+        <div class="form-group">
+          <label>错误模板</label>
+          <textarea id="editErrorTmpl" rows="3" placeholder="桩号 {pile_no} 高程自洽失败"></textarea>
+        </div>
+        <div class="form-group">
+          <label>修正建议</label>
+          <input type="text" id="editRemediation" placeholder="核查实长记录是否被涂改">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>状态</label>
+            <select id="editStatus">
+              <option value="active">active</option>
+              <option value="draft">draft</option>
+              <option value="testing">testing</option>
+              <option value="incubating">incubating</option>
+              <option value="deprecated">deprecated</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>版本</label>
+            <input type="text" id="editVersion" placeholder="1.0.0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>分类</label>
+          <input type="text" id="editCategory" placeholder="例: 数学自洽">
+        </div>
+        <div class="form-group">
+          <label>适用范围（专业）</label>
+          <input type="text" id="editProfessional" placeholder='["01_场道工程"]'>
+        </div>
+      </div>
+
+      <!-- Tab: Raw JSON -->
+      <div class="tab-content" id="tabJson">
+        <div class="form-group">
+          <label>原始 JSON（编辑后需保存）</label>
+          <textarea id="editRawJson" rows="25"></textarea>
+        </div>
+      </div>
+
+      <!-- Tab: Metadata -->
+      <div class="tab-content" id="tabMeta">
+        <div class="form-group">
+          <label>文件路径</label>
+          <input type="text" id="editFilePath" readonly style="background:#f8fafc;font-family:var(--mono);font-size:12px">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>创建时间</label>
+            <input type="text" id="editCreatedAt" readonly style="background:#f8fafc">
+          </div>
+          <div class="form-group">
+            <label>更新时间</label>
+            <input type="text" id="editUpdatedAt" readonly style="background:#f8fafc">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>来源</label>
+          <input type="text" id="editSource" value="user" style="background:#f8fafc">
+        </div>
+        <div class="form-group">
+          <label>变更历史 (changelog)</label>
+          <textarea id="editChangelog" rows="6" readonly style="background:#f8fafc;font-family:var(--mono);font-size:12px"></textarea>
+        </div>
+        <div class="form-group">
+          <label>命中统计 (stats)</label>
+          <textarea id="editStats" rows="4" readonly style="background:#f8fafc;font-family:var(--mono);font-size:12px"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="modalCancelBtn">取消</button>
+      <button class="btn btn-primary" id="modalSaveBtn">💾 保存规则</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ====================================================================
+// 规则编辑器 — 离线版 (File System Access API)
+// ====================================================================
+
+// ---------- State ----------
+let state = {
+  rootHandle: null,           // FileSystemDirectoryHandle (rules/)
+  rules: [],                  // parsed rule objects
+  modified: new Set(),        // set of rule_ids that have been modified in memory
+  fileMap: {},                // rule_id -> { filePath, handle, subdir }
+  dirty: false,               // any unsaved changes?
+};
+
+// ---------- DOM refs ----------
+const $ = id => document.getElementById(id);
+const btnOpen = $('btnOpenFolder'), btnRefresh = $('btnRefresh'), btnNew = $('btnNewRule'), btnSaveAll = $('btnSaveAll');
+const statusBar = $('statusBar'), emptyState = $('emptyState'), tableContainer = $('tableContainer');
+const tbody = $('ruleTableBody');
+const filterLevel = $('filterLevel'), filterStatus = $('filterStatus'), filterSearch = $('filterSearch');
+const modalOverlay = $('modalOverlay'), modalTitle = $('modalTitle');
+const toast = $('toast');
+
+// ---------- Helpers ----------
+function showToast(msg, type = 'success') {
+  toast.textContent = msg;
+  toast.className = 'toast toast-' + type + ' show';
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function levelToBadge(level) {
+  if (level === 'L1-IRON') return 'badge-l1';
+  if (level === 'L2-LOGIC') return 'badge-l2';
+  if (level === 'L3-BUSINESS') return 'badge-l3';
+  if (level === 'CROSS_UNIT') return 'badge-cu';
+  return '';
+}
+
+function levelToLabel(level) {
+  if (level === 'L1-IRON') return 'L1 铁律';
+  if (level === 'L2-LOGIC') return 'L2 逻辑';
+  if (level === 'L3-BUSINESS') return 'L3 业务';
+  if (level === 'CROSS_UNIT') return 'CU 跨单位';
+  return level;
+}
+
+function statusToBadge(status) {
+  if (status === 'active') return 'badge-active';
+  if (status === 'draft' || status === 'testing' || status === 'incubating') return 'badge-draft';
+  if (status === 'deprecated') return 'badge-deprecated';
+  return '';
+}
+
+function scopeToLabel(scope) {
+  if (scope === 'SINGLE_DOC') return '单资料';
+  if (scope === 'CROSS_DOC') return '跨资料';
+  if (scope === 'CROSS_UNIT') return '跨单位';
+  return scope;
+}
+
+function getLevelDir(level) {
+  if (level === 'L1-IRON') return 'L1-iron';
+  if (level === 'L2-LOGIC') return 'L2-logic';
+  if (level === 'L3-BUSINESS') return 'L3-business';
+  if (level === 'CROSS_UNIT') return 'cross-unit';
+  return 'L2-logic'; // default
+}
+
+// ---------- File System API ----------
+async function readJSONFile(handle) {
+  const file = await handle.getFile();
+  const text = await file.text();
+  return JSON.parse(text);
+}
+
+async function writeJSONFile(handle, data) {
+  const writable = await handle.createWritable();
+  await writable.write(JSON.stringify(data, null, 2));
+  await writable.close();
+}
+
+async function* walkDir(handle, path = '') {
+  for await (const entry of handle.values()) {
+    const entryPath = path ? path + '/' + entry.name : entry.name;
+    if (entry.kind === 'directory') {
+      yield* walkDir(entry, entryPath);
+    } else {
+      yield { name: entry.name, path: entryPath, handle: entry };
+    }
+  }
+}
+
+// ---------- Load rules from folder ----------
+async function loadRulesFromFolder() {
+  if (!state.rootHandle) return;
+
+  // Try to get directory handle with permission verification
+  let dirHandle;
+  try {
+    dirHandle = await state.rootHandle;
+    // Verify we still have permission
+    const opts = { mode: 'readwrite' };
+    if ((await dirHandle.queryPermission(opts)) !== 'granted') {
+      if ((await dirHandle.requestPermission(opts)) !== 'granted') {
+        showToast('需要读写权限才能编辑规则', 'error');
+        return;
+      }
+    }
+  } catch (e) {
+    showToast('无法访问文件夹: ' + e.message, 'error');
+    return;
+  }
+
+  const rules = [];
+  const fileMap = {};
+  const errors = [];
+  let totalFiles = 0, totalJsonFiles = 0;
+
+  try {
+    for await (const entry of walkDir(dirHandle)) {
+      totalFiles++;
+      if (!entry.name.endsWith('.json') || entry.name === 'registry.json' || entry.name.includes('schema')) continue;
+      totalJsonFiles++;
+      try {
+        const data = await readJSONFile(entry.handle);
+        if (data && data.rule_id) {
+          rules.push(data);
+          fileMap[data.rule_id] = {
+            path: entry.path,
+            handle: entry.handle,
+            subdir: entry.path.split('/')[0],
+          };
+        }
+      } catch (e) {
+        errors.push(entry.path + ': ' + e.message);
+      }
+    }
+  } catch (e) {
+    showToast('读取规则文件失败: ' + e.message, 'error');
+    console.error('walkDir error:', e);
+    return;
+  }
+
+  console.log(`[rule-editor] 扫描: ${totalFiles} 个文件, ${totalJsonFiles} 个JSON, 有效规则: ${rules.length}, 错误: ${errors.length}`);
+
+  // Sort by rule_id
+  rules.sort((a, b) => a.rule_id.localeCompare(b.rule_id));
+
+  state.rules = rules;
+  state.fileMap = fileMap;
+  state.modified = new Set();
+  state.dirty = false;
+
+  if (errors.length > 0) {
+    console.warn('读取规则时出错:', errors);
+  }
+
+  if (rules.length === 0) {
+    showToast(`未找到规则文件。请确认选择了包含 rules/ 文件夹的目录（共扫描 ${totalFiles} 个文件，${totalJsonFiles} 个JSON）`, 'error');
+    emptyState.style.display = 'block';
+    tableContainer.style.display = 'none';
+    statusBar.textContent = `未找到规则 | 文件夹: ${dirHandle.name} | 扫描了 ${totalFiles} 个文件`;
+    return;
+  }
+
+  statusBar.textContent = `共 ${rules.length} 条规则 | 文件夹: ${dirHandle.name}`;
+  emptyState.style.display = 'none';
+  tableContainer.style.display = 'block';
+  renderTable();
+  btnRefresh.disabled = false;
+  btnNew.disabled = false;
+  btnSaveAll.disabled = false;
+  showToast(`成功加载 ${rules.length} 条规则`);
+}
+
+// ---------- Render ----------
+function renderTable() {
+  const level = filterLevel.value;
+  const status = filterStatus.value;
+  const search = filterSearch.value.toLowerCase();
+
+  const filtered = state.rules.filter(r => {
+    if (level !== 'all' && r.level !== level) return false;
+    if (status !== 'all' && r.status !== status) return false;
+    if (search) {
+      const id = (r.rule_id || '').toLowerCase();
+      const name = (r.name || '').toLowerCase();
+      if (!id.includes(search) && !name.includes(search)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text2)">没有匹配的规则</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(r => {
+    const isModified = state.modified.has(r.rule_id);
+    return `<tr>
+      <td><span class="rule-id" data-id="${r.rule_id}">${r.rule_id}</span></td>
+      <td class="rule-name">${r.name || ''}${isModified ? ' <span style="color:var(--warning);font-size:11px">✏️</span>' : ''}</td>
+      <td><span class="badge ${levelToBadge(r.level)}">${levelToLabel(r.level)}</span></td>
+      <td>${scopeToLabel(r.scope)}</td>
+      <td><span class="badge ${statusToBadge(r.status)}">${r.status || ''}</span></td>
+      <td style="color:var(--text2);font-size:12px">${r.category || ''}</td>
+      <td class="actions">
+        <button class="edit-btn" data-id="${r.rule_id}">✏️ 编辑</button>
+        <button class="del del-btn" data-id="${r.rule_id}">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Attach event listeners
+  tbody.querySelectorAll('.rule-id, .edit-btn').forEach(el => {
+    el.addEventListener('click', () => openEditModal(el.dataset.id));
+  });
+  tbody.querySelectorAll('.del-btn').forEach(el => {
+    el.addEventListener('click', () => deleteRule(el.dataset.id));
+  });
+
+  statusBar.textContent = `共 ${state.rules.length} 条规则 | 显示 ${filtered.length} 条 | 已修改 ${state.modified.size} 条 | 文件夹: ${state.rootHandle ? state.rootHandle.name : ''}`;
+}
+
+// ---------- Open Edit Modal ----------
+async function openEditModal(ruleId) {
+  const rule = state.rules.find(r => r.rule_id === ruleId);
+  if (!rule) { showToast('规则未找到', 'error'); return; }
+
+  modalTitle.textContent = '编辑规则 — ' + ruleId;
+  modalOverlay.classList.add('show');
+  modalOverlay.dataset.editId = ruleId;
+  modalOverlay.dataset.isNew = 'false';
+
+  // Fill form
+  $('editRuleId').value = rule.rule_id || '';
+  $('editName').value = rule.name || '';
+  $('editDesc').value = rule.description || '';
+  $('editLevel').value = rule.level || 'L2-LOGIC';
+  $('editScope').value = rule.scope || 'SINGLE_DOC';
+  $('editSeverity').value = rule.severity_on_violation || 'Sanity Check';
+  $('editTrigger').value = JSON.stringify(rule.trigger_when || {}, null, 2);
+  $('editExpr').value = JSON.stringify(rule.check_expr || {}, null, 2);
+  $('editErrorTmpl').value = rule.error_template || '';
+  $('editRemediation').value = rule.remediation || '';
+  $('editStatus').value = rule.status || 'active';
+  $('editVersion').value = rule.version || '1.0.0';
+  $('editCategory').value = rule.category || '';
+
+  // Professional
+  const prof = rule.applies_to && rule.applies_to.professional;
+  $('editProfessional').value = prof ? JSON.stringify(prof) : '';
+
+  // Metadata
+  const fm = state.fileMap[ruleId];
+  $('editFilePath').value = fm ? fm.path : '未知';
+  $('editCreatedAt').value = rule.created_at || '';
+  $('editUpdatedAt').value = rule.updated_at || '';
+  $('editSource').value = rule.source || 'user';
+  $('editChangelog').value = rule.changelog ? JSON.stringify(rule.changelog, null, 2) : '[]';
+  $('editStats').value = rule.stats ? JSON.stringify(rule.stats, null, 2) : '{}';
+
+  // Raw JSON
+  $('editRawJson').value = JSON.stringify(rule, null, 2);
+}
+
+function openNewRuleModal() {
+  modalTitle.textContent = '新建规则';
+  modalOverlay.classList.add('show');
+  modalOverlay.dataset.editId = '';
+  modalOverlay.dataset.isNew = 'true';
+
+  const now = new Date().toISOString().replace('T', 'T').split('.')[0] + '+08:00';
+  const defaults = {
+    rule_id: 'IR-',
+    name: '',
+    level: 'L2-LOGIC',
+    scope: 'SINGLE_DOC',
+    status: 'draft',
+    version: '1.0.0',
+    severity_on_violation: 'Sanity Check',
+    category: '',
+    description: '',
+    trigger_when: { doc_type: [], field_required: [] },
+    check_expr: { type: 'expression', expr: '', language: 'jinja-expr' },
+    error_template: '',
+    remediation: '',
+    applies_to: { professional: ['01_场道工程'], subdivision_codes: [] },
+    created_at: now,
+    updated_at: now,
+    owner: 'user',
+    source: 'user',
+    changelog: [{ version: '1.0.0', date: new Date().toISOString().split('T')[0], author: 'user', change: '初始创建' }],
+    stats: { total_hits: 0, total_reviews: 0, hit_rate: 0, false_positive_count: 0, false_positive_rate: 0 },
+  };
+
+  $('editRuleId').value = defaults.rule_id;
+  $('editName').value = defaults.name;
+  $('editDesc').value = defaults.description;
+  $('editLevel').value = defaults.level;
+  $('editScope').value = defaults.scope;
+  $('editSeverity').value = defaults.severity_on_violation;
+  $('editTrigger').value = JSON.stringify(defaults.trigger_when, null, 2);
+  $('editExpr').value = JSON.stringify(defaults.check_expr, null, 2);
+  $('editErrorTmpl').value = defaults.error_template;
+  $('editRemediation').value = defaults.remediation;
+  $('editStatus').value = defaults.status;
+  $('editVersion').value = defaults.version;
+  $('editCategory').value = defaults.category;
+  $('editProfessional').value = JSON.stringify(defaults.applies_to.professional);
+  $('editFilePath').value = '';
+  $('editCreatedAt').value = defaults.created_at;
+  $('editUpdatedAt').value = defaults.updated_at;
+  $('editSource').value = defaults.source;
+  $('editChangelog').value = JSON.stringify(defaults.changelog, null, 2);
+  $('editStats').value = JSON.stringify(defaults.stats, null, 2);
+  $('editRawJson').value = JSON.stringify(defaults, null, 2);
+}
+
+// ---------- Save Rule from Modal ----------
+async function saveRuleFromModal() {
+  const isNew = modalOverlay.dataset.isNew === 'true';
+  const oldId = modalOverlay.dataset.editId;
+
+  // Build rule object from form
+  let rawJson;
+  try {
+    rawJson = JSON.parse($('editRawJson').value);
+  } catch (e) {
+    showToast('原始 JSON 格式错误: ' + e.message, 'error');
+    return;
+  }
+
+  // Update all fields from form (overwrite raw JSON)
+  rawJson.rule_id = $('editRuleId').value.trim();
+  rawJson.name = $('editName').value.trim();
+  rawJson.description = $('editDesc').value.trim();
+  rawJson.level = $('editLevel').value;
+  rawJson.scope = $('editScope').value;
+  rawJson.severity_on_violation = $('editSeverity').value;
+  rawJson.status = $('editStatus').value;
+  rawJson.version = $('editVersion').value.trim();
+  rawJson.category = $('editCategory').value.trim();
+  rawJson.remediation = $('editRemediation').value.trim();
+
+  try { rawJson.trigger_when = JSON.parse($('editTrigger').value); } catch(e) { showToast('触发条件 JSON 格式错误', 'error'); return; }
+  try { rawJson.check_expr = JSON.parse($('editExpr').value); } catch(e) { showToast('检查表达式 JSON 格式错误', 'error'); return; }
+  rawJson.error_template = $('editErrorTmpl').value.trim();
+
+  // Professional
+  const profStr = $('editProfessional').value.trim();
+  if (profStr) {
+    try {
+      rawJson.applies_to = rawJson.applies_to || {};
+      rawJson.applies_to.professional = JSON.parse(profStr);
+    } catch(e) { showToast('专业范围 JSON 格式错误', 'error'); return; }
+  }
+
+  rawJson.updated_at = new Date().toISOString().replace('T', 'T').split('.')[0] + '+08:00';
+
+  if (!rawJson.rule_id) { showToast('规则 ID 不能为空', 'error'); return; }
+  if (!rawJson.name) { showToast('规则名称不能为空', 'error'); return; }
+
+  // For new rules, set created_at
+  if (isNew) {
+    rawJson.created_at = rawJson.updated_at;
+  }
+
+  // Delete old file if rule_id changed
+  const ruleIdChanged = !isNew && oldId !== rawJson.rule_id;
+
+  // Determine file path
+  const subdir = getLevelDir(rawJson.level);
+  const fileName = rawJson.rule_id + '.json';
+  const filePath = subdir + '/' + fileName;
+
+  try {
+    const dirHandle = state.rootHandle;
+
+    // Get or create subdirectory
+    let subdirHandle;
+    try {
+      subdirHandle = await dirHandle.getDirectoryHandle(subdir);
+    } catch (e) {
+      subdirHandle = await dirHandle.getDirectoryHandle(subdir, { create: true });
+    }
+
+    // Write file
+    const fileHandle = await subdirHandle.getFileHandle(fileName, { create: true });
+    await writeJSONFile(fileHandle, rawJson);
+
+    // Delete old file if rule_id changed
+    if (ruleIdChanged) {
+      const oldSubdir = getLevelDir(state.rules.find(r => r.rule_id === oldId)?.level || 'L2-logic');
+      try {
+        const oldDir = await dirHandle.getDirectoryHandle(oldSubdir);
+        await oldDir.removeEntry(oldId + '.json');
+      } catch(e) { /* ignore if old file not found */ }
+      delete state.fileMap[oldId];
+    }
+
+    // Update in-memory state
+    const existing = state.rules.findIndex(r => r.rule_id === oldId);
+    if (existing >= 0) {
+      if (ruleIdChanged) {
+        state.rules.splice(existing, 1);
+      }
+    }
+
+    // Add or update
+    const idx = state.rules.findIndex(r => r.rule_id === rawJson.rule_id);
+    if (idx >= 0) {
+      state.rules[idx] = rawJson;
+    } else {
+      state.rules.push(rawJson);
+    }
+
+    state.fileMap[rawJson.rule_id] = { path: filePath, handle: fileHandle, subdir };
+    state.modified.delete(oldId);
+    state.modified.delete(rawJson.rule_id);
+
+    modalOverlay.classList.remove('show');
+    renderTable();
+    showToast(isNew ? '规则创建成功' : '规则保存成功');
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+// ---------- Delete Rule ----------
+async function deleteRule(ruleId) {
+  if (!confirm(`确定要删除规则 ${ruleId} 吗？\n此操作不可撤销。`)) return;
+
+  const rule = state.rules.find(r => r.rule_id === ruleId);
+  if (!rule) { showToast('规则未找到', 'error'); return; }
+
+  const subdir = getLevelDir(rule.level);
+  try {
+    const dirHandle = state.rootHandle;
+    const subdirHandle = await dirHandle.getDirectoryHandle(subdir);
+    await subdirHandle.removeEntry(ruleId + '.json');
+
+    state.rules = state.rules.filter(r => r.rule_id !== ruleId);
+    delete state.fileMap[ruleId];
+    state.modified.delete(ruleId);
+
+    renderTable();
+    showToast('规则已删除: ' + ruleId);
+  } catch (e) {
+    showToast('删除失败: ' + e.message, 'error');
+  }
+}
+
+// ---------- Save All (save all modified rules) ----------
+async function saveAllModified() {
+  if (state.modified.size === 0) {
+    showToast('没有需要保存的修改', 'info');
+    return;
+  }
+
+  let saved = 0, errors = [];
+  for (const ruleId of state.modified) {
+    const rule = state.rules.find(r => r.rule_id === ruleId);
+    if (!rule) continue;
+
+    const subdir = getLevelDir(rule.level);
+    try {
+      const dirHandle = state.rootHandle;
+      const subdirHandle = await dirHandle.getDirectoryHandle(subdir, { create: true });
+      const fileHandle = await subdirHandle.getFileHandle(ruleId + '.json', { create: true });
+      await writeJSONFile(fileHandle, rule);
+      saved++;
+    } catch (e) {
+      errors.push(ruleId + ': ' + e.message);
+    }
+  }
+
+  state.modified = new Set();
+  renderTable();
+
+  if (errors.length > 0) {
+    showToast(`保存 ${saved} 条，${errors.length} 条失败`, 'error');
+  } else {
+    showToast(`全部保存成功 (${saved} 条)`);
+  }
+}
+
+// ---------- Event Listeners ----------
+btnOpen.addEventListener('click', async () => {
+  try {
+    const handle = await window.showDirectoryPicker();
+    state.rootHandle = handle;
+    await loadRulesFromFolder();
+  } catch (e) {
+    if (e.name !== 'AbortError' && e.name !== 'SecurityError') {
+      showToast('选择文件夹失败: ' + e.message, 'error');
+    }
+  }
+});
+
+btnRefresh.addEventListener('click', loadRulesFromFolder);
+btnNew.addEventListener('click', openNewRuleModal);
+btnSaveAll.addEventListener('click', saveAllModified);
+
+$('modalCloseBtn').addEventListener('click', () => modalOverlay.classList.remove('show'));
+$('modalCancelBtn').addEventListener('click', () => modalOverlay.classList.remove('show'));
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) modalOverlay.classList.remove('show');
+});
+$('modalSaveBtn').addEventListener('click', saveRuleFromModal);
+
+// Tab switching
+document.querySelectorAll('.tab-bar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab' + btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)).classList.add('active');
+  });
+});
+
+// Filters
+[filterLevel, filterStatus, filterSearch].forEach(el => {
+  el.addEventListener('change', renderTable);
+  el.addEventListener('input', renderTable);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalOverlay.classList.contains('show')) {
+    modalOverlay.classList.remove('show');
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    if (modalOverlay.classList.contains('show')) {
+      saveRuleFromModal();
+    } else {
+      saveAllModified();
+    }
+  }
+});
+
+// ---------- Initial state ----------
+console.log('规则编辑器已加载。点击「选择 rules 文件夹」开始编辑。');
+</script>
+</body>
+</html>

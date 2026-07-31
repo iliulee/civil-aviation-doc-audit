@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-903",
+  "name": "合计数与分项数逻辑匹配（铁律 17 配套）",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "跨资料合计值反向验证",
+  "description": "总桩数 = 各页小计桩数之和；总米数 = 各页小计米数之和。矛盾表现：总桩数 33 根，但各页桩号差 = 32（Z420→Z415，差 5 个号，但共 6 根桩）→ 桩号跳跃需说明。",
+  "trigger_when": {
+    "doc_type": ["施工记录", "汇总表"],
+    "field_required": ["总桩数", "总米数", "各页小计桩数", "各页小计米数", "桩号"]
+  },
+  "check_expr": {
+    "type": "aggregation",
+    "expr": "总桩数 == sum(各页小计桩数) and abs(总米数 - sum(各页小计米数)) / 总米数 <= 0.01",
+    "language": "python_eval"
+  },
+  "error_template": "合计数矛盾：总桩数 {总桩数}，各页小计桩数之和 {小计桩数之和}；总米数 {总米数}，各页小计米数之和 {小计米数之和}，且桩号 {桩号范围} 存在跳跃需说明",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查各页小计是否漏计或重复，桩号跳跃需附说明",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.9.3 迁移"
+    }
+  ]
+}

@@ -13,12 +13,62 @@ test/sample_*.pdf
 test/sample_*.txt
 
 # 审核输出（每次运行生成，不纳入版本管理）
-# 如需保留典型案例，手动复制到 examples/ 目录
 audit_output/
 
 # OCR 复核中间产物（verify_fields.py 生成）
 verify_output/
 crops/
+
+# Trae 插件目录（不纳入版本管理）
+.trae/
+.trae-html-share-packages/
+
+# 压缩包
+*.zip
+
+# 测试文件夹
+测试/
+测试2/
+
+# 仪表盘和报告
+gravel-pile-*/
+analysis/
+transcripts/
+reports/
+/审核报告.html
+
+# 测试图片和PDF（全局排除）
+*.png
+*.pdf
+*.xlsx
+/扫描件.pdf
+/扫描的件.pdf
+
+# 根目录测试/临时文件（仅匹配根目录，不影响子目录）
+/问题清单*.md
+/_skill_reorg.py
+/migrate_subdivision.py
+/test_*.py
+/test_*.log
+/data_quality_input.json
+/baseline_*.json
+/baseline_*.txt
+/paddle_*.json
+/paddle_*.txt
+/rapid_*.json
+/rapid_*.txt
+/v341_*.json
+/v341_*.txt
+/page14_full.png
+/pile_col_*.png
+/z419_*.png
+/data-editor.html
+/project-dashboard.html
+/pdf.min.js
+/pdf.worker.min.js
+
+# 开发文档
+PROJECT_SPEC.md
 
 # 操作系统
 Thumbs.db

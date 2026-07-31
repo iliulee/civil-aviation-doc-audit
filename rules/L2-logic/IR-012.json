@@ -1,0 +1,49 @@
+{
+  "rule_id": "IR-012",
+  "name": "高程自洽",
+  "level": "L2-LOGIC",
+  "scope": "SINGLE_DOC",
+  "category": "数学自洽",
+  "description": "任何含高程列的表格必须做\"实长 = 桩顶高程 − 桩底高程\"校验，允许误差 ±0.1m。超过误差标记为 DQ-ALTER（涂改/数据异常），在审核报告中重点标注。误差分级：≤0.1m 通过；0.1~0.5m 警告；0.5~2m 中；>2m 高。从铁律 R-12 迁移并修正层级（原错归 L1，实际为 L2 数学自洽）。",
+  "trigger_when": {
+    "doc_type": ["碎石桩施工记录", "PHC管桩施工记录"],
+    "field_required": ["实长", "桩顶高程", "桩底高程"]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "abs(实长 - (桩顶高程 - 桩底高程)) <= 0.1",
+    "language": "jinja-expr",
+    "fallback": "python_eval"
+  },
+  "error_template": "桩号 {pile_no} 高程自洽失败：实长 {实长}m，但桩顶高程 {桩顶高程}m − 桩底高程 {桩底高程}m 差异超出容差 ±0.1m",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查实长记录是否被涂改，或高程数据是否抄写错误；>2m 需追溯原始记录",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-12 迁移并修正层级（从 L1-IRON 修正为 L2-LOGIC 数学自洽）"
+    }
+  ]
+}

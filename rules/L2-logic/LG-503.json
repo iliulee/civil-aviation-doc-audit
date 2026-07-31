@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-503",
+  "name": "关键文件应有执业印章",
+  "level": "L2-LOGIC",
+  "scope": "SINGLE_DOC",
+  "category": "签字一致性",
+  "description": "设计变更、关键工序验收、竣工验收应有执业印章。矛盾表现：关键文件仅有签字无印章。",
+  "trigger_when": {
+    "doc_type": ["设计变更通知单", "关键工序验收记录", "竣工验收记录"],
+    "field_required": ["签字人", "执业印章"]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "all(执业印章 is not None and 执业印章 != '' for 签字 in 关键签字)",
+    "language": "python_eval"
+  },
+  "error_template": "签字矛盾：{资料类型} {资料编号} 签字人 {签字人} 仅有签字无执业印章",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查执业印章是否漏盖，必要时退回补盖",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.5.3 迁移"
+    }
+  ]
+}

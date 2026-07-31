@@ -1,0 +1,56 @@
+{
+  "rule_id": "IR-010",
+  "name": "数据质量前置",
+  "level": "L1-IRON",
+  "scope": "SINGLE_DOC",
+  "category": "数据校验",
+  "description": "规范对账之前，必须先对 OCR 提取的表格数据做 4 类数据质量检测（DQ-REPEAT 重复值/JUMP 突变/ALTER 涂改/SELF 自洽）。有 error 停止后续审核要求重新提取，有 high 重点标注造假嫌疑建议现场验证。由 scripts/data_quality_check.py 执行。",
+  "trigger_when": {
+    "doc_type": [
+      "施工记录",
+      "检验批",
+      "检测报告"
+    ],
+    "field_required": [
+      "records"
+    ]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "数据质量检测未通过即进入规范对账：{issue}",
+  "severity_on_violation": "Fatal",
+  "remediation": "执行 data_quality_check.py，有 error 重新提取数据，有 high 重点标注造假嫌疑",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-10 迁移"
+    }
+  ]
+}

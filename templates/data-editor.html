@@ -1,0 +1,3124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据编辑器 — 民航施工资料人工核对</title>
+  <!-- PDF.js 离线优先（./pdf.min.js），失败回退 CDN（v6.0 Phase 7：T-52） -->
+  <script>window.__PDFJS_SRC = 'pending';</script>
+  <script src="./pdf.min.js" onload="window.__PDFJS_SRC='local';"
+          onerror="this.remove(); var s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload=function(){window.__PDFJS_SRC='cdn';}; s.onerror=function(){window.__PDFJS_SRC='failed';}; document.head.appendChild(s);"></script>
+  <style>
+    /* ================================================================
+       Design Tokens — "Precision Instrument"
+       民航施工资料审核 — 专业工具风格
+    ================================================================ */
+    :root {
+      --color-bg-app:        #f4f6f9;
+      --color-bg-surface:    #ffffff;
+      --color-bg-header:     #0f172a;
+      --color-bg-footer:     #0f172a;
+      --color-bg-panel-hdr:  #f8fafc;
+      --color-bg-preview:    #1e293b;
+
+      --color-text-primary:  #1e293b;
+      --color-text-secondary:#64748b;
+      --color-text-tertiary: #94a3b8;
+      --color-text-inverse:  #f1f5f9;
+      --color-text-link:     #2563eb;
+
+      --color-border:        #e2e8f0;
+      --color-border-light:  #f1f5f9;
+      --color-border-focus:  #2563eb;
+
+      --color-accent:        #2563eb;
+      --color-accent-hover:  #1d4ed8;
+      --color-accent-light:  #eff6ff;
+
+      --color-success:       #0d9488;
+      --color-success-light: #f0fdfa;
+      --color-success-border:#99f6e4;
+
+      --color-warning:       #d97706;
+      --color-warning-light: #fffbeb;
+      --color-warning-border:#fde68a;
+
+      --color-danger:        #dc2626;
+      --color-danger-light:  #fef2f2;
+      --color-danger-border: #fecaca;
+
+      --color-modified-bg:   #f0fdf4;
+      --color-modified-border:#86efac;
+
+      --color-ocr-suspect-bg:#fefce8;
+      --color-ocr-suspect-border:#fde047;
+
+      --color-row-hover:     #f8fafc;
+      --color-row-stripe:    #fafbfc;
+      --color-row-alert:     #fef2f2;
+      --color-row-highlight: #eff6ff;
+
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+      --shadow-overlay: 0 12px 40px rgba(0,0,0,0.24);
+
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+      --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+      --font-size-xs: 11px;
+      --font-size-sm: 12px;
+      --font-size-base: 13px;
+      --font-size-md: 14px;
+      --font-size-lg: 16px;
+
+      --transition-fast: 0.12s ease;
+      --transition-base: 0.18s ease;
+    }
+
+    /* ========== Reset & Base ========== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: var(--font-ui);
+      font-size: var(--font-size-base);
+      color: var(--color-text-primary);
+      background: var(--color-bg-app);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ========== Typography ========== */
+    h1, h2, h3 { font-weight: 600; color: var(--color-text-primary); }
+    code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+    /* ========== Buttons ========== */
+    button, .btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--font-ui);
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      padding: 6px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-surface);
+      color: var(--color-text-primary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+      user-select: none;
+      line-height: 1.4;
+    }
+    button:hover:not(:disabled) {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    button:active:not(:disabled) { transform: scale(0.98); }
+    button:disabled { cursor: not-allowed; opacity: 0.45; }
+    button:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    button.primary   { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+    button.primary:hover:not(:disabled) { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+    button.success   { background: var(--color-success); color: #fff; border-color: var(--color-success); }
+    button.success:hover:not(:disabled) { background: #0f766e; border-color: #0f766e; }
+    button.warning   { background: var(--color-warning); color: #fff; border-color: var(--color-warning); }
+    button.warning:hover:not(:disabled) { background: #b45309; border-color: #b45309; }
+    button.danger    { background: var(--color-danger); color: #fff; border-color: var(--color-danger); }
+    button.danger:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; }
+    button.ghost     { border-color: transparent; background: transparent; color: var(--color-text-secondary); }
+    button.ghost:hover:not(:disabled) { background: #f1f5f9; color: var(--color-text-primary); }
+    button.small     { padding: 3px 10px; font-size: var(--font-size-xs); border-radius: 3px; }
+
+    /* ========== Form Elements ========== */
+    input[type="text"], input[type="number"], select {
+      font-family: var(--font-ui);
+      font-size: var(--font-size-sm);
+      padding: 6px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-surface);
+      color: var(--color-text-primary);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+      line-height: 1.4;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+    select { cursor: pointer; }
+
+    /* ========== Top Bar ========== */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 16px;
+      padding: 10px 20px;
+      background: var(--color-bg-header);
+      color: var(--color-text-inverse);
+      flex-wrap: wrap;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      min-height: 48px;
+    }
+    .topbar-brand {
+      display: flex; align-items: center; gap: 8px;
+      font-size: var(--font-size-md);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+    .topbar-brand .icon {
+      display: flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--color-accent);
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+    }
+    .topbar-brand .file-name {
+      color: #fbbf24;
+      font-weight: 500;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toolbar-controls {
+      display: flex; align-items: center; gap: 8px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+    .toolbar-controls label {
+      font-size: var(--font-size-xs);
+      color: #94a3b8;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .toolbar-controls select { min-width: 260px; }
+    .toolbar-controls input[type="text"] { width: 130px; }
+    .toolbar-controls .divider {
+      width: 1px; height: 20px;
+      background: #334155;
+      margin: 0 4px;
+    }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .status-pill.saved   { background: #0d9488; color: #fff; }
+    .status-pill.unsaved { background: #d97706; color: #fff; }
+    .status-pill.saved::before   { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #fff; opacity: 0.8; }
+    .status-pill.unsaved::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #fff; opacity: 0.8; animation: pulse-dot 1.5s ease infinite; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.8; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ========== Main Content ========== */
+    .main-content {
+      display: flex;
+      gap: 0;
+      padding: 0;
+      height: calc(100vh - 48px - 220px);
+      min-height: 360px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .left-panel {
+      flex: 0 0 42%;
+      display: flex; flex-direction: column;
+      background: var(--color-bg-preview);
+      overflow: hidden;
+      min-width: 200px;
+    }
+    .panel-divider {
+      flex: 0 0 5px;
+      background: var(--color-border);
+      cursor: col-resize;
+      transition: background var(--transition-fast);
+      position: relative;
+      z-index: 10;
+    }
+    .panel-divider:hover,
+    .panel-divider.active {
+      background: var(--color-accent);
+    }
+    .panel-divider::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px; height: 32px;
+      border-radius: 2px;
+      background: #94a3b8;
+    }
+    .panel-divider:hover::after,
+    .panel-divider.active::after {
+      background: #fff;
+    }
+    .right-panel {
+      flex: 1;
+      display: flex; flex-direction: column;
+      background: var(--color-bg-surface);
+      overflow: hidden;
+      min-width: 250px;
+    }
+
+    .panel-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 14px;
+      background: var(--color-bg-panel-hdr);
+      border-bottom: 1px solid var(--color-border);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+    .left-panel .panel-header {
+      background: #1e293b;
+      color: #94a3b8;
+      border-bottom: 1px solid #334155;
+    }
+
+    .preview-container {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 12px;
+      overflow: auto;
+    }
+    #pdf-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+      background: #fff;
+      border-radius: 2px;
+    }
+    #image-viewer img {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+      background: #fff;
+      border-radius: 2px;
+    }
+    #preview-placeholder {
+      color: #64748b;
+      font-size: var(--font-size-sm);
+      text-align: center;
+      padding: 40px 24px;
+      line-height: 1.7;
+    }
+    #preview-placeholder code {
+      background: #1e293b;
+      color: #fbbf24;
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    .page-controls {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 8px 14px;
+      background: #1e293b;
+      border-top: 1px solid #334155;
+      flex-shrink: 0;
+    }
+    .page-controls span { color: #94a3b8; font-size: var(--font-size-xs); }
+    .page-controls input[type="number"] {
+      width: 52px;
+      text-align: center;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-color: #334155;
+      font-size: var(--font-size-xs);
+    }
+    .page-controls button {
+      background: transparent;
+      color: #94a3b8;
+      border-color: #334155;
+      font-size: var(--font-size-xs);
+      padding: 4px 10px;
+    }
+    .page-controls button:hover:not(:disabled) {
+      background: #334155;
+      color: #e2e8f0;
+    }
+
+    /* ========== Data Table ========== */
+    .table-container {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      table-layout: fixed;
+      min-width: 600px;
+    }
+    table.data-table thead {
+      position: sticky; top: 0; z-index: 10;
+    }
+    table.data-table th {
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 11px;
+      color: #e2e8f0;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      border-bottom: 2px solid #2563eb;
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    table.data-table th:last-child { border-right: none; }
+    table.data-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #e8ecf1;
+      border-right: 1px solid #f0f2f5;
+      vertical-align: middle;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.55;
+      transition: background var(--transition-fast), box-shadow var(--transition-fast);
+      font-size: 12.5px;
+    }
+    table.data-table td:last-child { border-right: none; }
+    table.data-table tbody tr { transition: background var(--transition-fast), box-shadow var(--transition-fast); }
+    table.data-table tbody tr:nth-child(even) { background: #f7f8fa; }
+    table.data-table tbody tr:hover { background: #eef2ff; box-shadow: inset 3px 0 0 var(--color-accent); }
+
+    td.row-no {
+      background: #f8fafc !important;
+      font-weight: 600;
+      color: var(--color-text-tertiary);
+      text-align: center;
+      width: 44px;
+      min-width: 44px;
+      max-width: 44px;
+      position: sticky; left: 0; z-index: 5;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      border-right: 2px solid var(--color-border) !important;
+    }
+
+    /* Editable cells */
+    td.editable {
+      cursor: text;
+      min-height: 30px;
+      border-radius: 2px;
+    }
+    td.editable:hover {
+      background: #f0f4ff;
+      outline: 1px dashed #93c5fd;
+      outline-offset: -1px;
+    }
+    td.editable:focus {
+      background: #fffbeb;
+      outline: 2px solid var(--color-accent);
+      outline-offset: -2px;
+      box-shadow: 0 0 0 5px rgba(37,99,235,0.08);
+      border-radius: 2px;
+      z-index: 2;
+      position: relative;
+    }
+
+    /* Modified cells */
+    td.modified {
+      background: #ecfdf5 !important;
+      box-shadow: inset 3px 0 0 var(--color-success);
+    }
+    td.modified::after {
+      content: " ✓";
+      color: var(--color-success);
+      font-size: 10px;
+      font-weight: 700;
+      opacity: 0.8;
+    }
+
+    /* Alert rows */
+    tr.alert-row {
+      background: var(--color-row-alert) !important;
+    }
+    tr.alert-row td.row-no {
+      background: #fee2e2 !important;
+      color: var(--color-danger);
+      font-weight: 700;
+    }
+    tr.alert-row td.row-no::before {
+      content: "!";
+    }
+    tr.alert-row:hover { background: #fee2e2 !important; }
+
+    /* OCR suspect cells */
+    td.ocr-suspect {
+      background: var(--color-ocr-suspect-bg) !important;
+      box-shadow: inset 0 0 0 1px var(--color-ocr-suspect-border);
+    }
+    td.ocr-suspect::before {
+      content: "";
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: var(--color-warning);
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+      animation: pulse-dot 2s ease infinite;
+    }
+
+    /* Highlighted row */
+    tr.highlighted {
+      background: var(--color-row-highlight) !important;
+      box-shadow: inset 0 0 0 2px var(--color-accent);
+    }
+
+    /* Raw text cells */
+    td.raw-text-cell {
+      max-width: 420px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      line-height: 1.6;
+    }
+
+    /* ========== Alerts & Suspects Sections ========== */
+    .alerts-section, .suspects-section {
+      background: var(--color-bg-surface);
+      border-top: 1px solid var(--color-border);
+      max-height: 130px;
+      overflow-y: auto;
+    }
+    .alerts-section h2, .suspects-section h2 {
+      position: sticky; top: 0; z-index: 5;
+      margin: 0;
+      padding: 7px 16px;
+      background: var(--color-bg-panel-hdr);
+      border-bottom: 1px solid var(--color-border);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .alerts-section h2 .count { color: var(--color-danger); }
+    .suspects-section h2 .count { color: var(--color-warning); }
+
+    .alert-item, .suspect-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--color-border-light);
+      font-size: var(--font-size-sm);
+      transition: background var(--transition-fast);
+    }
+    .alert-item:hover, .suspect-item:hover { background: #f8fafc; }
+    .alert-item.resolved, .suspect-item.resolved {
+      opacity: 0.55;
+      background: #f9fafb;
+    }
+    .alert-checkbox {
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: var(--color-accent);
+    }
+    .alert-content { flex: 1; min-width: 0; }
+    .alert-code {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      margin-right: 6px;
+      letter-spacing: 0.03em;
+    }
+    .severity-high   { background: var(--color-danger-light); color: var(--color-danger); }
+    .severity-medium { background: var(--color-warning-light); color: var(--color-warning); }
+    .severity-low    { background: var(--color-accent-light); color: var(--color-accent); }
+    .alert-message { color: var(--color-text-primary); font-weight: 500; }
+    .alert-detail  { color: var(--color-text-secondary); font-size: var(--font-size-xs); margin-top: 2px; }
+    .alert-actions, .suspect-actions {
+      display: flex; gap: 4px;
+      flex-shrink: 0;
+    }
+    .resolved-mark {
+      color: var(--color-success);
+      font-weight: 600;
+      font-size: var(--font-size-xs);
+    }
+
+    /* ========== Bottom Bar ========== */
+    .bottom-bar {
+      position: sticky; bottom: 0; z-index: 100;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 20px;
+      background: var(--color-bg-footer);
+      color: var(--color-text-inverse);
+      box-shadow: 0 -1px 4px rgba(0,0,0,0.15);
+      min-height: 42px;
+    }
+    .bottom-bar .info-text {
+      color: #94a3b8;
+      font-size: var(--font-size-xs);
+      font-family: var(--font-mono);
+    }
+    .bottom-bar .actions { display: flex; gap: 8px; }
+
+    .kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      background: #334155;
+      color: #94a3b8;
+      border-radius: 3px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      border: 1px solid #475569;
+      margin: 0 2px;
+    }
+
+    /* ========== Overlay / Dialog ========== */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,0.6);
+      backdrop-filter: blur(2px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+      animation: fadeIn 0.15s ease;
+    }
+    .overlay.hidden { display: none; }
+    .overlay .dialog {
+      background: var(--color-bg-surface);
+      padding: 28px 32px;
+      border-radius: var(--radius-lg);
+      max-width: 560px;
+      width: 90%;
+      box-shadow: var(--shadow-overlay);
+      max-height: 80vh;
+      overflow-y: auto;
+      animation: slideUp 0.2s ease;
+    }
+    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .overlay h3 { font-size: var(--font-size-lg); margin-bottom: 12px; font-weight: 700; }
+    .overlay p  { margin: 6px 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); line-height: 1.6; }
+    .overlay ul { margin: 8px 0; }
+    .overlay li { margin: 4px 0; }
+    .overlay .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .overlay .actions button { min-width: 80px; justify-content: center; }
+    .overlay pre {
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-xs);
+      max-height: 200px;
+      overflow: auto;
+      margin: 8px 0;
+      border: 1px solid var(--color-border-light);
+    }
+
+    /* ========== Toast ========== */
+    .toast {
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      padding: 10px 18px;
+      background: #1e293b;
+      color: #fff;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      z-index: 2000;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      max-width: 380px;
+      opacity: 0;
+      transform: translateX(16px);
+      transition: opacity 0.25s, transform 0.25s;
+      pointer-events: none;
+      line-height: 1.4;
+    }
+    .toast.show { opacity: 1; transform: translateX(0); }
+    .toast.success { background: var(--color-success); }
+    .toast.error   { background: var(--color-danger); }
+    .toast.warning { background: var(--color-warning); }
+
+    /* ========== Drag Zone ========== */
+    .drag-zone {
+      display: none;
+      position: fixed; inset: 0; z-index: 1500;
+      background: rgba(37,99,235,0.06);
+      border: 3px dashed #2563eb;
+      margin: 20px;
+      border-radius: var(--radius-lg);
+      align-items: center; justify-content: center;
+      font-size: var(--font-size-md);
+      color: var(--color-accent);
+      font-weight: 600;
+      pointer-events: none;
+    }
+    .drag-zone.visible { display: flex; }
+    .drag-zone.dragover { background: rgba(37,99,235,0.12); border-color: #1d4ed8; }
+
+    /* ========== Scrollbar ========== */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .table-container::-webkit-scrollbar { width: 8px; height: 8px; }
+
+    /* ========== Empty State ========== */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 48px 24px;
+      color: var(--color-text-tertiary);
+      text-align: center;
+      gap: 8px;
+    }
+    .empty-state .empty-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+    .empty-state .empty-title {
+      font-size: var(--font-size-md);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+    }
+    .empty-state .empty-desc {
+      font-size: var(--font-size-sm);
+      max-width: 300px;
+      line-height: 1.5;
+    }
+
+    /* ========== Column Resize ========== */
+    table.data-table th {
+      position: relative;
+    }
+    .col-resize-handle {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      cursor: col-resize;
+      user-select: none;
+      z-index: 11;
+      transition: background var(--transition-fast);
+    }
+    .col-resize-handle:hover,
+    .col-resize-handle.active {
+      background: var(--color-accent);
+    }
+    body.col-resizing {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+    body.col-resizing * {
+      cursor: col-resize !important;
+    }
+
+    /* ========== View Toggle ========== */
+    .view-toggle {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      margin: 0 12px;
+    }
+    .view-toggle .toggle-btn {
+      padding: 3px 12px;
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      border: none;
+      border-radius: 0;
+      background: var(--color-bg-surface);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      line-height: 1.5;
+    }
+    .view-toggle .toggle-btn.active {
+      background: var(--color-accent);
+      color: #fff;
+    }
+    .view-toggle .toggle-btn:not(.active):hover {
+      background: #f1f5f9;
+    }
+
+    /* ========== Raw text table ========== */
+    table.data-table.raw-view td {
+      font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "SF Mono", "Consolas", monospace;
+      font-size: 12px;
+      padding: 6px 12px;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.6;
+      vertical-align: top;
+      font-variant-ligatures: none;
+      letter-spacing: -0.01em;
+    }
+    table.data-table.raw-view td:not(.row-no) {
+      position: relative;
+    }
+    table.data-table.raw-view td:not(.row-no)::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 10px;
+      height: 10px;
+      cursor: ns-resize;
+      background: linear-gradient(135deg, transparent 50%, #cbd5e1 50%);
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+    }
+    table.data-table.raw-view tr:hover td:not(.row-no)::after {
+      opacity: 1;
+    }
+    table.data-table.raw-view th {
+      font-size: 10px;
+      padding: 4px 10px;
+      background: #334155;
+      color: #94a3b8;
+      font-weight: 400;
+      letter-spacing: 0;
+    }
+    .row-height-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 8px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .row-height-control button {
+      padding: 1px 6px;
+      font-size: 11px;
+      line-height: 1;
+      min-width: 20px;
+      justify-content: center;
+      background: #f1f5f9;
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+    }
+    .row-height-control button:hover {
+      background: #e2e8f0;
+      color: var(--color-text-primary);
+    }
+    .row-height-control .height-label {
+      font-family: var(--font-mono);
+      min-width: 28px;
+      text-align: center;
+    }
+
+    /* ========== Zoom Controls ========== */
+    .page-controls .zoom-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 12px;
+      border-left: 1px solid #334155;
+      padding-left: 12px;
+    }
+    .page-controls .zoom-group button {
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      background: transparent;
+      color: #94a3b8;
+      border-color: #334155;
+      min-width: 28px;
+      justify-content: center;
+    }
+    .page-controls .zoom-group button:hover:not(:disabled) {
+      background: #334155;
+      color: #e2e8f0;
+    }
+    .page-controls .zoom-group button.active {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+    .page-controls .zoom-label {
+      color: #94a3b8;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      min-width: 40px;
+      text-align: center;
+      display: inline-block;
+    }
+
+    /* ========== PDF Magnifier Lens ========== */
+    .pdf-lens {
+      position: fixed;
+      border: 3px solid var(--color-accent);
+      border-radius: 50%;
+      width: 180px;
+      height: 180px;
+      background-repeat: no-repeat;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.2);
+      pointer-events: none;
+      z-index: 200;
+      display: none;
+      cursor: none;
+    }
+    .pdf-lens::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 4px; height: 4px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 4px rgba(0,0,0,0.5);
+    }
+
+    /* ========== Loading Overlay ========== */
+    .loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,0.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 3000;
+      backdrop-filter: blur(2px);
+    }
+    .loading-overlay.hidden { display: none; }
+    .loading-spinner {
+      background: var(--color-bg-surface);
+      padding: 28px 36px;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-overlay);
+      text-align: center;
+      font-size: var(--font-size-md);
+      font-weight: 500;
+      color: var(--color-text-primary);
+    }
+    .loading-spinner .spinner-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      margin: 0 3px;
+      animation: spinner-bounce 1.2s ease infinite;
+    }
+    .loading-spinner .spinner-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loading-spinner .spinner-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes spinner-bounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ========== Responsive ========== */
+    @media (max-width: 900px) {
+      .main-content { flex-direction: column; height: auto; }
+      .left-panel { flex: 0 0 300px; border-right: none; border-bottom: 1px solid var(--color-border); }
+      .right-panel { flex: 0 0 400px; }
+      .toolbar-controls select { min-width: 180px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 顶部工具栏 -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="icon">&#9998;</span>
+      <span>数据编辑器</span>
+      <span class="file-name" id="current-file-name">未加载</span>
+    </div>
+    <div class="toolbar-controls">
+      <span id="save-status" class="status-pill saved">已保存</span>
+      <span class="divider"></span>
+      <label for="file-selector">文件</label>
+      <select id="file-selector" title="选择文件">
+        <option value="">— 请先加载数据底座 —</option>
+      </select>
+      <input type="text" id="pile-search" placeholder="桩号搜索 (如 Z420)">
+      <button id="btn-search-pile" class="small">搜索</button>
+      <span class="divider"></span>
+      <button id="btn-load-dir" title="使用 File System Access API 选择项目文件夹">选择文件夹</button>
+      <button id="btn-refresh" class="ghost small" title="刷新文件列表">刷新</button>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="main-content">
+    <!-- 左侧：原始文件预览 -->
+    <div class="left-panel" id="left-panel">
+      <div class="panel-header">
+        <span>原始文件预览</span>
+        <span id="preview-info" style="font-weight:400;font-size:11px;"></span>
+      </div>
+      <div class="preview-container" id="preview-container">
+        <div id="preview-placeholder">
+          <div class="empty-state">
+            <div class="empty-icon">&#128196;</div>
+            <div class="empty-title">选择文件以查看预览</div>
+            <div class="empty-desc">支持 PDF / 图片格式，与右侧数据表格同步翻页</div>
+          </div>
+        </div>
+        <canvas id="pdf-canvas" style="display:none;"></canvas>
+        <div id="image-viewer" style="display:none;"></div>
+        <div class="pdf-lens" id="pdf-lens"></div>
+      </div>
+      <div class="page-controls">
+        <button id="btn-prev-page" disabled>← 上一页</button>
+        <span>第 <input type="number" id="current-page" value="1" min="1"> / <span id="total-pages">0</span> 页</span>
+        <button id="btn-next-page" disabled>下一页 →</button>
+        <span class="zoom-group">
+          <button id="btn-zoom-out" title="缩小">−</button>
+          <span class="zoom-label" id="zoom-label">100%</span>
+          <button id="btn-zoom-in" title="放大">+</button>
+          <button id="btn-zoom-reset" title="重置缩放" style="font-size:10px;">1:1</button>
+          <button id="btn-magnifier" title="放大镜模式：鼠标悬停PDF查看放大细节" style="font-size:12px;">🔍</button>
+        </span>
+      </div>
+    </div>
+    <div class="panel-divider" id="panel-divider"></div>
+    <!-- 右侧：可编辑表格 -->
+    <div class="right-panel">
+      <div class="panel-header">
+        <span>可编辑数据表格</span>
+        <div class="view-toggle" id="view-toggle">
+          <button class="toggle-btn active" data-view="structured">结构化</button>
+          <button class="toggle-btn" data-view="raw">原始文本</button>
+        </div>
+        <div class="row-height-control" id="row-height-control" style="display:none;">
+          <span>行高</span>
+          <button id="btn-row-height-minus" title="减少行高">−</button>
+          <span class="height-label" id="row-height-label">1.6</span>
+          <button id="btn-row-height-plus" title="增加行高">+</button>
+        </div>
+        <span id="table-info" style="font-weight:400;font-size:11px;color:#94a3b8;"></span>
+      </div>
+      <div class="table-container">
+        <table class="data-table" id="data-table">
+          <thead></thead>
+          <tbody>
+            <tr><td colspan="1">
+              <div class="empty-state">
+                <div class="empty-icon">&#128203;</div>
+                <div class="empty-title">请先选择文件</div>
+                <div class="empty-desc">从上方工具栏下拉框中选择文件，或点击"选择文件夹"加载数据底座</div>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- 质量告警区 -->
+  <section class="alerts-section">
+    <h2>质量告警 <span class="count">(<span id="alerts-count">0</span>)</span></h2>
+    <div id="alerts-list">
+      <div style="padding:12px;color:#94a3b8;text-align:center;font-size:12px;">请先加载文件</div>
+    </div>
+  </section>
+
+  <!-- OCR 存疑项区 -->
+  <section class="suspects-section">
+    <h2>OCR 存疑项 <span class="count">(<span id="suspects-count">0</span>)</span></h2>
+    <div id="suspects-list">
+      <div style="padding:12px;color:#94a3b8;text-align:center;font-size:12px;">请先加载文件</div>
+    </div>
+  </section>
+
+  <!-- 底部操作栏 -->
+  <footer class="bottom-bar">
+    <div class="info-text" id="bottom-info">未加载数据</div>
+    <div class="actions">
+      <span style="font-size:10px;color:#64748b;margin-right:8px;"><span class="kbd">Ctrl+S</span> 保存</span>
+      <button id="btn-export" class="primary small" disabled>保存</button>
+      <button id="btn-confirm" class="success small" disabled>确认完成</button>
+    </div>
+  </footer>
+
+  <!-- 拖拽区域（降级模式时显示） -->
+  <div class="drag-zone" id="drag-zone">
+    将 JSON 文件拖拽到此处
+  </div>
+
+  <!-- 隐藏的文件输入（降级方案） -->
+  <input type="file" id="index-file-input" accept=".json" style="display:none">
+  <input type="file" id="data-file-input" accept=".json" style="display:none">
+
+  <!-- 对话框遮罩 -->
+  <div class="overlay hidden" id="overlay">
+    <div class="dialog" id="overlay-dialog"></div>
+  </div>
+
+  <!-- 提示消息 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- 加载遮罩 -->
+  <div class="loading-overlay hidden" id="loading-overlay">
+    <div class="loading-spinner">
+      <div>正在保存，请稍候</div>
+      <div style="margin-top:8px;">
+        <span class="spinner-dot"></span>
+        <span class="spinner-dot"></span>
+        <span class="spinner-dot"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  /* ========================================================================
+     Web 数据编辑器 - 民航施工资料人工核对
+     实现 T-12~T-21 全部功能
+     纯 HTML+CSS+JS 单文件，无后端依赖
+  ========================================================================= */
+
+  // ========== 全局状态 ==========
+  const state = {
+    // 数据
+    index: null,              // index.json 内容
+    currentDoc: null,         // 当前选中的文档元数据（documents 数组中的一项）
+    currentData: null,        // 当前文档的 JSON 数据（含 rows/quality_result/confusion_result）
+    corrections: [],          // 当前会话的修正记录数组
+    alertsResolved: {},       // 告警处理状态 {alertIndex: {action, note}}
+    suspectsResolved: {},    // 存疑项处理状态 {suspectIndex: {action, value}}
+
+    // 分页
+    currentPage: 1,
+    totalPages: 0,            // PDF 总页数
+    totalTablePages: 0,       // 表格数据总页数
+    pdfDoc: null,             // PDF.js 文档对象
+    dirHandle: null,          // File System Access API 目录句柄
+    originalFileBlob: null,   // 原始文件 Blob（降级模式）
+
+    // 标记
+    modified: false,          // 当前文档是否有未保存的修改
+    docType: null,            // 当前文档类型：'pile' (碎石桩) 或 'general' (通用)
+    viewMode: 'structured',   // 表格视图模式：'structured' (结构化) 或 'raw' (原始文本)
+    columnWidths: [],         // 持久化的列宽（翻页不丢失）
+    pdfScale: 1.0,            // PDF 缩放比例
+    magnifierActive: false,   // 放大镜是否激活
+    rawRowHeight: 1.6,         // 原始文本视图行高（line-height倍数）
+
+    // 加载方式：'fetch'（HTTP 服务器）/ 'dirHandle'（File System Access API）/ 'manual'（手动选择）
+    loadMode: null,
+  };
+
+  // 碎石桩施工记录表头定义
+  const PILE_COLUMNS = [
+    { key: 'row_index', label: '#', readonly: true, width: '40px' },
+    { key: 'pile_no', label: '桩号' },
+    { key: 'design_length', label: '设计桩长' },
+    { key: 'diameter', label: '桩径' },
+    { key: 'bottom_elev', label: '桩底高程' },
+    { key: 'top_elev', label: '桩顶高程' },
+    { key: 'actual_length', label: '实长' },
+    { key: 'current', label: '电流' },
+    { key: 're_penetration', label: '反插次数' },
+    { key: 'volume', label: '灌入量' },
+    { key: 'filling_coeff', label: '充盈系数' },
+    { key: 'verticality', label: '竖直度' },
+    { key: 'start_time', label: '开始时间' },
+    { key: 'end_time', label: '结束时间' },
+    { key: 'remark', label: '备注' },
+  ];
+
+  // 通用资料表头定义
+  const GENERAL_COLUMNS = [
+    { key: 'row_index', label: '#', readonly: true, width: '40px' },
+    { key: 'page', label: '页码' },
+    { key: 'line_no', label: '行号' },
+    { key: 'raw_text', label: '原始文本', width: '400px' },
+  ];
+
+  // PDF.js worker 配置（v6.0：与主库来源保持一致，本地优先、CDN 兜底）
+  if (window.pdfjsLib) {
+    var __workerLocal = './pdf.worker.min.js';
+    var __workerCdn = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = (window.__PDFJS_SRC === 'local') ? __workerLocal : __workerCdn;
+  }
+
+  // ========== 工具函数 ==========
+
+  /** 显示提示消息 */
+  function showToast(message, type = 'info', duration = 3000) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = 'toast show ' + type;
+    setTimeout(() => { toast.className = 'toast ' + type; }, duration);
+  }
+
+  /** 显示遮罩对话框 */
+  function showDialog(html) {
+    const overlay = document.getElementById('overlay');
+    const dialog = document.getElementById('overlay-dialog');
+    dialog.innerHTML = html;
+    overlay.classList.remove('hidden');
+  }
+
+  /** 隐藏遮罩对话框 */
+  function hideDialog() {
+    document.getElementById('overlay').classList.add('hidden');
+  }
+
+  /** 生成 ISO 时间戳 */
+  function nowIso() {
+    return new Date().toISOString();
+  }
+
+  /** HTML 转义 */
+  function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+  }
+
+  /** 判断 rows 类型：碎石桩 or 通用 */
+  function detectDocType(rows) {
+    if (!rows || rows.length === 0) return 'general';
+    const firstRow = rows.find(r => r.pile_no !== undefined || r.actual_length !== undefined);
+    if (firstRow) return 'pile';
+    // 如果第一行有 raw_text 字段，则是通用类型
+    if (rows[0] && rows[0].raw_text !== undefined) return 'general';
+    return 'general';
+  }
+
+  /** 获取当前文档类型的列定义 */
+  function getColumns() {
+    return state.docType === 'pile' ? PILE_COLUMNS : GENERAL_COLUMNS;
+  }
+
+  /** 标记修改状态 */
+  function markModified(modified) {
+    state.modified = modified;
+    const pill = document.getElementById('save-status');
+    if (modified) {
+      pill.textContent = '有未保存修改';
+      pill.className = 'status-pill unsaved';
+    } else {
+      pill.textContent = '已保存';
+      pill.className = 'status-pill saved';
+    }
+  }
+
+  // ========== T-13: JSON 文件加载 ==========
+
+  /** 初始化编辑器，按 A→C→B 顺序尝试加载 */
+  async function initEditor() {
+    // 1. 先尝试方式 C：fetch 直接读取
+    try {
+      const response = await fetch('./数据底座/index.json', { cache: 'no-store' });
+      if (response.ok) {
+        const text = await response.text();
+        const data = JSON.parse(text);
+        state.index = data;
+        state.loadMode = 'fetch';
+        showToast('已通过本地服务器加载 index.json', 'success');
+        populateFileSelector();
+        return;
+      }
+    } catch (e) {
+      console.log('fetch 加载失败，尝试其他方式', e);
+    }
+
+    // 2. 尝试方式 A：File System Access API（自动提示）
+    if (window.showDirectoryPicker) {
+      showDirectoryPickerDialog();
+    } else {
+      // 3. 降级到方式 B：手动选择
+      showManualLoadDialog();
+    }
+  }
+
+  /** 显示目录选择对话框 */
+  function showDirectoryPickerDialog() {
+    showDialog(`
+      <h3>选择项目文件夹</h3>
+      <p>为了加载 <code>index.json</code> 及相关数据文件，请选择以下任一目录：</p>
+      <ul style="font-size:13px;color:#4b5563;line-height:1.8;margin:8px 0;padding-left:20px;">
+        <li><strong>方式一：</strong>选择包含 <code>数据底座/</code> 子目录的项目根目录</li>
+        <li><strong>方式二：</strong>直接选择数据底座目录本身（目录下直接有 <code>index.json</code>）</li>
+      </ul>
+      <p style="background:#f0f9ff;padding:8px;border-radius:4px;font-size:12px;color:#0369a1;border:1px solid #bae6fd;">
+        浏览器将请求文件访问权限，仅用于读取和保存数据，不会上传到任何服务器。
+      </p>
+      <div class="actions">
+        <button onclick="hideDialog()">取消</button>
+        <button class="primary" onclick="pickDirectory()">选择文件夹</button>
+        <button onclick="useManualLoad()">改用手动选择文件</button>
+      </div>
+    `);
+  }
+
+  /** 显示手动加载对话框 */
+  function showManualLoadDialog() {
+    showDialog(`
+      <h3>手动加载 JSON 文件</h3>
+      <p>当前浏览器不支持 File System Access API，或自动加载失败。</p>
+      <p>请按以下步骤操作：</p>
+      <p>1. 点击下方按钮选择 <code>数据底座/index.json</code> 文件</p>
+      <p>2. 然后在文件下拉框中选择要编辑的文件</p>
+      <p>3. 系统将依次提示选择对应的数据 JSON、quality.json、confusion.json</p>
+      <p style="background:#fff7ed;padding:8px;border-radius:4px;font-size:12px;color:#9a3412;">
+        ⚠️ 手动模式下，无法自动保存到原目录，导出时将下载文件供您手动覆盖。
+      </p>
+      <div class="actions">
+        <button class="primary" onclick="document.getElementById('index-file-input').click(); hideDialog();">选择 index.json</button>
+        <button onclick="hideDialog()">关闭</button>
+      </div>
+    `);
+  }
+
+  /** 切换到手动加载 */
+  function useManualLoad() {
+    hideDialog();
+    showManualLoadDialog();
+  }
+
+  /** 选择项目目录（File System Access API） */
+  async function pickDirectory() {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      state.dirHandle = dirHandle;
+
+      // 尝试读取 数据底座/index.json
+      let foundationDir = await dirHandle.getDirectoryHandle('数据底座').catch(() => null);
+      let indexFileHandle;
+
+      let loadModeLabel = '';
+
+      if (foundationDir && foundationDir !== dirHandle) {
+        // 情况 A：用户选了项目根目录，其下有 数据底座/ 子目录
+        indexFileHandle = await foundationDir.getFileHandle('index.json').catch(() => null);
+        loadModeLabel = '（检测到 数据底座/ 子目录）';
+      } else {
+        // 情况 B：用户可能直接选了数据底座目录本身
+        // 检查该目录是否直接包含 index.json
+        indexFileHandle = await dirHandle.getFileHandle('index.json').catch(() => null);
+        if (indexFileHandle) {
+          // 用户直接选了数据底座目录，就把它当作 foundationDir
+          foundationDir = dirHandle;
+          loadModeLabel = '（直接选择数据底座目录）';
+        }
+      }
+
+      if (!indexFileHandle) {
+        showToast('未找到 index.json。请选择包含 index.json 的目录，或包含"数据底座/"子目录的项目根目录', 'error', 5000);
+        return;
+      }
+
+      const file = await indexFileHandle.getFile();
+      const text = await file.text();
+      state.index = JSON.parse(text);
+      state.foundationDirHandle = foundationDir;
+      state.loadMode = 'dirHandle';
+      hideDialog();
+      showToast('成功加载 index.json ' + loadModeLabel, 'success');
+      populateFileSelector();
+    } catch (e) {
+      console.error('选择目录失败', e);
+      if (e.name !== 'AbortError') {
+        showToast('选择目录失败：' + e.message, 'error');
+      }
+    }
+  }
+
+  /** 通过 fetch 从数据底座读取 JSON 文件（本地 HTTP 服务器模式） */
+  async function fetchJsonFromBase(relativePath) {
+    const url = './数据底座/' + relativePath;
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status + ' - ' + url);
+    return await response.json();
+  }
+
+  /** 通过目录句柄读取 JSON 文件 */
+  async function readJsonViaHandle(relativePath) {
+    if (!state.foundationDirHandle) throw new Error('未设置目录句柄');
+    // relativePath 形如 "01_场道工程/施工记录/扫描件.json"
+    const parts = relativePath.split('/').filter(Boolean);
+    let currentHandle = state.foundationDirHandle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentHandle = await currentHandle.getDirectoryHandle(parts[i]);
+    }
+    const fileHandle = await currentHandle.getFileHandle(parts[parts.length - 1]);
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    return JSON.parse(text);
+  }
+
+  /** 通过目录句柄写入 JSON 文件 */
+  async function writeJsonViaHandle(relativePath, jsonContent) {
+    if (!state.foundationDirHandle) throw new Error('未设置目录句柄');
+    const parts = relativePath.split('/').filter(Boolean);
+    let currentHandle = state.foundationDirHandle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentHandle = await currentHandle.getDirectoryHandle(parts[i], { create: true });
+    }
+    const fileHandle = await currentHandle.getFileHandle(parts[parts.length - 1], { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(jsonContent, null, 2));
+    await writable.close();
+  }
+
+  /** 手动选择 index.json 文件 */
+  document.getElementById('index-file-input').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        state.index = JSON.parse(ev.target.result);
+        state.loadMode = 'manual';
+        showToast('index.json 已加载', 'success');
+        populateFileSelector();
+        // 提示用户后续手动加载各文件
+        showToast('请从下拉框选择文件，系统会提示选择对应数据 JSON', 'info', 5000);
+      } catch (err) {
+        showToast('解析 index.json 失败：' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // ========== T-14: 文件列表导航 ==========
+
+  /** 填充文件下拉选择框 */
+  function populateFileSelector() {
+    const select = document.getElementById('file-selector');
+    select.innerHTML = '<option value="">— 请选择文件 —</option>';
+    if (!state.index || !state.index.documents) return;
+
+    const auditedFiles = state.index.file_classification?.audited_files || [];
+    const docs = state.index.documents.filter(d =>
+      (d.ocr_status === 'completed' || d.ocr_status === 'needs_review') && auditedFiles.includes(d.original_file)
+    );
+
+    docs.forEach(doc => {
+      const option = document.createElement('option');
+      option.value = doc.id;
+      option.textContent = `${doc.id} | ${doc.original_file} | ${doc.professional}`;
+      option.dataset.docId = doc.id;
+      select.appendChild(option);
+    });
+
+    if (docs.length === 0) {
+      select.innerHTML = '<option value="">— 无可用文件（OCR 未完成或未分类） —</option>';
+    }
+  }
+
+  /** 文件选择切换 */
+  document.getElementById('file-selector').addEventListener('change', async function(e) {
+    const docId = e.target.value;
+    if (!docId) return;
+
+    // 自动保存当前文件修改（如果有）
+    if (state.modified && state.currentDoc) {
+      const confirmed = confirm(`当前文件 ${state.currentDoc.original_file} 有未保存修改，是否在切换前导出？\n\n确定 = 导出后切换\n取消 = 直接切换（丢失修改）`);
+      if (confirmed) {
+        await exportCorrectedData();
+      }
+    }
+
+    // 重置状态
+    state.corrections = [];
+    state.alertsResolved = {};
+    state.suspectsResolved = {};
+    state.currentPage = 1;
+    state.pdfDoc = null;
+    state.totalPages = 0;
+    state.totalTablePages = 0;
+    markModified(false);
+
+    // 加载新文件
+    await loadDocument(docId);
+  });
+
+  /** 加载指定文档 */
+  async function loadDocument(docId) {
+    const doc = state.index.documents.find(d => d.id === docId);
+    if (!doc) {
+      showToast('未找到文档：' + docId, 'error');
+      return;
+    }
+    state.currentDoc = doc;
+
+    document.getElementById('current-file-name').textContent = doc.original_file || doc.id;
+
+    try {
+      // 加载数据 JSON
+      if (state.dirHandle) {
+        // 通过目录句柄读取
+        state.currentData = await readJsonViaHandle(doc.data_file);
+        // 加载 quality.json
+        if (doc.quality_file) {
+          try { state.currentData.quality_result = await readJsonViaHandle(doc.quality_file); } catch (e) { console.warn('quality.json 读取失败', e); }
+        }
+        // 加载 confusion.json
+        if (doc.confusion_file) {
+          try { state.currentData.confusion_result = await readJsonViaHandle(doc.confusion_file); } catch (e) { console.warn('confusion.json 读取失败', e); }
+        }
+      } else if (state.loadMode === 'fetch') {
+        // fetch 模式：通过本地 HTTP 服务器读取数据底座下的文件
+        try {
+          state.currentData = await fetchJsonFromBase(doc.data_file);
+          if (doc.quality_file) {
+            try { state.currentData.quality_result = await fetchJsonFromBase(doc.quality_file); } catch (e) { console.warn('quality.json fetch 失败', e); }
+          }
+          if (doc.confusion_file) {
+            try { state.currentData.confusion_result = await fetchJsonFromBase(doc.confusion_file); } catch (e) { console.warn('confusion.json fetch 失败', e); }
+          }
+        } catch (e) {
+          // fetch 读取失败，降级到手动选择模式
+          console.warn('fetch 加载数据文件失败，降级到手动模式', e);
+          showToast('fetch 加载失败，请手动选择文件：' + e.message, 'warning', 5000);
+          await loadDocumentManually(doc);
+        }
+      } else {
+        // 降级模式：提示用户手动选择文件
+        await loadDocumentManually(doc);
+      }
+
+      // 检测文档类型
+      state.docType = detectDocType(state.currentData.rows);
+
+      // 渲染
+      renderTable();
+      renderQualityAlerts();
+      renderOcrSuspects();
+
+      // 启用导出按钮
+      document.getElementById('btn-export').disabled = false;
+      document.getElementById('btn-confirm').disabled = false;
+
+      // 加载原始文件预览
+      await loadOriginalFilePreview();
+
+      updateBottomInfo();
+      showToast(`已加载 ${doc.original_file}`, 'success');
+    } catch (err) {
+      console.error('加载文档失败', err);
+      showToast('加载文档失败：' + err.message, 'error');
+    }
+  }
+
+  /** 手动加载文档（降级模式） */
+  async function loadDocumentManually(doc) {
+    showDialog(`
+      <h3>请选择数据文件</h3>
+      <p>当前为手动模式，请选择文档 <code>${doc.id}</code> 对应的数据 JSON 文件：</p>
+      <p style="background:#f3f4f6;padding:8px;border-radius:4px;font-size:12px;">
+        预期路径：<code>数据底座/${doc.data_file}</code>
+      </p>
+      <div class="actions">
+        <button class="primary" onclick="document.getElementById('data-file-input').click();">选择数据 JSON</button>
+      </div>
+    `);
+    // 等待用户选择文件
+    return new Promise((resolve, reject) => {
+      const input = document.getElementById('data-file-input');
+      input.onchange = async function(e) {
+        const file = e.target.files[0];
+        if (!file) { reject(new Error('未选择文件')); return; }
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          try {
+            state.currentData = JSON.parse(ev.target.result);
+            hideDialog();
+            // 提示是否加载 quality 和 confusion
+            if (confirm('是否加载 quality.json？（取消则跳过）')) {
+              const qFile = await pickFileManually('选择 quality.json');
+              if (qFile) state.currentData.quality_result = qFile;
+            }
+            if (confirm('是否加载 confusion.json？（取消则跳过）')) {
+              const cFile = await pickFileManually('选择 confusion.json');
+              if (cFile) state.currentData.confusion_result = cFile;
+            }
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.readAsText(file);
+      };
+    });
+  }
+
+  /** 手动选择并读取 JSON 文件 */
+  function pickFileManually(title) {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) { resolve(null); return; }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try { resolve(JSON.parse(ev.target.result)); }
+          catch (err) { showToast('解析失败：' + err.message, 'error'); resolve(null); }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    });
+  }
+
+  // ========== T-15: 左图右表对照 ==========
+
+  /** 加载原始文件预览 */
+  async function loadOriginalFilePreview() {
+    const doc = state.currentDoc;
+    if (!doc) return;
+
+    const placeholder = document.getElementById('preview-placeholder');
+    const canvas = document.getElementById('pdf-canvas');
+    const imageViewer = document.getElementById('image-viewer');
+    placeholder.style.display = 'block';
+    canvas.style.display = 'none';
+    imageViewer.style.display = 'none';
+    imageViewer.innerHTML = '';
+
+    const fileType = (doc.file_type || '').toLowerCase();
+    const isScanned = doc.is_scanned;
+    document.getElementById('preview-info').textContent = '';
+
+    // 尝试获取原始文件
+    let file = null;
+
+    // 优先使用已缓存的 Blob（用户手动选择过）
+    if (state.originalFileBlob) {
+      file = state.originalFileBlob;
+    } else if (state.dirHandle) {
+      try {
+        // 原始文件位于项目根目录
+        // 注意：如果用户直接选了数据底座目录，File System Access API 无法向上导航
+        const fileName = doc.original_file;
+        const fileHandle = await state.dirHandle.getFileHandle(fileName);
+        file = await fileHandle.getFile();
+      } catch (e) {
+        console.log('原始文件自动读取失败（可能选了数据底座目录，文件在上级根目录）', e);
+      }
+    }
+
+    if (!file) {
+      // 无法自动加载，提供手动选择入口
+      placeholder.innerHTML = `
+        <div style="text-align:center;padding:20px;">
+          <p style="margin-bottom:8px;font-size:14px;font-weight:600;">无法自动加载原始文件</p>
+          <p style="font-size:11px;color:#94a3b8;margin-bottom:16px;line-height:1.6;">
+            文件名：<code>${escapeHtml(doc.original_file)}</code><br>
+            可能原因：选择了数据底座目录而非项目根目录，<br>原始文件位于上级目录，浏览器无法自动访问。
+          </p>
+          <button class="small primary" onclick="window.manuallySelectOriginalFile()" style="font-size:13px;padding:8px 20px;">
+            手动选择原始文件
+          </button>
+        </div>`;
+      return;
+    }
+
+    // 根据类型渲染
+    if (fileType === 'pdf' || fileType.endsWith('.pdf') || file.type === 'application/pdf') {
+      await renderPdf(file);
+    } else if (fileType.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i) || file.type.startsWith('image/')) {
+      renderImage(file);
+    } else {
+      placeholder.innerHTML = '该文件类型不支持预览<br><br>文件：<code>' + escapeHtml(doc.original_file) + '</code><br>类型：<code>' + escapeHtml(fileType) + '</code>';
+    }
+  }
+
+  /** 使用 PDF.js 渲染 PDF */
+  async function renderPdf(file) {
+    if (!window.pdfjsLib) {
+      var tip = (window.__PDFJS_SRC === 'failed')
+        ? 'PDF.js 加载失败<br>本地 pdf.min.js 缺失且 CDN 不可用<br>请重新执行 build 命令或检查网络'
+        : 'PDF.js 未加载<br>请检查网络连接或重新执行 build 命令';
+      document.getElementById('preview-placeholder').innerHTML = tip;
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      state.pdfDoc = await loadingTask.promise;
+      state.totalPages = state.pdfDoc.numPages;
+      state.currentPage = 1;
+      document.getElementById('preview-info').textContent = `PDF 共 ${state.totalPages} 页`;
+      document.getElementById('current-page').value = 1;
+      updatePageButtons();
+      await renderPdfPage(1);
+    } catch (err) {
+      console.error('PDF 渲染失败', err);
+      document.getElementById('preview-placeholder').innerHTML = 'PDF 渲染失败：' + escapeHtml(err.message);
+    }
+  }
+
+  /** 渲染指定页 PDF */
+  async function renderPdfPage(pageNum) {
+    if (!state.pdfDoc) return;
+    const canvas = document.getElementById('pdf-canvas');
+    const placeholder = document.getElementById('preview-placeholder');
+    placeholder.style.display = 'none';
+    canvas.style.display = 'block';
+
+    try {
+      const page = await state.pdfDoc.getPage(pageNum);
+      const container = document.getElementById('preview-container');
+      const autoScale = Math.min(1.5, (container.clientWidth - 16) / page.getViewport({ scale: 1 }).width);
+      const scale = state.pdfScale * autoScale;
+      const viewport = page.getViewport({ scale: Math.max(0.3, scale) });
+      const context = canvas.getContext('2d');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: context, viewport: viewport }).promise;
+      state.currentPage = pageNum;
+      document.getElementById('current-page').value = pageNum;
+      updateZoomLabel();
+      // 同步表格（按页重新渲染）
+      renderTable();
+    } catch (err) {
+      console.error('渲染页面失败', err);
+      showToast('渲染页面失败：' + err.message, 'error');
+    }
+  }
+
+  /** 更新缩放标签 */
+  function updateZoomLabel() {
+    document.getElementById('zoom-label').textContent = Math.round(state.pdfScale * 100) + '%';
+  }
+
+  /** 放大 PDF */
+  function zoomIn() {
+    state.pdfScale = Math.min(3.0, state.pdfScale + 0.25);
+    if (state.pdfDoc) renderPdfPage(state.currentPage);
+    updateZoomLabel();
+  }
+
+  /** 缩小 PDF */
+  function zoomOut() {
+    state.pdfScale = Math.max(0.5, state.pdfScale - 0.25);
+    if (state.pdfDoc) renderPdfPage(state.currentPage);
+    updateZoomLabel();
+  }
+
+  /** 重置 PDF 缩放 */
+  function zoomReset() {
+    state.pdfScale = 1.0;
+    if (state.pdfDoc) renderPdfPage(state.currentPage);
+    updateZoomLabel();
+  }
+
+  /** 切换放大镜模式 */
+  function toggleMagnifier() {
+    state.magnifierActive = !state.magnifierActive;
+    const btn = document.getElementById('btn-magnifier');
+    const lens = document.getElementById('pdf-lens');
+    if (state.magnifierActive) {
+      btn.classList.add('active');
+      btn.title = '放大镜已开启：鼠标悬停PDF查看放大细节（点击关闭）';
+    } else {
+      btn.classList.remove('active');
+      btn.title = '放大镜模式：鼠标悬停PDF查看放大细节';
+      lens.style.display = 'none';
+    }
+  }
+
+  /** 初始化 PDF 放大镜 */
+  function initPdfMagnifier() {
+    const canvas = document.getElementById('pdf-canvas');
+    const lens = document.getElementById('pdf-lens');
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!state.magnifierActive) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      // 只在实际 canvas 区域内响应
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+        lens.style.display = 'none';
+        return;
+      }
+      const lensSize = 180;
+      const zoom = 2.5;
+      // 计算背景图偏移，使鼠标位置对准镜头中心
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const bgX = -(x * scaleX * zoom - lensSize / 2);
+      const bgY = -(y * scaleY * zoom - lensSize / 2);
+
+      lens.style.backgroundImage = `url(${canvas.toDataURL()})`;
+      lens.style.backgroundSize = `${canvas.width * zoom}px ${canvas.height * zoom}px`;
+      lens.style.backgroundPosition = `${bgX}px ${bgY}px`;
+      lens.style.display = 'block';
+      lens.style.left = (e.clientX + 20) + 'px';
+      lens.style.top = (e.clientY - lensSize - 20) + 'px';
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      lens.style.display = 'none';
+    });
+
+    canvas.addEventListener('click', () => {
+      if (state.magnifierActive) {
+        toggleMagnifier(); // 点击关闭放大镜
+      }
+    });
+  }
+
+  /** 渲染图片 */
+  function renderImage(file) {
+    const placeholder = document.getElementById('preview-placeholder');
+    const imageViewer = document.getElementById('image-viewer');
+    placeholder.style.display = 'none';
+    imageViewer.style.display = 'block';
+    imageViewer.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    img.alt = file.name;
+    imageViewer.appendChild(img);
+    state.totalPages = 1;
+    state.currentPage = 1;
+    document.getElementById('total-pages').textContent = 1;
+    document.getElementById('current-page').value = 1;
+    document.getElementById('btn-prev-page').disabled = true;
+    document.getElementById('btn-next-page').disabled = true;
+    document.getElementById('preview-info').textContent = '图片预览';
+  }
+
+  /** 获取当前文档总页数（PDF 页数 或 表格页数，取大值） */
+  function getTotalPages() {
+    return Math.max(state.totalPages || 0, state.totalTablePages || 0, 1);
+  }
+
+  /** 翻页：上一页 */
+  document.getElementById('btn-prev-page').addEventListener('click', () => {
+    if (state.currentPage > 1) {
+      const newPage = state.currentPage - 1;
+      if (state.pdfDoc) {
+        renderPdfPage(newPage);
+      } else {
+        highlightTableRowsByPage(newPage);
+      }
+      updatePageButtons();
+    }
+  });
+
+  /** 翻页：下一页 */
+  document.getElementById('btn-next-page').addEventListener('click', () => {
+    const total = getTotalPages();
+    if (state.currentPage < total) {
+      const newPage = state.currentPage + 1;
+      if (state.pdfDoc) {
+        renderPdfPage(newPage);
+      } else {
+        highlightTableRowsByPage(newPage);
+      }
+      updatePageButtons();
+    }
+  });
+
+  /** 更新翻页按钮状态 */
+  function updatePageButtons() {
+    const total = getTotalPages();
+    document.getElementById('btn-prev-page').disabled = state.currentPage <= 1;
+    document.getElementById('btn-next-page').disabled = state.currentPage >= total;
+    document.getElementById('current-page').value = state.currentPage;
+    document.getElementById('total-pages').textContent = total;
+  }
+
+  /** 页码输入跳转 */
+  document.getElementById('current-page').addEventListener('change', function(e) {
+    const page = parseInt(e.target.value, 10);
+    const total = getTotalPages();
+    if (page >= 1 && page <= total) {
+      if (state.pdfDoc) {
+        renderPdfPage(page);
+      } else {
+        highlightTableRowsByPage(page);
+      }
+      updatePageButtons();
+    } else {
+      e.target.value = state.currentPage;
+    }
+  });
+
+  /** 按页重新渲染表格（分页渲染，只渲染当前页行） */
+  function highlightTableRowsByPage(page) {
+    state.currentPage = page;
+    renderTable();
+  }
+
+  // ========== T-15 / T-16: 表格渲染与编辑 ==========
+
+  /** 渲染数据表格 */
+  function renderTable() {
+    // 原始文本视图走独立渲染逻辑
+    if (state.viewMode === 'raw') {
+      renderRawTextTable();
+      return;
+    }
+
+    const table = document.getElementById('data-table');
+    table.classList.remove('raw-view');
+    // 重置表格宽度（清除上次拖拽设置的固定像素宽度）
+    table.style.width = '';
+    table.style.minWidth = '';
+    const thead = table.querySelector('thead');
+    const tbody = table.querySelector('tbody');
+    const columns = getColumns();
+    const rows = state.currentData?.rows || [];
+
+    // 渲染表头
+    thead.innerHTML = '<tr>' + columns.map(col => {
+      const isFixed = col.readonly && col.width;
+      const fixedClass = isFixed ? ' class="fixed-col"' : '';
+      const style = isFixed
+        ? ` style="width:${col.width};min-width:${col.width};max-width:${col.width}"`
+        : (col.width ? ` style="width:${col.width}"` : '');
+      return `<th${fixedClass}${style}>${escapeHtml(col.label)}</th>`;
+    }).join('') + '</tr>';
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="' + columns.length + '" style="text-align:center;color:#9ca3af;padding:40px;">暂无数据</td></tr>';
+      document.getElementById('table-info').textContent = '0 行';
+      initColumnResize();
+      return;
+    }
+
+    // 收集质量告警影响的行
+    const alertRows = collectAlertRows();
+    // 收集 OCR 存疑影响的单元格
+    const suspectCells = collectSuspectCells();
+
+    // 按页分页渲染，避免大文件 DOM 爆炸导致浏览器崩溃
+    const currentPage = state.currentPage || 1;
+    const hasPageField = rows.length > 0 && rows[0].page !== undefined;
+    const pageRows = hasPageField
+      ? rows.filter(r => (r.page || 1) === currentPage)
+      : rows.slice(0, 50); // 无 page 字段时最多渲染 50 行
+
+    // 计算总页数（基于 rows 中最大 page 值）
+    const maxPage = hasPageField
+      ? Math.max(1, ...rows.map(r => r.page || 1))
+      : 1;
+    state.totalTablePages = maxPage;
+    updatePageButtons();
+
+    // 渲染行
+    tbody.innerHTML = '';
+    pageRows.forEach((row, idx) => {
+      const tr = document.createElement('tr');
+      tr.dataset.rowIndex = row.row_index !== undefined ? row.row_index : (idx + 1);
+      tr.dataset.arrayIndex = idx;
+      tr.dataset.page = row.page || 1;
+
+      // 标记质量告警行
+      if (alertRows.has(tr.dataset.rowIndex)) {
+        tr.classList.add('alert-row');
+      }
+
+      columns.forEach(col => {
+        const td = document.createElement('td');
+        if (col.readonly) {
+          td.classList.add('row-no');
+          td.textContent = tr.dataset.rowIndex;
+        } else {
+          td.classList.add('editable');
+          // 必须设置 contenteditable="true" 才能让单元格可编辑并响应 focus 事件
+          td.setAttribute('contenteditable', 'true');
+          td.setAttribute('spellcheck', 'false');
+          const value = row[col.key];
+          td.textContent = value === null || value === undefined ? '' : String(value);
+          // 标记已修改
+          if (isFieldModified(tr.dataset.rowIndex, col.key)) {
+            td.classList.add('modified');
+            td.title = '已修改：' + getOriginalValue(tr.dataset.rowIndex, col.key) + ' → ' + value;
+          }
+          // 标记 OCR 存疑
+          const suspectKey = tr.dataset.rowIndex + ':' + col.key;
+          if (suspectCells[suspectKey]) {
+            td.classList.add('ocr-suspect');
+            const s = suspectCells[suspectKey];
+            td.title = 'OCR 存疑：原始值=' + s.original_value + '，建议值=' + s.suggested_value + '（置信度 ' + (s.confidence || '未知') + '）';
+          }
+          // 通用资料的 raw_text 单独样式
+          if (col.key === 'raw_text') td.classList.add('raw-text-cell');
+          // 绑定编辑事件
+          attachEditHandlers(td, idx, col.key, tr.dataset.rowIndex);
+        }
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('table-info').textContent = `${rows.length} 行（当前第 ${currentPage} 页，共 ${state.totalTablePages} 页）| 类型：${state.docType === 'pile' ? '碎石桩施工记录' : '通用资料'}`;
+    initColumnResize();
+  }
+
+  /** 渲染原始文本视图（紧凑表格，保留原始排版，可编辑） */
+  function renderRawTextTable() {
+    const table = document.getElementById('data-table');
+    table.classList.add('raw-view');
+    // 重置表格宽度（清除上次拖拽设置的固定像素宽度）
+    table.style.width = '';
+    table.style.minWidth = '';
+    const thead = table.querySelector('thead');
+    const tbody = table.querySelector('tbody');
+    const rows = state.currentData?.rows || [];
+
+    if (rows.length === 0) {
+      thead.innerHTML = '';
+      tbody.innerHTML = '<tr><td style="text-align:center;color:#9ca3af;padding:40px;">暂无数据</td></tr>';
+      document.getElementById('table-info').textContent = '0 行（原始文本）';
+      return;
+    }
+
+    const currentPage = state.currentPage || 1;
+    const hasPageField = rows[0] && rows[0].page !== undefined;
+    const pageRows = hasPageField
+      ? rows.filter(r => (r.page || 1) === currentPage)
+      : rows.slice(0, 50);
+
+    const maxPage = hasPageField
+      ? Math.max(1, ...rows.map(r => r.page || 1))
+      : 1;
+    state.totalTablePages = maxPage;
+    updatePageButtons();
+
+    // 确定要展示的列
+    let rawColumns;
+    if (state.docType === 'pile') {
+      // 碎石桩：取所有非只读的 PILE_COLUMNS
+      rawColumns = PILE_COLUMNS.filter(c => !c.readonly);
+    } else {
+      // 通用资料：尝试按空格拆分 raw_text，取最多列的行作为列数
+      const maxCols = Math.max(1, ...rows.map(r => {
+        const rt = r.raw_text || '';
+        return rt.split(/\s+/).filter(Boolean).length;
+      }));
+      rawColumns = Array.from({ length: maxCols }, (_, i) => ({ key: `col_${i}`, label: `列${i + 1}` }));
+    }
+
+    // 表头（行号列标记为固定列，锁定宽度）
+    thead.innerHTML = '<tr><th class="fixed-col" style="width:44px;min-width:44px;max-width:44px">#</th>' +
+      rawColumns.map(col => `<th>${escapeHtml(col.label)}</th>`).join('') + '</tr>';
+
+    // 收集 OCR 存疑影响的单元格
+    const suspectCells = collectSuspectCells();
+
+    // 渲染行
+    tbody.innerHTML = '';
+    pageRows.forEach((row, idx) => {
+      const tr = document.createElement('tr');
+      const rowIndex = row.row_index !== undefined ? row.row_index : (idx + 1);
+      tr.dataset.rowIndex = rowIndex;
+      tr.dataset.arrayIndex = idx;
+      tr.dataset.page = row.page || 1;
+
+      // 行号（固定列，不可编辑）
+      const tdNo = document.createElement('td');
+      tdNo.classList.add('row-no');
+      tdNo.textContent = rowIndex;
+      tr.appendChild(tdNo);
+
+      // 数据列（可编辑）
+      rawColumns.forEach(col => {
+        const td = document.createElement('td');
+        td.classList.add('editable');
+        td.setAttribute('contenteditable', 'true');
+        td.setAttribute('spellcheck', 'false');
+
+        let value;
+        if (state.docType === 'pile') {
+          value = row[col.key];
+        } else {
+          // 通用资料：取 raw_text 对应列
+          const parts = (row.raw_text || '').split(/\s+/).filter(Boolean);
+          const colIdx = parseInt(col.key.replace('col_', ''), 10);
+          value = parts[colIdx] || '';
+        }
+        td.textContent = value === null || value === undefined ? '' : String(value);
+
+        // 标记已修改
+        const checkField = state.docType === 'pile' ? col.key : col.key;
+        if (isFieldModified(rowIndex, checkField)) {
+          td.classList.add('modified');
+          td.title = '已修改：' + getOriginalValue(rowIndex, checkField);
+        }
+
+        // 标记 OCR 存疑（仅碎石桩类型有字段级存疑）
+        if (state.docType === 'pile') {
+          const suspectKey = rowIndex + ':' + col.key;
+          if (suspectCells[suspectKey]) {
+            td.classList.add('ocr-suspect');
+            const s = suspectCells[suspectKey];
+            td.title = 'OCR 存疑：原始值=' + s.original_value + '，建议值=' + s.suggested_value;
+          }
+        }
+
+        // 绑定编辑事件
+        if (state.docType === 'pile') {
+          // 碎石桩：直接编辑对应字段
+          attachEditHandlers(td, idx, col.key, rowIndex);
+        } else {
+          // 通用资料：编辑拆分列，反向更新 raw_text
+          attachRawTextEditHandler(td, idx, col.key, rowIndex, row);
+        }
+
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('table-info').textContent =
+      `${rows.length} 行（原始文本视图）| 当前第 ${currentPage} 页，共 ${state.totalTablePages} 页`;
+    initColumnResize();
+    // 应用已保存的行高
+    applyRawRowHeight();
+  }
+
+  /** 通用资料原始文本视图的编辑处理（编辑拆分列后反向更新 raw_text） */
+  function attachRawTextEditHandler(td, arrayIndex, colKey, rowIndex, row) {
+    let originalValue = null;
+
+    td.addEventListener('focus', function() {
+      originalValue = td.textContent;
+    });
+
+    td.addEventListener('blur', function() {
+      const newValue = td.textContent;
+      if (newValue !== originalValue) {
+        // 获取列索引
+        const colIdx = parseInt(colKey.replace('col_', ''), 10);
+        // 拆分 raw_text，替换对应列，重新拼接
+        const parts = (row.raw_text || '').split(/\s+/).filter(Boolean);
+        if (colIdx < parts.length) {
+          parts[colIdx] = newValue;
+        } else {
+          // 扩展列
+          while (parts.length < colIdx) parts.push('');
+          parts.push(newValue);
+        }
+        const newRawText = parts.join('  ');
+
+        // 记录修正（以 raw_text 为字段名）
+        recordCorrection(arrayIndex, 'raw_text', rowIndex, row.raw_text || '', newRawText);
+        // 更新行数据
+        row.raw_text = newRawText;
+
+        td.classList.add('modified');
+        td.title = '已修改';
+        markModified(true);
+        updateCorrectionCount();
+      }
+    });
+
+    // 回车确认
+    td.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        td.blur();
+      }
+    });
+  }
+
+  /** 初始化列宽拖拽 */
+  function initColumnResize() {
+    const table = document.getElementById('data-table');
+    const headers = table.querySelectorAll('th');
+    const existingHandles = table.querySelectorAll('.col-resize-handle');
+    existingHandles.forEach(h => h.remove());
+
+    headers.forEach((th, index) => {
+      // 跳过最后一列和固定列（行号等），不添加拖拽手柄
+      if (index === headers.length - 1) return;
+      if (th.classList.contains('fixed-col')) return;
+
+      const handle = document.createElement('div');
+      handle.className = 'col-resize-handle';
+      th.appendChild(handle);
+
+      let startX, startWidth;
+
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.clientX;
+        startWidth = th.offsetWidth;
+        handle.classList.add('active');
+        document.body.classList.add('col-resizing');
+
+        const onMouseMove = (ev) => {
+          const delta = ev.clientX - startX;
+          const newWidth = Math.max(40, startWidth + delta);
+          th.style.width = newWidth + 'px';
+          th.style.minWidth = newWidth + 'px';
+          // 保存列宽到 state，翻页不丢失
+          state.columnWidths[index] = newWidth;
+
+          // 同步更新表格总宽度，防止 table-layout:fixed 压缩其他列
+          const allHeaders = table.querySelectorAll('th');
+          let totalWidth = 0;
+          allHeaders.forEach(h => {
+            const w = parseInt(h.style.minWidth) || parseInt(h.style.width) || h.offsetWidth || 80;
+            totalWidth += w;
+          });
+          table.style.width = totalWidth + 'px';
+          table.style.minWidth = totalWidth + 'px';
+        };
+
+        const onMouseUp = () => {
+          handle.classList.remove('active');
+          document.body.classList.remove('col-resizing');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+
+      // 双击自动适配列宽
+      handle.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        autoFitColumn(table, index);
+      });
+
+      // 应用已保存的列宽（翻页后恢复）
+      if (state.columnWidths[index]) {
+        th.style.width = state.columnWidths[index] + 'px';
+        th.style.minWidth = state.columnWidths[index] + 'px';
+      }
+    });
+  }
+
+  /** 自动适配列宽（双击列边界时触发） */
+  function autoFitColumn(table, colIndex) {
+    const rows = table.querySelectorAll('tbody tr');
+    let maxWidth = 40;
+    const measureSpan = document.createElement('span');
+    measureSpan.style.cssText = 'visibility:hidden;position:absolute;white-space:nowrap;font-size:12px;font-family:inherit;';
+    document.body.appendChild(measureSpan);
+
+    rows.forEach(row => {
+      const cell = row.children[colIndex];
+      if (cell) {
+        measureSpan.textContent = cell.textContent || '';
+        maxWidth = Math.max(maxWidth, measureSpan.offsetWidth + 24);
+      }
+    });
+
+    // 也测量表头
+    const th = table.querySelectorAll('th')[colIndex];
+    if (th) {
+      measureSpan.textContent = th.textContent || '';
+      measureSpan.style.fontWeight = '600';
+      maxWidth = Math.max(maxWidth, measureSpan.offsetWidth + 24);
+    }
+
+    document.body.removeChild(measureSpan);
+
+    if (th) {
+      th.style.width = maxWidth + 'px';
+      th.style.minWidth = maxWidth + 'px';
+      state.columnWidths[colIndex] = maxWidth;
+    }
+  }
+
+  /** 切换视图模式 */
+  function toggleViewMode(mode) {
+    state.viewMode = mode;
+    document.querySelectorAll('#view-toggle .toggle-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === mode);
+    });
+    renderTable();
+  }
+
+  /** 收集质量告警影响的行号 */
+  function collectAlertRows() {
+    const alertRows = new Set();
+    const warnings = state.currentData?.quality_result?.warnings || [];
+    warnings.forEach(w => {
+      if (w.from_row) alertRows.add(String(w.from_row));
+      if (w.to_row) alertRows.add(String(w.to_row));
+      if (w.row_index) alertRows.add(String(w.row_index));
+    });
+    return alertRows;
+  }
+
+  /** 收集 OCR 存疑影响的单元格 */
+  function collectSuspectCells() {
+    const suspectCells = {};
+    const suspects = state.currentData?.confusion_result?.suspects || [];
+    suspects.forEach(s => {
+      const rowIdx = s.row_index !== undefined ? s.row_index : s.row;
+      const key = String(rowIdx) + ':' + s.field;
+      suspectCells[key] = s;
+    });
+    return suspectCells;
+  }
+
+  /** 判断字段是否已修改 */
+  function isFieldModified(rowIndex, field) {
+    return state.corrections.some(c => String(c.row_index) === String(rowIndex) && c.field === field);
+  }
+
+  /** 获取字段原始值 */
+  function getOriginalValue(rowIndex, field) {
+    const correction = state.corrections.find(c => String(c.row_index) === String(rowIndex) && c.field === field);
+    return correction ? correction.original_value : '';
+  }
+
+  /** 为单元格附加编辑事件 */
+  function attachEditHandlers(td, arrayIndex, field, rowIndex) {
+    let originalValue = null;
+
+    td.addEventListener('focus', function() {
+      originalValue = td.textContent;
+    });
+
+    td.addEventListener('blur', function() {
+      const newValue = td.textContent;
+      if (newValue !== originalValue) {
+        // 记录修正
+        recordCorrection(arrayIndex, field, rowIndex, originalValue, newValue);
+        td.classList.add('modified');
+        td.title = '已修改：' + originalValue + ' → ' + newValue;
+        markModified(true);
+        // 实时更新底部信息栏（修正计数等）
+        updateBottomInfo();
+      }
+    });
+
+    td.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        td.blur();
+      }
+      if (e.key === 'Escape') {
+        td.textContent = originalValue;
+        td.blur();
+      }
+      // Ctrl+Z 撤销
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        undoLastCorrection(rowIndex, field, td);
+      }
+    });
+  }
+
+  /** 记录修正 */
+  function recordCorrection(arrayIndex, field, rowIndex, originalValue, correctedValue) {
+    // 使用 row_index 查找行（而非页内局部索引），避免跨页编辑数据错乱
+    const rows = state.currentData.rows;
+    const originalRow = rows.find(r => String(r.row_index) === String(rowIndex));
+    if (!originalRow) {
+      console.error('未找到 row_index=' + rowIndex + ' 的行');
+      return;
+    }
+    let originalTyped = originalValue;
+    let correctedTyped = correctedValue;
+
+    // 尝试类型转换
+    if (typeof originalRow[field] === 'number') {
+      const num = parseFloat(correctedValue);
+      correctedTyped = isNaN(num) ? correctedValue : num;
+    }
+
+    // 如果已有修正记录，更新原值为最早的值
+    const existing = state.corrections.find(c =>
+      String(c.row_index) === String(rowIndex) && c.field === field
+    );
+    if (existing) {
+      existing.corrected_value = correctedTyped;
+      existing.timestamp = nowIso();
+    } else {
+      state.corrections.push({
+        row_index: isNaN(parseInt(rowIndex)) ? rowIndex : parseInt(rowIndex),
+        page: originalRow.page || null,
+        field: field,
+        original_value: typeof originalRow[field] === 'number' ? originalRow[field] : originalValue,
+        corrected_value: correctedTyped,
+        reason: '',
+        verified_by: 'user',
+        timestamp: nowIso(),
+      });
+    }
+    originalRow[field] = correctedTyped;
+  }
+
+  /** 撤销最后一次修正 */
+  function undoLastCorrection(rowIndex, field, td) {
+    const idx = state.corrections.findIndex(c =>
+      String(c.row_index) === String(rowIndex) && c.field === field
+    );
+    if (idx >= 0) {
+      const correction = state.corrections[idx];
+      // 恢复原值
+      const rows = state.currentData.rows;
+      const row = rows.find(r => String(r.row_index) === String(rowIndex));
+      if (row) {
+        row[field] = correction.original_value;
+        td.textContent = correction.original_value === null || correction.original_value === undefined ? '' : String(correction.original_value);
+      }
+      state.corrections.splice(idx, 1);
+      td.classList.remove('modified');
+      td.title = '';
+      markModified(state.corrections.length > 0);
+      showToast('已撤销修改', 'info');
+    } else {
+      showToast('无可撤销的修改', 'info');
+    }
+  }
+
+  // ========== T-17: 质量告警逐条确认 ==========
+
+  /** 渲染质量告警 */
+  function renderQualityAlerts() {
+    const list = document.getElementById('alerts-list');
+    const warnings = state.currentData?.quality_result?.warnings || [];
+    document.getElementById('alerts-count').textContent = warnings.length;
+
+    if (warnings.length === 0) {
+      list.innerHTML = '<div style="padding:12px;color:#9ca3af;text-align:center;">无质量告警</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    warnings.forEach((w, idx) => {
+      const item = document.createElement('div');
+      item.className = 'alert-item';
+      if (state.alertsResolved[idx]) item.classList.add('resolved');
+
+      const severity = w.severity || 'medium';
+      const severityClass = 'severity-' + severity;
+      const resolved = state.alertsResolved[idx];
+
+      let detailHtml = '';
+      if (w.detail) detailHtml += `<div class="alert-detail">${escapeHtml(w.detail)}</div>`;
+      if (w.column) detailHtml += `<div class="alert-detail">字段：${escapeHtml(w.column)}</div>`;
+      if (w.from_row && w.to_row) detailHtml += `<div class="alert-detail">行：${w.from_row} → ${w.to_row}</div>`;
+      else if (w.from_row) detailHtml += `<div class="alert-detail">行：${w.from_row}</div>`;
+      else if (w.row_index) detailHtml += `<div class="alert-detail">行：${w.row_index}</div>`;
+
+      item.innerHTML = `
+        <input type="checkbox" class="alert-checkbox" ${resolved ? 'checked' : ''} data-alert-idx="${idx}">
+        <div class="alert-content">
+          <span class="alert-code ${severityClass}">${escapeHtml(w.code || 'UNKNOWN')}</span>
+          <span class="alert-message">${escapeHtml(w.message || '')}</span>
+          ${resolved ? '<span class="resolved-mark">✓ ' + escapeHtml(resolved.action) + '</span>' : ''}
+          ${detailHtml}
+        </div>
+        <div class="alert-actions">
+          <button class="small" onclick="confirmAlert(${idx})" ${resolved ? 'disabled' : ''}>确认</button>
+          <button class="small warning" onclick="correctAlert(${idx})" ${resolved ? 'disabled' : ''}>修正</button>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  /** 确认告警（标记为已知问题） */
+  window.confirmAlert = function(idx) {
+    const warnings = state.currentData?.quality_result?.warnings || [];
+    const w = warnings[idx];
+    if (!w) return;
+
+    const note = prompt('请输入确认说明（可选）：', '已知问题，人工确认');
+    if (note === null) return;
+
+    state.alertsResolved[idx] = {
+      action: 'confirmed',
+      note: note,
+      code: w.code,
+      row_index: w.row_index || w.from_row || null,
+    };
+    renderQualityAlerts();
+    markModified(true);
+    showToast('告警已标记为已确认', 'success');
+  };
+
+  /** 修正告警（跳转到对应行） */
+  window.correctAlert = function(idx) {
+    const warnings = state.currentData?.quality_result?.warnings || [];
+    const w = warnings[idx];
+    if (!w) return;
+
+    // 找到目标行
+    let targetRow = w.row_index || w.from_row || w.to_row;
+    if (!targetRow) {
+      showToast('该告警未关联具体行，无法跳转', 'warning');
+      return;
+    }
+
+    // 跳转到该行所在页
+    const rows = state.currentData.rows;
+    const targetRowIndex = rows.findIndex(r => String(r.row_index) === String(targetRow));
+    if (targetRowIndex < 0) {
+      showToast('未找到行 ' + targetRow, 'warning');
+      return;
+    }
+
+    const targetPage = rows[targetRowIndex].page || 1;
+    if (state.pdfDoc && targetPage !== state.currentPage) {
+      renderPdfPage(targetPage);
+    }
+
+    // 高亮目标行并滚动到视图
+    const tbody = document.querySelector('#data-table tbody');
+    const tr = tbody.querySelector(`tr[data-row-index="${targetRow}"]`);
+    if (tr) {
+      // 清除其他高亮
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('highlighted'));
+      tr.classList.add('highlighted');
+      tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // 进入编辑模式（如果是碎石桩类型，聚焦到 actual_length 字段）
+      const editCell = tr.querySelector('td.editable');
+      if (editCell) {
+        editCell.setAttribute('contenteditable', 'true');
+        editCell.focus();
+        // 选中全部文本
+        const range = document.createRange();
+        range.selectNodeContents(editCell);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+
+    const note = prompt('修正说明（可选）：', '已修正');
+    if (note !== null) {
+      state.alertsResolved[idx] = {
+        action: 'corrected',
+        note: note,
+        code: w.code,
+        row_index: targetRow,
+      };
+      renderQualityAlerts();
+    }
+    markModified(true);
+  };
+
+  // 告警复选框点击
+  document.getElementById('alerts-list').addEventListener('change', function(e) {
+    if (e.target.classList.contains('alert-checkbox')) {
+      const idx = parseInt(e.target.dataset.alertIdx, 10);
+      if (e.target.checked) {
+        window.confirmAlert(idx);
+      }
+    }
+  });
+
+  // ========== T-18: OCR 存疑项高亮 ==========
+
+  /** 渲染 OCR 存疑项 */
+  function renderOcrSuspects() {
+    const list = document.getElementById('suspects-list');
+    const suspects = state.currentData?.confusion_result?.suspects || [];
+    document.getElementById('suspects-count').textContent = suspects.length;
+
+    if (suspects.length === 0) {
+      list.innerHTML = '<div style="padding:12px;color:#9ca3af;text-align:center;">无 OCR 存疑项</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    suspects.forEach((s, idx) => {
+      const item = document.createElement('div');
+      item.className = 'suspect-item';
+      if (state.suspectsResolved[idx]) item.classList.add('resolved');
+
+      const resolved = state.suspectsResolved[idx];
+      const rowIdx = s.row_index !== undefined ? s.row_index : s.row;
+
+      item.innerHTML = `
+        <div class="alert-content">
+          <span class="alert-code severity-medium">行 ${escapeHtml(String(rowIdx))} · ${escapeHtml(s.field || '')}</span>
+          <span class="alert-message">
+            原始值: <code>${escapeHtml(String(s.original_value))}</code>
+            → 建议值: <code>${escapeHtml(String(s.suggested_value))}</code>
+          </span>
+          <div class="alert-detail">置信度：${escapeHtml(String(s.confidence || '未知'))}</div>
+          ${resolved ? '<span class="resolved-mark">✓ ' + escapeHtml(resolved.action) + '</span>' : ''}
+        </div>
+        <div class="suspect-actions">
+          <button class="small" onclick="confirmSuspect(${idx})" ${resolved ? 'disabled' : ''}>确认原始值</button>
+          <button class="small warning" onclick="correctSuspect(${idx})" ${resolved ? 'disabled' : ''}>修正为建议值</button>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  /** 确认 OCR 存疑项（保持原始值） */
+  window.confirmSuspect = function(idx) {
+    const suspects = state.currentData?.confusion_result?.suspects || [];
+    const s = suspects[idx];
+    if (!s) return;
+
+    state.suspectsResolved[idx] = {
+      action: 'confirmed',
+      value: s.original_value,
+      note: '保持 OCR 原始值',
+    };
+    renderOcrSuspects();
+    markModified(true);
+    showToast('已确认保持原始值', 'success');
+  };
+
+  /** 修正 OCR 存疑项（改为建议值） */
+  window.correctSuspect = function(idx) {
+    const suspects = state.currentData?.confusion_result?.suspects || [];
+    const s = suspects[idx];
+    if (!s) return;
+
+    const rowIdx = s.row_index !== undefined ? s.row_index : s.row;
+    const field = s.field;
+    const rows = state.currentData.rows;
+
+    // 找到对应行
+    const targetRowIndex = rows.findIndex(r => String(r.row_index) === String(rowIdx));
+    if (targetRowIndex < 0) {
+      showToast('未找到行 ' + rowIdx, 'error');
+      return;
+    }
+
+    const originalValue = rows[targetRowIndex][field];
+
+    // 记录修正
+    state.corrections.push({
+      row_index: isNaN(parseInt(rowIdx)) ? rowIdx : parseInt(rowIdx),
+      page: rows[targetRowIndex].page || null,
+      field: field,
+      original_value: originalValue,
+      corrected_value: s.suggested_value,
+      reason: 'OCR 存疑项修正：' + (s.confidence ? '置信度 ' + s.confidence : ''),
+      verified_by: 'user',
+      timestamp: nowIso(),
+    });
+
+    // 更新数据
+    rows[targetRowIndex][field] = s.suggested_value;
+
+    state.suspectsResolved[idx] = {
+      action: 'corrected',
+      value: s.suggested_value,
+      note: '已修正为建议值',
+    };
+
+    // 重新渲染表格
+    renderTable();
+    renderOcrSuspects();
+    markModified(true);
+    showToast('已修正为建议值', 'success');
+  };
+
+  // ========== T-19: 桩号导航 ==========
+
+  /** 桩号搜索 */
+  function searchPile() {
+    const keyword = document.getElementById('pile-search').value.trim();
+    if (!keyword) {
+      showToast('请输入桩号', 'warning');
+      return;
+    }
+    if (state.docType !== 'pile') {
+      showToast('当前文档类型不支持桩号搜索', 'warning');
+      return;
+    }
+    const rows = state.currentData?.rows || [];
+    const lower = keyword.toLowerCase();
+    const matches = rows.filter(r => r.pile_no && String(r.pile_no).toLowerCase().includes(lower));
+
+    if (matches.length === 0) {
+      showToast('未找到匹配的桩号：' + keyword, 'warning');
+      return;
+    }
+
+    // 跳转到第一个匹配
+    const target = matches[0];
+    const targetPage = target.page || 1;
+
+    if (state.pdfDoc && targetPage !== state.currentPage) {
+      renderPdfPage(targetPage);
+    }
+
+    const tbody = document.querySelector('#data-table tbody');
+    const tr = tbody.querySelector(`tr[data-row-index="${target.row_index}"]`);
+    if (tr) {
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('highlighted'));
+      tr.classList.add('highlighted');
+      tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showToast(`找到 ${matches.length} 个匹配，跳转到第一个：${target.pile_no}`, 'success');
+    }
+  }
+
+  document.getElementById('btn-search-pile').addEventListener('click', searchPile);
+  document.getElementById('pile-search').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') searchPile();
+  });
+
+  // ========== T-20: 导出 corrected_data.json + corrections.json ==========
+
+  /** 导出修正 JSON */
+  async function exportCorrectedData() {
+    if (!state.currentDoc || !state.currentData) {
+      showToast('未加载文档', 'warning');
+      return;
+    }
+
+    const doc = state.currentDoc;
+    const now = nowIso();
+
+    // 构建 corrected_data.json
+    const correctedData = {
+      schema_version: '1.0',
+      doc_id: doc.id,
+      doc_type: state.currentData.doc_type || doc.doc_type,
+      source_file: state.currentData.source_file || doc.original_file,
+      professional: state.currentData.professional || doc.professional,
+      ocr_engine: state.currentData.ocr_engine || doc.ocr_engine,
+      ocr_confidence: state.currentData.ocr_confidence || doc.ocr_confidence,
+      corrected_at: now,
+      corrected_by: 'user',
+      rows: state.currentData.rows,
+      corrections_applied: state.corrections,
+    };
+
+    // 文件名：原 JSON 同目录下 {文件名}_corrected.json
+    const baseFile = doc.data_file.replace(/\.json$/, '');
+    const correctedPath = baseFile + '_corrected.json';
+
+    try {
+      if (state.dirHandle) {
+        await writeJsonViaHandle(correctedPath, correctedData);
+        showToast(`已写入 ${correctedPath}`, 'success');
+      } else {
+        // 降级：下载文件
+        downloadJson(correctedData, doc.id + '_corrected.json');
+        showToast('已下载 corrected_data.json（请手动放置到原目录）', 'success');
+      }
+      markModified(false);
+    } catch (err) {
+      console.error('导出失败', err);
+      // 降级到下载
+      downloadJson(correctedData, doc.id + '_corrected.json');
+      showToast('写入失败，已下载文件：' + err.message, 'warning');
+    }
+
+    // 同时保存 corrected_file 路径到 state，供 T-21 使用
+    state.correctedFilePath = correctedPath;
+  }
+
+  /** 导出 corrections.json（确认完成时） */
+  async function exportCorrections() {
+    if (!state.currentDoc) {
+      showToast('未加载文档', 'warning');
+      return;
+    }
+
+    const doc = state.currentDoc;
+    const now = nowIso();
+
+    // 构建 alerts_resolved 数组
+    const alertsResolved = [];
+    const warnings = state.currentData?.quality_result?.warnings || [];
+    Object.keys(state.alertsResolved).forEach(idx => {
+      const r = state.alertsResolved[idx];
+      const w = warnings[parseInt(idx, 10)];
+      alertsResolved.push({
+        code: r.code || (w && w.code) || 'UNKNOWN',
+        row_index: r.row_index || null,
+        action: r.action,
+        note: r.note,
+      });
+    });
+
+    // 构建 corrections.json 内容
+    const correctionsContent = {
+      doc_id: doc.id,
+      doc_type: doc.doc_type || state.currentData.doc_type,
+      verified_at: now,
+      total_corrections: state.corrections.length,
+      corrections: state.corrections,
+      alerts_resolved: alertsResolved,
+    };
+
+    // 路径：数据底座/修正记录/corrections.json
+    const correctionsPath = '修正记录/corrections.json';
+
+    try {
+      if (state.dirHandle) {
+        // 读取已有内容（如果存在），追加
+        let existing = null;
+        try {
+          existing = await readJsonViaHandle(correctionsPath);
+        } catch (e) {
+          // 文件不存在，新建
+        }
+
+        let finalContent;
+        if (existing) {
+          // 已存在：追加到数组（按 doc_id 分组）
+          if (!existing.records) existing.records = [];
+          // 移除同 doc_id 的旧记录
+          existing.records = existing.records.filter(r => r.doc_id !== doc.id);
+          existing.records.push(correctionsContent);
+          existing.total = existing.records.length;
+          existing.updated_at = now;
+          finalContent = existing;
+        } else {
+          // 新建
+          finalContent = {
+            schema_version: '1.0',
+            total: 1,
+            updated_at: now,
+            records: [correctionsContent],
+          };
+        }
+        await writeJsonViaHandle(correctionsPath, finalContent);
+        showToast(`已更新 ${correctionsPath}`, 'success');
+      } else {
+        // 降级：下载
+        downloadJson(correctionsContent, 'corrections_' + doc.id + '.json');
+        showToast('已下载 corrections.json（请手动合并到原目录）', 'success');
+      }
+    } catch (err) {
+      console.error('导出 corrections.json 失败', err);
+      downloadJson(correctionsContent, 'corrections_' + doc.id + '.json');
+      showToast('写入失败，已下载文件：' + err.message, 'warning');
+    }
+  }
+
+  /** 确认完成（导出 corrections.json + 更新 index.json） */
+  async function confirmComplete() {
+    if (!state.currentDoc) {
+      showToast('未加载文档', 'warning');
+      return;
+    }
+
+    const confirmed = confirm(`确认完成对 ${state.currentDoc.original_file} 的人工核对？\n\n将执行以下操作：\n1. 导出 corrected_data.json\n2. 生成/更新 corrections.json\n3. 更新 index.json 的 human_verified = true`);
+    if (!confirmed) return;
+
+    // 显示加载遮罩
+    document.getElementById('loading-overlay').classList.remove('hidden');
+
+    try {
+      // 1. 先导出 corrected_data.json
+      await exportCorrectedData();
+
+      // 2. 导出 corrections.json
+      await exportCorrections();
+
+      // 3. 更新 index.json
+      await updateIndexJson();
+
+      showToast('人工核对已完成！', 'success');
+      markModified(false);
+    } catch (err) {
+      console.error('确认完成失败', err);
+      showToast('确认完成失败：' + err.message, 'error');
+    } finally {
+      // 隐藏加载遮罩
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+  }
+
+  /** 下载 JSON 文件（降级方案） */
+  function downloadJson(jsonContent, fileName) {
+    const blob = new Blob([JSON.stringify(jsonContent, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('btn-export').addEventListener('click', exportCorrectedData);
+  document.getElementById('btn-confirm').addEventListener('click', confirmComplete);
+
+  // ========== T-21: 更新 index.json ==========
+
+  /** 更新 index.json */
+  async function updateIndexJson() {
+    if (!state.index || !state.currentDoc) {
+      showToast('无法更新 index.json：未加载', 'warning');
+      return;
+    }
+
+    const doc = state.currentDoc;
+    const now = nowIso();
+
+    // 找到 index.json 中的对应文档记录并更新
+    const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
+    if (docIdx >= 0) {
+      state.index.documents[docIdx].human_verified = true;
+      state.index.documents[docIdx].corrected_file = state.correctedFilePath || (doc.data_file.replace(/\.json$/, '') + '_corrected.json');
+      state.index.documents[docIdx].last_updated = now;
+      // 如果有质量告警处理记录，更新 audit_status
+      if (Object.keys(state.alertsResolved).length > 0) {
+        state.index.documents[docIdx].audit_status = 'human_reviewed';
+      }
+    }
+
+    // 更新 index.json 顶层字段
+    state.index.updated_at = now;
+    if (state.index.stage === 'foundation_built') {
+      state.index.stage = 'human_review';
+    }
+
+    // 更新 corrections 总数
+    if (state.index.corrections) {
+      // 不直接覆盖总数，让用户在 corrections.json 中查看明细
+      state.index.corrections.updated_at = now;
+    }
+
+    try {
+      if (state.dirHandle) {
+        await writeJsonViaHandle('index.json', state.index);
+        showToast('index.json 已更新（human_verified=true）', 'success');
+      } else {
+        // 降级：下载 index.json 让用户手动覆盖
+        downloadJson(state.index, 'index.json');
+        showToast('已下载 index.json（请手动覆盖到 数据底座/ 目录）', 'warning', 5000);
+      }
+    } catch (err) {
+      console.error('更新 index.json 失败', err);
+      downloadJson(state.index, 'index.json');
+      showToast('写入 index.json 失败，已下载文件：' + err.message, 'error', 5000);
+    }
+  }
+
+  // ========== 刷新按钮 ==========
+
+  document.getElementById('btn-refresh').addEventListener('click', async function() {
+    if (state.dirHandle) {
+      // 重新加载 index.json
+      try {
+        state.index = await readJsonViaHandle('index.json');
+        populateFileSelector();
+        showToast('已刷新文件列表', 'success');
+      } catch (err) {
+        showToast('刷新失败：' + err.message, 'error');
+      }
+    } else {
+      // 重新尝试自动加载
+      initEditor();
+    }
+  });
+
+  document.getElementById('btn-load-dir').addEventListener('click', () => {
+    if (window.showDirectoryPicker) {
+      pickDirectory();
+    } else {
+      document.getElementById('index-file-input').click();
+    }
+  });
+
+  // ========== 拖拽支持（降级模式） ==========
+
+  const dragZone = document.getElementById('drag-zone');
+  document.body.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dragZone.classList.add('visible', 'dragover');
+  });
+  document.body.addEventListener('dragleave', function(e) {
+    if (e.target === document.body || e.relatedTarget === null) {
+      dragZone.classList.remove('dragover');
+      if (state.index) dragZone.classList.remove('visible');
+    }
+  });
+  document.body.addEventListener('drop', async function(e) {
+    e.preventDefault();
+    dragZone.classList.remove('dragover');
+    if (state.index) dragZone.classList.remove('visible');
+
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+
+    const file = files[0];
+    if (!file.name.endsWith('.json')) {
+      showToast('请拖拽 JSON 文件', 'warning');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        // 判断是 index.json 还是数据 json
+        if (data.documents && Array.isArray(data.documents)) {
+          state.index = data;
+          populateFileSelector();
+          showToast('index.json 已加载', 'success');
+        } else if (data.rows && Array.isArray(data.rows)) {
+          // 数据 JSON
+          state.currentData = data;
+          state.docType = detectDocType(data.rows);
+          renderTable();
+          renderQualityAlerts();
+          renderOcrSuspects();
+          showToast('数据 JSON 已加载', 'success');
+        } else {
+          showToast('无法识别的 JSON 格式', 'warning');
+        }
+      } catch (err) {
+        showToast('解析失败：' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // ========== 更新底部信息 ==========
+
+  function updateBottomInfo() {
+    const doc = state.currentDoc;
+    if (!doc) {
+      document.getElementById('bottom-info').textContent = '未加载数据';
+      return;
+    }
+    const correctionsCount = state.corrections.length;
+    const alertsResolvedCount = Object.keys(state.alertsResolved).length;
+    const suspectsResolvedCount = Object.keys(state.suspectsResolved).length;
+    document.getElementById('bottom-info').textContent =
+      `${doc.id} | 修正 ${correctionsCount} 条 | 告警处理 ${alertsResolvedCount}/${doc.quality_alerts || 0} | 存疑处理 ${suspectsResolvedCount}/${doc.confusion_suspects || 0}`;
+  }
+
+  /** 手动选择原始文件（PDF 自动加载失败时的降级方案） */
+  window.manuallySelectOriginalFile = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.jpg,.jpeg,.png';
+    input.onchange = async (ev) => {
+      const selectedFile = ev.target.files[0];
+      if (selectedFile) {
+        state.originalFileBlob = selectedFile;
+        document.getElementById('preview-info').textContent = '手动加载: ' + selectedFile.name;
+        await loadOriginalFilePreview();
+      }
+    };
+    input.click();
+  };
+
+  // 暴露给 onclick 使用的函数（用于 HTML 内联事件）
+  window.hideDialog = hideDialog;
+  window.pickDirectory = pickDirectory;
+  window.useManualLoad = useManualLoad;
+  window.toggleViewMode = toggleViewMode;
+
+  // 视图切换按钮事件
+  document.getElementById('view-toggle').addEventListener('click', function(e) {
+    const btn = e.target.closest('.toggle-btn');
+    if (!btn) return;
+    const mode = btn.dataset.view;
+    if (mode && mode !== state.viewMode) {
+      toggleViewMode(mode);
+    }
+  });
+
+  // ========== 面板拖拽分隔条 ==========
+  function initPanelResize() {
+    const divider = document.getElementById('panel-divider');
+    const leftPanel = document.getElementById('left-panel');
+    const mainContent = document.querySelector('.main-content');
+    let startX, startWidth;
+
+    divider.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = leftPanel.offsetWidth;
+      divider.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMouseMove = (ev) => {
+        const delta = ev.clientX - startX;
+        const newWidth = Math.max(200, Math.min(mainContent.offsetWidth - 300, startWidth + delta));
+        leftPanel.style.flex = '0 0 ' + newWidth + 'px';
+        leftPanel.style.width = newWidth + 'px';
+      };
+
+      const onMouseUp = () => {
+        divider.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  }
+
+  // ========== 原始文本行高控制 ==========
+  function initRowHeightControl() {
+    const label = document.getElementById('row-height-label');
+
+    document.getElementById('btn-row-height-plus').addEventListener('click', () => {
+      state.rawRowHeight = Math.min(3.0, state.rawRowHeight + 0.2);
+      label.textContent = state.rawRowHeight.toFixed(1);
+      applyRawRowHeight();
+    });
+
+    document.getElementById('btn-row-height-minus').addEventListener('click', () => {
+      state.rawRowHeight = Math.max(0.8, state.rawRowHeight - 0.2);
+      label.textContent = state.rawRowHeight.toFixed(1);
+      applyRawRowHeight();
+    });
+  }
+
+  function applyRawRowHeight() {
+    const table = document.getElementById('data-table');
+    if (!table.classList.contains('raw-view')) return;
+    const cells = table.querySelectorAll('td:not(.row-no)');
+    cells.forEach(td => {
+      td.style.lineHeight = String(state.rawRowHeight);
+    });
+  }
+
+  // 在 toggleViewMode 中显示/隐藏行高控制
+  const originalToggleViewMode = toggleViewMode;
+  toggleViewMode = function(mode) {
+    originalToggleViewMode(mode);
+    const control = document.getElementById('row-height-control');
+    control.style.display = mode === 'raw' ? 'inline-flex' : 'none';
+    if (mode === 'raw') {
+      applyRawRowHeight();
+    }
+  };
+
+  // ========== 启动 ==========
+  initEditor();
+
+  // 缩放按钮事件绑定
+  document.getElementById('btn-zoom-in').addEventListener('click', zoomIn);
+  document.getElementById('btn-zoom-out').addEventListener('click', zoomOut);
+  document.getElementById('btn-zoom-reset').addEventListener('click', zoomReset);
+  document.getElementById('btn-magnifier').addEventListener('click', toggleMagnifier);
+
+  // 初始化放大镜
+  initPdfMagnifier();
+
+  // 初始化面板拖拽和行高控制
+  initPanelResize();
+  initRowHeightControl();
+  </script>
+</body>
+</html>

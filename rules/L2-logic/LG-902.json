@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-902",
+  "name": "合计值来源判定",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "跨资料合计值反向验证",
+  "description": "合计值来源判定四种情况：①有合计行+合计值正确→资料可信度提升；②有合计行+合计值错误→数据汇总错误，需逐项修正；③无合计行+有合计值→合计值来源不明，审计线索；④无合计行+无合计值→资料不完整，需补全。",
+  "trigger_when": {
+    "doc_type": ["施工记录", "施工日志", "汇总表"],
+    "field_required": ["合计行", "合计值"]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "not (无合计行 and 有合计值) and not (有合计行 and 合计值 != sum(分项值)) and not (无合计行 and 无合计值)",
+    "language": "python_eval"
+  },
+  "error_template": "合计值矛盾：{判定结果}——合计行 {合计行状态}，合计值 {合计值状态}，{处理建议}",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "根据四种情况分别处理：补全合计行、修正合计值、追溯合计值来源、补全资料",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.9.2 迁移"
+    }
+  ]
+}
