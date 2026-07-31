@@ -1204,7 +1204,7 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
 
   <!-- 页脚 -->
   <div class="section" style="text-align:center;color:#999;font-size:12px;">
-    <p>本报告由民航施工资料合规审核 Skill v6.0 自动生成</p>
+    <p>本报告由民航施工资料合规审核 Skill v7.0 自动生成</p>
     <p>审核编号：{audit_log.get('audit_id', '')} | 生成时间：{datetime.now().isoformat(timespec='seconds')}</p>
     <p>铁律 R-08：未发现问题的项目不代表"全部合格"，仅表示"未发现不符合项"</p>
   </div>
