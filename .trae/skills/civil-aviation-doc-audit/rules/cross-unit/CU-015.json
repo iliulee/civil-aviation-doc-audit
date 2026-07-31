@@ -1,0 +1,66 @@
+{
+  "rule_id": "CU-015",
+  "name": "施工检测报告：取样 ≤ 检测 ≤ 报告 ≤ 验收",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_UNIT",
+  "category": "跨单位日期对照",
+  "description": "施工检测报告流程：见证取样日期 ≤ 检测日期 ≤ 报告出具日期 ≤ 对应检验批验收日期。报告日期早于取样日期，或验收日期早于报告日期（没出报告就验收）均为矛盾。跨单位核心校验为监理验收日期 ≥ 施工方报告出具日期",
+  "trigger_when": {
+    "doc_type_a": "检验批验收记录",
+    "doc_type_b": "施工检测报告",
+    "require_both": true
+  },
+  "alignment": {
+    "party_a": {
+      "role": "supervisor",
+      "label": "监理方",
+      "doc_type": "检验批验收记录"
+    },
+    "party_b": {
+      "role": "contractor",
+      "label": "施工方",
+      "doc_type": "施工检测报告"
+    },
+    "join_key": ["项目编号", "检验批编号"],
+    "field_a": "验收日期",
+    "field_b": "报告出具日期",
+    "aggregation": "none"
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "field_a >= field_b",
+    "language": "python_eval"
+  },
+  "error_template": "检验批验收日期 {field_a} 早于施工检测报告出具日期 {field_b}（没出报告就验收），或报告日期早于取样日期",
+  "severity_on_violation": "Sanity Check",
+  "confirmation_required": true,
+  "confirmation_scope": "both_parties_or_admin",
+  "remediation": "核查见证取样、检测、报告出具、检验批验收各环节日期顺序",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.10.14 迁移"
+    }
+  ]
+}

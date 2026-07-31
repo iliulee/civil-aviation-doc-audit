@@ -26,6 +26,8 @@ Skill 入口脚本（一键启动审核）
 import sys
 import json
 import argparse
+import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -237,7 +239,50 @@ def cmd_postprocess(args):
     print(f"✅ 已清洗 {args.file} → {out}（{len(raw)} → {len(cleaned)} 字符）")
 
 
-# ========== 4. 一键审核（v3.1 新增） ==========
+# ========== 4. 建立数据底座（Phase 1 T-10） ==========
+def cmd_build(args):
+    """
+    调用 build_foundation.py 建立项目数据底座。
+    参数与 build_foundation.py 保持一致。
+    """
+    script_dir = Path(__file__).resolve().parent
+    foundation_script = script_dir / "build_foundation.py"
+    project_path = Path(args.project_path).resolve()
+    out_dir = project_path / args.out
+
+    cmd = [
+        sys.executable, str(foundation_script),
+        str(project_path),
+        "--engine", args.engine,
+        "--out", args.out,
+    ]
+    if args.incremental:
+        cmd.append("--incremental")
+    if args.preconditions:
+        cmd.extend(["--preconditions", args.preconditions])
+    if args.expected_rows:
+        cmd.extend(["--expected-rows", args.expected_rows])
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    # build_foundation.py 本身把过程信息输出到 stderr
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="")
+
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+    print(f"数据底座已建立：{out_dir}")
+    print('请打开 "项目总览.html" 或 "data-editor.html" 进行人工核对。')
+
+
+# ========== 5. 一键审核（v3.1 新增） ==========
 def _parse_rows_from_text(text: str) -> list:
     """
     从 OCR 文本中粗解析施工记录表格行。
@@ -416,7 +461,618 @@ def cmd_audit(args):
     print("=" * 60, file=sys.stderr)
 
 
-def main():
+# ========== 6. 正式审核（Phase 3 T-29~T-34） ==========
+def cmd_review(args):
+    """
+    调用 review_audit.py 执行正式审核。
+    支持多 Agent 并行模式。
+    """
+    script_dir = Path(__file__).resolve().parent
+    review_script = script_dir / "review_audit.py"
+    project_path = Path(args.project_path).resolve()
+
+    cmd = [
+        sys.executable, str(review_script),
+        str(project_path),
+        "--out", args.out,
+        "--split-by", args.split_by,
+    ]
+    if args.task_id:
+        cmd.extend(["--task-id", args.task_id])
+    if args.tasks_file:
+        cmd.extend(["--tasks-file", args.tasks_file])
+    if args.dry_run:
+        cmd.append("--dry-run")
+    if args.force:
+        cmd.append("--force")
+
+    result = subprocess.run(
+        cmd,
+        capture_output=False,  # 直接输出到终端，保持进度可见
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
+# ========== 7. 生成报告（Phase 3 T-35~T-38） ==========
+def cmd_report(args):
+    """
+    生成 HTML 审核报告（从审核日志 JSON）。
+    """
+    project_path = Path(args.project_path).resolve()
+    out_base = project_path / args.out
+    
+    # 自动回退：如果 {project_path}/数据底座/审核日志 不存在，
+    # 尝试直接使用 {project_path}/审核日志
+    audit_log_dir = out_base / "审核日志"
+    if not audit_log_dir.exists():
+        fallback = project_path / "审核日志"
+        if fallback.exists():
+            print(f"⚠️  未找到 {audit_log_dir}，自动回退到 {fallback}", file=sys.stderr)
+            audit_log_dir = fallback
+            out_base = project_path
+
+    if not audit_log_dir.exists():
+        print(f"❌ 未找到审核日志目录: {audit_log_dir}", file=sys.stderr)
+        print("   请先执行 review 命令完成正式审核", file=sys.stderr)
+        sys.exit(1)
+
+    # 找到最新的审核日志
+    log_files = sorted(audit_log_dir.glob("AU-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not log_files:
+        # 也尝试从 index.json 获取
+        index_path = out_base / "index.json"
+        if index_path.exists():
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            logs = index.get("audit_logs", [])
+            if logs:
+                latest = logs[-1]
+                file_rel = latest.get("file", "")
+                if file_rel:
+                    log_file = out_base / file_rel
+                    if log_file.is_file():
+                        log_files = [log_file]
+
+    if not log_files:
+        print(f"❌ 未找到审核日志文件", file=sys.stderr)
+        sys.exit(1)
+
+    audit_log = json.loads(log_files[0].read_text(encoding="utf-8"))
+    report_html = _generate_html_report(audit_log, project_path)
+
+    report_path = project_path / "审核报告.html"
+    report_path.write_text(report_html, encoding="utf-8")
+    print(f"✅ 审核报告已生成: {report_path}", file=sys.stderr)
+
+    # 更新 index.json
+    index_path = out_base / "index.json"
+    if index_path.exists():
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index["stage"] = "reported"
+        index["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _generate_pie_chart_svg(
+    values: dict,
+    width: int = 280,
+    height: int = 280,
+    inner_radius: float = 0.55,
+) -> str:
+    """生成 SVG 环形图（Donut Chart）。
+
+    Args:
+        values: {标签: 数值} 字典，如 {"通过": 45, "不通过": 12, "存疑": 8}
+        width: SVG 宽度
+        height: SVG 高度
+        inner_radius: 内圆半径比例（0 为饼图，0.55 为环形图）
+
+    Returns:
+        SVG 字符串
+    """
+    COLORS = {
+        "通过": "#34a853",
+        "不通过": "#d93025",
+        "存疑": "#e37400",
+        "待AI": "#9334e6",
+        "不适用": "#9aa0a6",
+    }
+    # 过滤掉 0 值的项
+    items = [(k, v) for k, v in values.items() if v > 0]
+    if not items:
+        return ""
+
+    total = sum(v for _, v in items)
+    cx, cy = width / 2, height / 2
+    outer_r = min(cx, cy) - 10
+    inner_r = outer_r * inner_radius
+
+    # 生成 legend 和 arcs
+    arcs = []
+    legend_items = []
+    start_angle = -90  # 从顶部开始
+
+    for i, (label, count) in enumerate(items):
+        pct = count / total
+        angle = pct * 360
+        end_angle = start_angle + angle
+
+        # 计算 SVG arc 路径
+        color = COLORS.get(label, "#9aa0a6")
+        # 单项100%时拆分为两段半圆弧，避免起点终点重合导致无法绘制
+        if angle >= 359.99:
+            mid_angle = start_angle + 180
+            arc1 = _svg_arc_path(cx, cy, outer_r, inner_r, start_angle, mid_angle)
+            arc2 = _svg_arc_path(cx, cy, outer_r, inner_r, mid_angle, end_angle)
+            arcs.append(f'<path d="{arc1}" fill="{color}" stroke="#fff" stroke-width="1"/>')
+            arcs.append(f'<path d="{arc2}" fill="{color}" stroke="#fff" stroke-width="1"/>')
+        else:
+            arc_path = _svg_arc_path(cx, cy, outer_r, inner_r, start_angle, end_angle)
+            arcs.append(f'<path d="{arc_path}" fill="{color}" stroke="#fff" stroke-width="1"/>')
+
+        # 标签线（仅当占比 > 5%）
+        if pct > 0.05:
+            mid_angle = (start_angle + end_angle) / 2
+            label_r = outer_r + 8
+            label_x = cx + label_r * _cos_deg(mid_angle)
+            label_y = cy + label_r * _sin_deg(mid_angle)
+            text_anchor = "start" if -90 <= mid_angle < 90 else "end"
+            pct_text = f"{count}项 ({pct:.0%})"
+            arcs.append(
+                f'<text x="{label_x:.1f}" y="{label_y:.1f}" font-size="11" fill="#555" '
+                f'text-anchor="{text_anchor}" dominant-baseline="middle">{pct_text}</text>'
+            )
+
+        # Legend
+        legend_items.append(
+            f'<div class="chart-legend-item">'
+            f'<span class="chart-legend-dot" style="background:{color}"></span>'
+            f'{label}：{count} 项'
+            f'</div>'
+        )
+
+        start_angle = end_angle
+
+    # 中心文字
+    center_text = f'<text x="{cx}" y="{cy - 8}" font-size="22" font-weight="bold" fill="#333" text-anchor="middle">{total}</text>'
+    center_text += f'<text x="{cx}" y="{cy + 14}" font-size="12" fill="#666" text-anchor="middle">总检查项</text>'
+
+    svg = f'''<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">
+    {center_text}
+    {"".join(arcs)}
+  </svg>'''
+
+    legend_html = "".join(legend_items)
+
+    return f'<div class="chart-container"><div class="chart-svg">{svg}</div><div class="chart-legend">{legend_html}</div></div>'
+
+
+def _generate_bar_chart_svg(
+    data: list,
+    width: int = 600,
+    height: int = 0,
+    bar_height: int = 28,
+    gap: int = 6,
+) -> str:
+    """生成 SVG 水平条形图。
+
+    Args:
+        data: [(标签, 不通过数, 存疑数), ...] 按不通过数降序排列
+        width: SVG 宽度
+        height: 自动计算（0 表示自动）
+        bar_height: 每个条形的高度
+        gap: 条形间距
+
+    Returns:
+        SVG 字符串
+    """
+    if not data:
+        return ""
+
+    # 过滤掉全 0 的项
+    data = [(label, fail, susp) for label, fail, susp in data if fail + susp > 0]
+    if not data:
+        return '<p style="color:#999;text-align:center;">所有分部分项均通过审核</p>'
+
+    max_val = max(fail + susp for _, fail, susp in data)
+    if max_val == 0:
+        return ""
+
+    n = len(data)
+    if height == 0:
+        height = n * (bar_height + gap) + 40
+
+    label_width = 160
+    bar_area_width = width - label_width - 20
+    chart_height = n * (bar_height + gap)
+
+    bars = []
+    for i, (label, fail, susp) in enumerate(data):
+        y = 20 + i * (bar_height + gap)
+        total = fail + susp
+        fail_w = (fail / max_val) * bar_area_width if max_val > 0 else 0
+        susp_w = (susp / max_val) * bar_area_width if max_val > 0 else 0
+
+        # 标签
+        display_label = label if len(label) <= 12 else label[:11] + "…"
+        bars.append(
+            f'<text x="0" y="{y + bar_height / 2 + 4}" font-size="12" fill="#333" '
+            f'text-anchor="start" dominant-baseline="middle">{display_label}</text>'
+        )
+
+        # 不通过条
+        if fail_w > 0:
+            bars.append(
+                f'<rect x="{label_width}" y="{y}" width="{fail_w}" height="{bar_height}" '
+                f'fill="#d93025" rx="3"/>'
+            )
+            if fail_w > 30:
+                bars.append(
+                    f'<text x="{label_width + fail_w / 2}" y="{y + bar_height / 2 + 4}" '
+                    f'font-size="11" fill="#fff" text-anchor="middle" dominant-baseline="middle">{fail}</text>'
+                )
+
+        # 存疑条
+        if susp_w > 0:
+            bars.append(
+                f'<rect x="{label_width + fail_w}" y="{y}" width="{susp_w}" height="{bar_height}" '
+                f'fill="#e37400" rx="3"/>'
+            )
+            if susp_w > 30:
+                bars.append(
+                    f'<text x="{label_width + fail_w + susp_w / 2}" y="{y + bar_height / 2 + 4}" '
+                    f'font-size="11" fill="#fff" text-anchor="middle" dominant-baseline="middle">{susp}</text>'
+                )
+
+        # 数值标注
+        if total > 0:
+            bars.append(
+                f'<text x="{label_width + fail_w + susp_w + 6}" y="{y + bar_height / 2 + 4}" '
+                f'font-size="11" fill="#666" dominant-baseline="middle">{total}项</text>'
+            )
+
+    svg = f'''<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">
+    {"".join(bars)}
+  </svg>'''
+
+    return f'<div class="chart-container"><div class="chart-svg" style="overflow-x:auto;">{svg}</div></div>'
+
+
+def _svg_arc_path(cx: float, cy: float, outer_r: float, inner_r: float, start_deg: float, end_deg: float) -> str:
+    """生成 SVG 环形/扇形路径。"""
+    start_rad = start_deg * 3.1415926535 / 180
+    end_rad = end_deg * 3.1415926535 / 180
+
+    # 外弧起点
+    x1 = cx + outer_r * _cos_deg(start_deg)
+    y1 = cy + outer_r * _sin_deg(start_deg)
+    # 外弧终点
+    x2 = cx + outer_r * _cos_deg(end_deg)
+    y2 = cy + outer_r * _sin_deg(end_deg)
+    # 内弧起点
+    x3 = cx + inner_r * _cos_deg(end_deg)
+    y3 = cy + inner_r * _sin_deg(end_deg)
+    # 内弧终点
+    x4 = cx + inner_r * _cos_deg(start_deg)
+    y4 = cy + inner_r * _sin_deg(start_deg)
+
+    large_arc = 1 if (end_deg - start_deg) > 180 else 0
+
+    return (
+        f"M {x1:.1f} {y1:.1f} "
+        f"A {outer_r:.1f} {outer_r:.1f} 0 {large_arc} 1 {x2:.1f} {y2:.1f} "
+        f"L {x3:.1f} {y3:.1f} "
+        f"A {inner_r:.1f} {inner_r:.1f} 0 {large_arc} 0 {x4:.1f} {y4:.1f} Z"
+    )
+
+
+def _cos_deg(deg: float) -> float:
+    """cos(角度)"""
+    import math
+    return math.cos(deg * math.pi / 180)
+
+
+def _sin_deg(deg: float) -> float:
+    """sin(角度)"""
+    import math
+    return math.sin(deg * math.pi / 180)
+
+
+def _generate_html_report(audit_log: dict, project_path: Path) -> str:
+    """从审核日志生成 HTML 审核报告。"""
+    summary = audit_log.get("summary", {})
+    conclusion = audit_log.get("conclusion", {})
+    findings = audit_log.get("findings", [])
+    logic_findings = audit_log.get("logic_consistency_findings", [])
+    tasks = audit_log.get("tasks", [])
+    
+    # 构建 doc_id → 文件名 映射
+    doc_id_to_file: dict = {}
+    for task in tasks:
+        for doc in task.get("documents", []):
+            doc_id_to_file[doc.get("id", "")] = doc.get("original_file", doc.get("id", ""))
+
+    # 按文档分组的发现
+    by_doc: dict = {}
+    for f in findings:
+        doc_id = f.get("doc_id", "")
+        by_doc.setdefault(doc_id, []).append(f)
+
+    # 按分部分项分组的发现
+    by_subdivision: dict = {}
+    for f in findings:
+        for task in tasks:
+            if f.get("doc_id") in [d.get("id") for d in task.get("documents", [])]:
+                key = task.get("sub_label", "未分类")
+                if task.get("item_label"):
+                    key += f" → {task['item_label']}"
+                by_subdivision.setdefault(key, []).append(f)
+                break
+
+    # ===== 生成图表 =====
+    # 环形图：整体审核结果分布
+    pie_values = {
+        "通过": summary.get("pass", 0),
+        "不通过": summary.get("fail", 0),
+        "存疑": summary.get("suspicious", 0),
+        "待AI": summary.get("needs_ai", 0),
+        "不适用": summary.get("not_applicable", 0),
+    }
+    pie_chart_html = _generate_pie_chart_svg(pie_values)
+
+    # 条形图：分部分项问题分布（仅显示有问题的分部分项）
+    bar_data = []
+    for key, fs in by_subdivision.items():
+        fl = sum(1 for f in fs if f.get("result", "") == "fail")
+        s = sum(1 for f in fs if f.get("result", "") == "suspicious")
+        bar_data.append((key, fl, s))
+    bar_data.sort(key=lambda x: x[1] + x[2], reverse=True)
+    bar_chart_html = _generate_bar_chart_svg(bar_data)
+
+    # 生成分部分项汇总行
+    subdivision_rows = ""
+    for key, fs in by_subdivision.items():
+        p = sum(1 for f in fs if f.get("result", "") == "pass")
+        fl = sum(1 for f in fs if f.get("result", "") == "fail")
+        s = sum(1 for f in fs if f.get("result", "") == "suspicious")
+        ai = sum(1 for f in fs if f.get("result", "") == "needs_ai")
+        status = "✅" if fl == 0 and s == 0 else ("⚠️" if s > 0 else "❌")
+        subdivision_rows += f"""
+        <tr>
+          <td>{status}</td>
+          <td>{key}</td>
+          <td>{len(fs)}</td>
+          <td>{p}</td>
+          <td>{fl}</td>
+          <td>{s}</td>
+          <td>{ai}</td>
+        </tr>"""
+
+    # 生成文档级汇总行
+    doc_summary_rows = ""
+    for doc_id, fs in by_doc.items():
+        fname = doc_id_to_file.get(doc_id, doc_id)
+        p = sum(1 for f in fs if f.get("result", "") == "pass")
+        fl = sum(1 for f in fs if f.get("result", "") == "fail")
+        s = sum(1 for f in fs if f.get("result", "") == "suspicious")
+        ai = sum(1 for f in fs if f.get("result", "") == "needs_ai")
+        na = sum(1 for f in fs if f.get("result", "") == "not_applicable")
+        status = "✅" if fl == 0 and s == 0 else ("⚠️" if s > 0 else "❌")
+        # 截断长文件名
+        display_name = fname if len(fname) <= 50 else fname[:47] + "..."
+        doc_summary_rows += f"""
+        <tr>
+          <td>{status}</td>
+          <td title="{fname}">{display_name}</td>
+          <td>{len(fs)}</td>
+          <td>{p}</td>
+          <td>{fl}</td>
+          <td>{s}</td>
+          <td>{ai}</td>
+          <td>{na}</td>
+        </tr>"""
+
+    # 生成发现详情行（仅显示非pass项，限制100条）
+    BADGE = {"pass": "✅", "fail": "❌", "suspicious": "⚠️", "needs_ai": "🤖", "not_applicable": "➖"}
+    SEV_BADGE = {"high": "🔴", "medium": "🟡", "low": "⚪"}
+    
+    non_pass_findings = [f for f in findings if f.get("result") != "pass" and f.get("result") != "not_applicable"]
+    finding_rows = ""
+    for f in non_pass_findings[:100]:
+        sev = f.get("severity", "low")
+        result = f.get("result", "")
+        doc_id = f.get("doc_id", "")
+        fname = doc_id_to_file.get(doc_id, doc_id)
+        display_name = fname if len(fname) <= 30 else fname[:27] + "..."
+        finding_rows += f"""
+        <tr>
+          <td>{BADGE.get(result, '')}</td>
+          <td>{SEV_BADGE.get(sev, '')} {sev}</td>
+          <td>{f.get('checklist_id', '')}</td>
+          <td>{f.get('category', '')}</td>
+          <td>{f.get('check_item', '')}</td>
+          <td title="{fname}">{display_name}</td>
+          <td>{f.get('finding', '')}</td>
+          <td>{f.get('spec', '')}</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>审核报告 — {audit_log.get('project_name', '')}</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }}
+  .container {{ max-width: 1100px; margin: 0 auto; padding: 20px; }}
+  .header {{ background: #fff; padding: 30px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }}
+  .header h1 {{ font-size: 24px; margin-bottom: 10px; }}
+  .header .meta {{ color: #666; font-size: 14px; }}
+  .section {{ background: #fff; padding: 24px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }}
+  .section h2 {{ font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #1a73e8; }}
+  .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 20px; }}
+  .stat {{ background: #f8f9fa; padding: 16px; border-radius: 6px; text-align: center; }}
+  .stat .value {{ font-size: 28px; font-weight: bold; color: #1a73e8; }}
+  .stat .label {{ font-size: 12px; color: #666; margin-top: 4px; }}
+  .stat.fail .value {{ color: #d93025; }}
+  .stat.suspicious .value {{ color: #e37400; }}
+  .stat.ai .value {{ color: #9334e6; }}
+  .stat.warn .value {{ color: #e37400; }}
+  .filter-bar {{ margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; }}
+  .filter-bar button {{ padding: 6px 14px; border: 1px solid #ddd; border-radius: 20px; background: #fff; cursor: pointer; font-size: 13px; }}
+  .filter-bar button:hover {{ background: #e8f0fe; border-color: #1a73e8; }}
+  .filter-bar button.active {{ background: #1a73e8; color: #fff; border-color: #1a73e8; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+  th, td {{ padding: 8px 12px; text-align: left; border-bottom: 1px solid #e8eaed; }}
+  th {{ background: #f8f9fa; font-weight: 600; white-space: nowrap; position: sticky; top: 0; }}
+  tr:hover {{ background: #e8f0fe; }}
+  .table-wrap {{ max-height: 500px; overflow-y: auto; border: 1px solid #e8eaed; border-radius: 4px; }}
+  .table-wrap table {{ border: none; }}
+  .conclusion {{ padding: 20px; border-radius: 8px; margin-bottom: 16px; }}
+  .conclusion.pass {{ background: #e6f4ea; border: 1px solid #34a853; }}
+  .conclusion.fail {{ background: #fce8e6; border: 1px solid #d93025; }}
+  .conclusion.suspicious {{ background: #fef7e0; border: 1px solid #e37400; }}
+  .conclusion h3 {{ font-size: 16px; margin-bottom: 8px; }}
+  .rec {{ padding: 8px 12px; background: #f8f9fa; border-left: 3px solid #1a73e8; margin-bottom: 8px; font-size: 14px; }}
+  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
+  .badge-fail {{ background: #fce8e6; color: #d93025; }}
+  .badge-suspicious {{ background: #fef7e0; color: #e37400; }}
+  .badge-ai {{ background: #f3e8fd; color: #9334e6; }}
+  .chart-container {{ display: flex; align-items: center; gap: 24px; margin: 16px 0; flex-wrap: wrap; }}
+  .chart-svg {{ flex-shrink: 0; }}
+  .chart-legend {{ display: flex; flex-direction: column; gap: 6px; }}
+  .chart-legend-item {{ display: flex; align-items: center; gap: 8px; font-size: 13px; color: #555; }}
+  .chart-legend-dot {{ width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }}
+  .charts-row {{ display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }}
+  .charts-row .chart-container {{ flex: 1; min-width: 300px; }}
+  @media print {{ body {{ background: #fff; }} .section {{ box-shadow: none; border: 1px solid #ddd; }} }}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 页眉 -->
+  <div class="header">
+    <h1>民航施工资料合规审核报告</h1>
+    <div class="meta">
+      <p>项目：{audit_log.get('project_name', '')}</p>
+      <p>审核编号：{audit_log.get('audit_id', '')} | 审核时间：{audit_log.get('audit_completed_at', '')}</p>
+      <p>前置条件：阶段={audit_log.get('preconditions', {}).get('stage', '')} | 资料性质={audit_log.get('preconditions', {}).get('nature', '')} | 范围={audit_log.get('preconditions', {}).get('scope', '')}</p>
+    </div>
+  </div>
+
+  <!-- 一、审核概要 -->
+  <div class="section">
+    <h2>一、审核概要</h2>
+    <div class="stats">
+      <div class="stat"><div class="value">{summary.get('documents_audited', 0)}</div><div class="label">审核文档数</div></div>
+      <div class="stat"><div class="value">{summary.get('total_findings', 0)}</div><div class="label">总检查项</div></div>
+      <div class="stat"><div class="value">{summary.get('pass', 0)}</div><div class="label">✅ 通过</div></div>
+      <div class="stat fail"><div class="value">{summary.get('fail', 0)}</div><div class="label">❌ 不通过</div></div>
+      <div class="stat suspicious"><div class="value">{summary.get('suspicious', 0)}</div><div class="label">⚠️ 存疑</div></div>
+      <div class="stat ai"><div class="value">{summary.get('needs_ai', 0)}</div><div class="label">🤖 待AI</div></div>
+      <div class="stat"><div class="value">{summary.get('not_applicable', 0)}</div><div class="label">➖ 不适用</div></div>
+    </div>
+
+    {pie_chart_html}
+
+    <div class="conclusion {'fail' if '不合格' in conclusion.get('overall', '') else ('pass' if '合格' in conclusion.get('overall', '') else 'suspicious')}">
+      <h3>总体结论</h3>
+      <p>{conclusion.get('overall', '')}</p>
+    </div>
+
+    <h3>整改建议</h3>
+    {"".join(f'<div class="rec">{r}</div>' for r in conclusion.get('recommendations', [])) or '<p>无</p>'}
+  </div>
+
+  <!-- 二、文档级审核汇总 -->
+  <div class="section">
+    <h2>二、文档审核汇总</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:12px;">共 {len(by_doc)} 份文档，按检查项数降序排列</p>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>状态</th><th>文档</th><th>检查项</th><th>通过</th><th>不通过</th><th>存疑</th><th>待AI</th><th>不适用</th></tr>
+      </thead>
+      <tbody>
+        {doc_summary_rows}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 三、分部分项审核汇总 -->
+  <div class="section">
+    <h2>三、分部分项审核汇总</h2>
+    {bar_chart_html}
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>状态</th><th>分部分项</th><th>检查项</th><th>通过</th><th>不通过</th><th>存疑</th><th>待AI</th></tr>
+      </thead>
+      <tbody>
+        {subdivision_rows}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 四、规范对账发现（仅显示需关注项） -->
+  <div class="section">
+    <h2>四、规范对账发现（需关注项）</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:12px;">
+      共 <span class="badge badge-fail">{summary.get('fail', 0)} 项不通过</span>
+      <span class="badge badge-suspicious">{summary.get('suspicious', 0)} 项存疑</span>
+      <span class="badge badge-ai">{summary.get('needs_ai', 0)} 项待AI</span>
+      {"（仅显示前 100 条，完整数据见审核日志 JSON）" if len(non_pass_findings) > 100 else ""}
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>结果</th><th>严重</th><th>编号</th><th>类别</th><th>检查项</th><th>文档</th><th>发现</th><th>规范</th></tr>
+      </thead>
+      <tbody>
+        {finding_rows or '<tr><td colspan="8" style="text-align:center;color:#999;">（无需要关注的问题）</td></tr>'}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 五、逻辑一致性检查 -->
+  <div class="section">
+    <h2>五、逻辑一致性检查</h2>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>编号</th><th>类别</th><th>检查项</th><th>规则</th><th>发现</th></tr>
+      </thead>
+      <tbody>
+        {"".join(f'''<tr><td>{f.get('checklist_id', '')}</td><td>{f.get('category', '')}</td><td>{f.get('check_item', '')}</td><td style="max-width:300px;">{f.get('criteria', '')}</td><td>{f.get('finding', '')}</td></tr>''' for f in logic_findings)}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 页脚 -->
+  <div class="section" style="text-align:center;color:#999;font-size:12px;">
+    <p>本报告由民航施工资料合规审核 Skill v6.0 自动生成</p>
+    <p>审核编号：{audit_log.get('audit_id', '')} | 生成时间：{datetime.now().isoformat(timespec='seconds')}</p>
+    <p>铁律 R-08：未发现问题的项目不代表"全部合格"，仅表示"未发现不符合项"</p>
+  </div>
+
+</div>
+</body>
+</html>"""
+    return html
+
+
+# ========== CLI 入口 ==========
+def main() -> None:
     parser = argparse.ArgumentParser(description="民航施工资料审核 Skill 入口")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -448,7 +1104,32 @@ def main():
     p_post.add_argument("--out")
     p_post.set_defaults(func=cmd_postprocess)
 
-    # v3.3：新增一键审核子命令
+    # Phase 1：建立数据底座
+    p_build = sub.add_parser("build", help="建立数据底座（Phase 1）")
+    p_build.add_argument("project_path", help="项目文件夹路径")
+    p_build.add_argument(
+        "--engine", choices=["auto", "vision", "paddle"], default="auto",
+        help="OCR 引擎（默认 auto）"
+    )
+    p_build.add_argument(
+        "--incremental", action="store_true",
+        help="增量模式：仅处理新文件或已变更文件"
+    )
+    p_build.add_argument(
+        "--out", default="数据底座",
+        help="数据底座目录名（默认：数据底座）"
+    )
+    p_build.add_argument(
+        "--preconditions",
+        help="前置信息 JSON 文件路径（含 stage/nature/scope/ocr_engine/special_notes/excluded_files/expected_rows）"
+    )
+    p_build.add_argument(
+        "--expected-rows",
+        help="预期行数 JSON 文件路径，格式：{\"文件名模式\": 行数}"
+    )
+    p_build.set_defaults(func=cmd_build)
+
+    # 一键审核（单文件 OCR + 混淆检测 + Vision复核）
     p_audit = sub.add_parser("audit", help="一键审核（OCR + 混淆检测 + Vision复核）")
     p_audit.add_argument("file")
     p_audit.add_argument("--out", default="audit_output", help="输出目录")
@@ -467,6 +1148,44 @@ def main():
     p_audit.add_argument("--verify-path", default=None, choices=["agent", "api", "enhance"])
     p_audit.add_argument("--provider", default=None)
     p_audit.set_defaults(func=cmd_audit)
+
+    # Phase 3：正式审核（多Agent并行）
+    p_review = sub.add_parser("review", help="正式审核（Phase 3）— 支持多Agent并行")
+    p_review.add_argument("project_path", help="项目文件夹路径")
+    p_review.add_argument(
+        "--out", default="数据底座",
+        help="数据底座目录名（默认：数据底座）"
+    )
+    p_review.add_argument(
+        "--split-by", choices=["professional", "sub", "item"], default="sub",
+        help="任务拆分粒度：professional(专业级)/sub(分部级)/item(分项级)，默认 sub"
+    )
+    p_review.add_argument(
+        "--task-id",
+        help="只执行指定任务（多 Agent 并行模式）"
+    )
+    p_review.add_argument(
+        "--tasks-file",
+        help="任务包 JSON 文件路径"
+    )
+    p_review.add_argument(
+        "--dry-run", action="store_true",
+        help="仅生成任务包，不执行审核"
+    )
+    p_review.add_argument(
+        "--force", action="store_true",
+        help="跳过 human_verified 闸门（仅测试用）"
+    )
+    p_review.set_defaults(func=cmd_review)
+
+    # Phase 4：生成审核报告
+    p_report = sub.add_parser("report", help="生成审核报告（Phase 4）")
+    p_report.add_argument("project_path", help="项目文件夹路径")
+    p_report.add_argument(
+        "--out", default="数据底座",
+        help="数据底座目录名（默认：数据底座）"
+    )
+    p_report.set_defaults(func=cmd_report)
 
     args = parser.parse_args()
     args.func(args)

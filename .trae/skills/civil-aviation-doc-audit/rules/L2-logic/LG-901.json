@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-901",
+  "name": "施工日志合计值 vs 施工记录实际合计（铁律 17 配套）",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "跨资料合计值反向验证",
+  "description": "施工日志有合计值（如\"33根，489.9m\"）→ 必须与施工记录逐页核对。矛盾表现：施工日志有精确合计值，但施工记录无合计行 → 合计值来源不明。",
+  "trigger_when": {
+    "doc_type": ["施工日志", "施工记录"],
+    "field_required": ["合计值", "合计行", "桩数", "总米数"]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "not (exists(合计值 in 施工日志) and not exists(合计行 in 施工记录)) and (exists(合计行 in 施工记录) implies abs(施工日志合计值 - 施工记录合计值) / 施工日志合计值 <= 0.01)",
+    "language": "python_eval"
+  },
+  "error_template": "合计值矛盾：施工日志合计值 {施工日志合计值}，但施工记录 {无合计行或合计值不匹配}，合计值来源不明或不一致",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "调取原始施工记录核实，若原始记录已丢失需补充说明",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.9.1 迁移"
+    }
+  ]
+}

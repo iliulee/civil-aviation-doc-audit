@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-303",
+  "name": "监理签字人员 = 派驻人员",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "人员一致性",
+  "description": "监理签字应有该人员在本项目的授权。矛盾表现：签字人未在本项目监理机构。",
+  "trigger_when": {
+    "doc_type": ["监理签字资料", "监理机构派驻名单"],
+    "field_required": ["签字人", "监理岗位"]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "all(签字人 in 监理机构派驻人员 for 签字人 in 监理签字人员)",
+    "language": "python_eval"
+  },
+  "error_template": "人员矛盾：监理签字人 {签字人} 不在本项目监理机构派驻名单中",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查监理签字是否冒名，或派驻名单是否更新",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.3.3 迁移"
+    }
+  ]
+}

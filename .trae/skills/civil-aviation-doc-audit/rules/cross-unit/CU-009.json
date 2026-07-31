@@ -1,0 +1,66 @@
+{
+  "rule_id": "CU-009",
+  "name": "旁站记录日期 = 施工日志对应工序日期",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_UNIT",
+  "category": "跨单位日期对照",
+  "description": "《旁站记录》（A.8）记录的日期应与施工日志中对应工序的施工日期一致。旁站开始时间、结束时间应在施工日志记录的作业时段内",
+  "trigger_when": {
+    "doc_type_a": "旁站记录",
+    "doc_type_b": "施工日志",
+    "require_both": true
+  },
+  "alignment": {
+    "party_a": {
+      "role": "supervisor",
+      "label": "监理方",
+      "doc_type": "旁站记录"
+    },
+    "party_b": {
+      "role": "contractor",
+      "label": "施工方",
+      "doc_type": "施工日志"
+    },
+    "join_key": ["项目编号", "工序名称", "日期"],
+    "field_a": "旁站日期",
+    "field_b": "施工日期",
+    "aggregation": "none"
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "field_a == field_b",
+    "language": "python_eval"
+  },
+  "error_template": "旁站记录日期 {field_a} 与施工日志对应工序日期 {field_b} 不一致，或旁站时间不在施工日志作业时段内",
+  "severity_on_violation": "Sanity Check",
+  "confirmation_required": true,
+  "confirmation_scope": "both_parties_or_admin",
+  "remediation": "核查旁站记录日期与施工日志对应工序日期是否一致，旁站起止时间是否在作业时段内",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.10.8 迁移"
+    }
+  ]
+}

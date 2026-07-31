@@ -1,0 +1,4098 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>规则管理子系统 — 民航施工资料审核</title>
+  <style>
+    /* ================================================================
+       Design Tokens — "Precision Instrument"
+       沿用 data-editor.html 的设计风格
+    ================================================================ */
+    :root {
+      --color-bg-app:        #f4f6f9;
+      --color-bg-surface:    #ffffff;
+      --color-bg-header:     #0f172a;
+      --color-bg-panel-hdr:  #f8fafc;
+      --color-bg-preview:    #1e293b;
+
+      --color-text-primary:  #1e293b;
+      --color-text-secondary:#64748b;
+      --color-text-tertiary: #94a3b8;
+      --color-text-inverse:  #f1f5f9;
+      --color-text-link:     #2563eb;
+
+      --color-border:        #e2e8f0;
+      --color-border-light:  #f1f5f9;
+      --color-border-focus:  #2563eb;
+
+      --color-accent:        #2563eb;
+      --color-accent-hover:  #1d4ed8;
+      --color-accent-light:  #eff6ff;
+
+      --color-success:       #0d9488;
+      --color-success-light: #f0fdfa;
+      --color-success-border:#99f6e4;
+
+      --color-warning:       #d97706;
+      --color-warning-light: #fffbeb;
+      --color-warning-border:#fde68a;
+
+      --color-danger:        #dc2626;
+      --color-danger-light:  #fef2f2;
+      --color-danger-border: #fecaca;
+
+      /* 层级颜色 */
+      --color-l1:            #dc2626;
+      --color-l1-light:      #fef2f2;
+      --color-l2:            #d97706;
+      --color-l2-light:      #fffbeb;
+      --color-l3:            #2563eb;
+      --color-l3-light:      #eff6ff;
+      --color-cu:            #7c3aed;
+      --color-cu-light:      #f5f3ff;
+
+      --color-row-hover:     #f8fafc;
+      --color-row-stripe:    #fafbfc;
+      --color-row-highlight: #eff6ff;
+
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+      --shadow-overlay: 0 12px 40px rgba(0,0,0,0.24);
+
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+      --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+      --font-size-xs: 11px;
+      --font-size-sm: 12px;
+      --font-size-base: 13px;
+      --font-size-md: 14px;
+      --font-size-lg: 16px;
+      --font-size-xl: 20px;
+
+      --transition-fast: 0.12s ease;
+      --transition-base: 0.18s ease;
+    }
+
+    /* ========== Reset & Base ========== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: var(--font-ui);
+      font-size: var(--font-size-base);
+      color: var(--color-text-primary);
+      background: var(--color-bg-app);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    h1, h2, h3, h4 { font-weight: 600; color: var(--color-text-primary); }
+    code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+    /* ========== Buttons ========== */
+    button, .btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--font-ui);
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      padding: 6px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-surface);
+      color: var(--color-text-primary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+      user-select: none;
+      line-height: 1.4;
+    }
+    button:hover:not(:disabled) { background: #f8fafc; border-color: #94a3b8; }
+    button:active:not(:disabled) { transform: scale(0.98); }
+    button:disabled { cursor: not-allowed; opacity: 0.45; }
+    button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+    button.primary   { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+    button.primary:hover:not(:disabled) { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+    button.success   { background: var(--color-success); color: #fff; border-color: var(--color-success); }
+    button.success:hover:not(:disabled) { background: #0f766e; border-color: #0f766e; }
+    button.warning   { background: var(--color-warning); color: #fff; border-color: var(--color-warning); }
+    button.warning:hover:not(:disabled) { background: #b45309; border-color: #b45309; }
+    button.danger    { background: var(--color-danger); color: #fff; border-color: var(--color-danger); }
+    button.danger:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; }
+    button.ghost     { border-color: transparent; background: transparent; color: var(--color-text-secondary); }
+    button.ghost:hover:not(:disabled) { background: #f1f5f9; color: var(--color-text-primary); }
+    button.small     { padding: 3px 10px; font-size: var(--font-size-xs); border-radius: 3px; }
+
+    /* ========== Form Elements ========== */
+    input[type="text"], input[type="number"], input[type="search"], select, textarea {
+      font-family: var(--font-ui);
+      font-size: var(--font-size-sm);
+      padding: 6px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-surface);
+      color: var(--color-text-primary);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+      line-height: 1.4;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+    select { cursor: pointer; padding-right: 26px;
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12'%3E%3Cpath fill='%2364748b' d='M3 4.5l3 3 3-3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+    }
+    textarea { resize: vertical; min-height: 80px; font-family: var(--font-mono); }
+    label.field-label {
+      display: block;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+    .form-row { margin-bottom: 14px; }
+    .form-row > input, .form-row > select, .form-row > textarea { width: 100%; }
+    .required-mark { color: var(--color-danger); margin-left: 2px; }
+
+    /* ========== Top Bar ========== */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 20px;
+      background: var(--color-bg-header);
+      color: var(--color-text-inverse);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      min-height: 52px;
+    }
+    .topbar-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: var(--font-size-md);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+    .topbar-brand .icon {
+      display: flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px;
+      background: var(--color-accent);
+      border-radius: var(--radius-sm);
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .topbar-brand .subtitle {
+      color: #94a3b8;
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-left: 6px;
+      border-left: 1px solid #334155;
+      padding-left: 10px;
+    }
+
+    .topbar-tabs {
+      display: flex; align-items: center; gap: 2px;
+      margin: 0 auto;
+      background: #1e293b;
+      padding: 3px;
+      border-radius: var(--radius-md);
+    }
+    .tab-btn {
+      padding: 6px 18px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+    .tab-btn:hover { color: #e2e8f0; }
+    .tab-btn.active {
+      background: var(--color-accent);
+      color: #fff;
+      box-shadow: 0 1px 3px rgba(37,99,235,0.4);
+    }
+
+    .topbar-right {
+      display: flex; align-items: center; gap: 10px;
+      margin-left: auto;
+    }
+    .api-conn {
+      display: flex; align-items: center; gap: 6px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: var(--radius-sm);
+      padding: 4px 10px;
+    }
+    .api-conn input {
+      background: transparent;
+      border: none;
+      color: #e2e8f0;
+      font-size: var(--font-size-xs);
+      width: 200px;
+      padding: 2px 0;
+    }
+    .api-conn input:focus { outline: none; box-shadow: none; }
+    .conn-led {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+      transition: background var(--transition-base);
+    }
+    .conn-led.ok   { background: var(--color-success); box-shadow: 0 0 6px rgba(13,148,136,0.6); }
+    .conn-led.fail { background: var(--color-danger); box-shadow: 0 0 6px rgba(220,38,38,0.6); }
+    .conn-led.loading { background: var(--color-warning); animation: pulse-dot 1.2s ease infinite; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ========== Main Container ========== */
+    .main-container {
+      padding: 16px 20px 40px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ========== Card / Panel ========== */
+    .panel {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--color-bg-panel-hdr);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .panel-header h3 { font-size: var(--font-size-md); }
+    .panel-body { padding: 16px; }
+
+    /* ========== Filter Bar (Tab 1) ========== */
+    .filter-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px;
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .filter-bar label {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-right: -4px;
+    }
+    .filter-bar select { min-width: 130px; }
+    .filter-bar input[type="search"] { min-width: 200px; flex: 0 1 260px; }
+    .filter-bar .filter-divider {
+      width: 1px; height: 22px;
+      background: var(--color-border);
+      margin: 0 4px;
+    }
+    .filter-bar .filter-count {
+      margin-left: auto;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+    .filter-bar .filter-count strong { color: var(--color-accent); font-weight: 600; }
+
+    /* ========== Pending Confirmation Banner ========== */
+    .pending-banner {
+      display: none;
+      align-items: center; gap: 10px;
+      padding: 10px 16px;
+      background: var(--color-warning-light);
+      border: 1px solid var(--color-warning-border);
+      border-radius: var(--radius-md);
+      margin-bottom: 12px;
+      color: #92400e;
+      font-size: var(--font-size-sm);
+    }
+    .pending-banner.visible { display: flex; }
+    .pending-banner .banner-icon {
+      font-size: 16px;
+    }
+    .pending-banner .banner-text { flex: 1; }
+    .pending-banner .banner-text strong { color: var(--color-warning); font-weight: 700; }
+    .pending-banner button { background: var(--color-warning); color: #fff; border-color: var(--color-warning); }
+
+    /* ========== Rules Table ========== */
+    .rules-table-wrap {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .rules-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+    }
+    .rules-table thead {
+      background: var(--color-bg-panel-hdr);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .rules-table th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .rules-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-border-light);
+      vertical-align: middle;
+    }
+    .rules-table tbody tr { cursor: pointer; transition: background var(--transition-fast); }
+    .rules-table tbody tr:hover { background: var(--color-row-hover); }
+    .rules-table tbody tr:nth-child(even) { background: var(--color-row-stripe); }
+    .rules-table tbody tr:nth-child(even):hover { background: var(--color-row-hover); }
+    .rules-table tbody tr.selected { background: var(--color-row-highlight) !important; }
+
+    /* ID prefix tag */
+    .id-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    .id-tag.L1 { background: var(--color-l1-light); color: var(--color-l1); }
+    .id-tag.L2 { background: var(--color-l2-light); color: var(--color-l2); }
+    .id-tag.L3 { background: var(--color-l3-light); color: var(--color-l3); }
+    .id-tag.CU { background: var(--color-cu-light); color: var(--color-cu); }
+    .rule-id-cell { font-family: var(--font-mono); font-size: var(--font-size-xs); white-space: nowrap; }
+
+    /* Level badge */
+    .level-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+    }
+    .level-badge::before {
+      content: "";
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .level-badge.L1 { background: var(--color-l1-light); color: var(--color-l1); }
+    .level-badge.L1::before { background: var(--color-l1); }
+    .level-badge.L2 { background: var(--color-l2-light); color: var(--color-l2); }
+    .level-badge.L2::before { background: var(--color-l2); }
+    .level-badge.L3 { background: var(--color-l3-light); color: var(--color-l3); }
+    .level-badge.L3::before { background: var(--color-l3); }
+
+    /* Scope badge */
+    .scope-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      background: #f1f5f9;
+      color: var(--color-text-secondary);
+    }
+    .scope-badge.CROSS_UNIT { background: var(--color-cu-light); color: var(--color-cu); }
+    .scope-badge.CROSS_DOC { background: #fef3c7; color: #92400e; }
+    .scope-badge.SINGLE_DOC { background: #f0fdfa; color: #0f766e; }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 9px;
+      border-radius: 11px;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      text-transform: lowercase;
+    }
+    .status-badge::before {
+      content: ""; display: inline-block;
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .status-badge.active               { background: #f0fdfa; color: #0f766e; }
+    .status-badge.active::before       { background: var(--color-success); }
+    .status-badge.draft                { background: #f1f5f9; color: #64748b; }
+    .status-badge.draft::before        { background: #94a3b8; }
+    .status-badge.testing              { background: #fffbeb; color: #b45309; }
+    .status-badge.testing::before      { background: var(--color-warning); }
+    .status-badge.incubating           { background: #f5f3ff; color: #6d28d9; }
+    .status-badge.incubating::before   { background: #7c3aed; }
+    .status-badge.deprecated           { background: #fef2f2; color: #b91c1c; }
+    .status-badge.deprecated::before   { background: var(--color-danger); }
+    .status-badge.pending_confirmation { background: #fff7ed; color: #c2410c; }
+    .status-badge.pending_confirmation::before { background: #ea580c; animation: pulse-dot 1.5s ease infinite; }
+
+    /* Hit rate bar */
+    .hit-rate-cell { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+    .hit-rate-bar {
+      flex: 1; height: 6px;
+      background: #f1f5f9;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .hit-rate-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--color-success), var(--color-accent));
+      transition: width var(--transition-base);
+    }
+    .hit-rate-text { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--color-text-secondary); min-width: 38px; text-align: right; }
+
+    /* Action menu */
+    .action-cell { text-align: right; white-space: nowrap; }
+    .action-menu-btn {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+    .action-menu-btn:hover { background: var(--color-accent-light); color: var(--color-accent); border-color: var(--color-accent); }
+    .action-dropdown {
+      position: absolute;
+      min-width: 160px;
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      z-index: 50;
+      padding: 4px;
+      display: none;
+    }
+    .action-dropdown.visible { display: block; }
+    .action-dropdown button {
+      display: flex; width: 100%;
+      justify-content: flex-start;
+      padding: 7px 12px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-size: var(--font-size-sm);
+      border-radius: var(--radius-sm);
+    }
+    .action-dropdown button:hover { background: var(--color-accent-light); color: var(--color-accent); }
+    .action-dropdown button.danger { color: var(--color-danger); }
+    .action-dropdown button.danger:hover { background: var(--color-danger-light); }
+    .action-dropdown .divider {
+      height: 1px; background: var(--color-border-light); margin: 4px 0;
+    }
+
+    /* ========== Detail Drawer ========== */
+    .drawer-overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,0.4);
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-base);
+    }
+    .drawer-overlay.visible { opacity: 1; pointer-events: auto; }
+    .detail-drawer {
+      position: fixed; top: 0; right: 0;
+      width: 520px; max-width: 90vw;
+      height: 100vh;
+      background: var(--color-bg-surface);
+      box-shadow: var(--shadow-overlay);
+      z-index: 201;
+      transform: translateX(100%);
+      transition: transform var(--transition-base);
+      display: flex; flex-direction: column;
+    }
+    .detail-drawer.visible { transform: translateX(0); }
+    .drawer-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      background: var(--color-bg-panel-hdr);
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+    .drawer-header h3 { font-size: var(--font-size-md); display: flex; align-items: center; gap: 8px; }
+    .drawer-close {
+      background: transparent; border: none;
+      font-size: 20px; color: var(--color-text-secondary);
+      cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm);
+    }
+    .drawer-close:hover { background: var(--color-border-light); color: var(--color-text-primary); }
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .drawer-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-panel-hdr);
+      display: flex; gap: 8px; flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .detail-section { margin-bottom: 20px; }
+    .detail-section h4 {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 6px 12px;
+      font-size: var(--font-size-sm);
+    }
+    .detail-grid .label { color: var(--color-text-secondary); }
+    .detail-grid .value { color: var(--color-text-primary); word-break: break-word; }
+    .detail-grid .value.mono { font-family: var(--font-mono); font-size: var(--font-size-xs); }
+
+    .detail-block {
+      background: var(--color-bg-panel-hdr);
+      border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-primary);
+      line-height: 1.6;
+      margin-bottom: 8px;
+      word-break: break-word;
+    }
+    .detail-block.mono { font-family: var(--font-mono); font-size: var(--font-size-xs); background: #1e293b; color: #e2e8f0; }
+    .detail-block.error-template {
+      background: var(--color-danger-light);
+      border-color: var(--color-danger-border);
+      color: #991b1b;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+    }
+
+    /* Changelog timeline */
+    .changelog-timeline {
+      position: relative;
+      padding-left: 20px;
+      margin-top: 8px;
+    }
+    .changelog-timeline::before {
+      content: "";
+      position: absolute;
+      left: 6px; top: 4px; bottom: 4px;
+      width: 2px;
+      background: var(--color-border);
+    }
+    .changelog-item {
+      position: relative;
+      padding: 6px 0 12px 16px;
+      font-size: var(--font-size-sm);
+    }
+    .changelog-item::before {
+      content: "";
+      position: absolute;
+      left: -17px; top: 10px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      border: 2px solid var(--color-bg-surface);
+      box-shadow: 0 0 0 2px var(--color-accent-light);
+    }
+    .changelog-item .cl-version {
+      display: inline-block;
+      padding: 1px 6px;
+      background: var(--color-accent-light);
+      color: var(--color-accent);
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      margin-right: 6px;
+    }
+    .changelog-item .cl-date {
+      color: var(--color-text-tertiary);
+      font-size: var(--font-size-xs);
+      margin-left: 6px;
+    }
+    .changelog-item .cl-author {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-xs);
+    }
+    .changelog-item .cl-change {
+      color: var(--color-text-primary);
+      margin-top: 2px;
+    }
+
+    /* ========== Editor (Tab 2) ========== */
+    .editor-layout {
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 16px;
+      align-items: start;
+    }
+    .editor-main { min-width: 0; }
+    .editor-preview {
+      position: sticky;
+      top: 70px;
+    }
+    .editor-preview .panel-body { padding: 0; }
+    .json-preview {
+      background: var(--color-bg-preview);
+      color: #e2e8f0;
+      padding: 14px 16px;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      line-height: 1.55;
+      max-height: calc(100vh - 200px);
+      overflow: auto;
+      white-space: pre;
+      border-radius: 0 0 var(--radius-md) var(--radius-md);
+    }
+    .json-preview .jk { color: #93c5fd; }
+    .json-preview .js { color: #fde68a; }
+    .json-preview .jn { color: #86efac; }
+    .json-preview .jb { color: #f9a8d4; }
+    .json-preview .jc { color: #64748b; }
+
+    /* Stepper */
+    .stepper {
+      display: flex; align-items: center;
+      padding: 14px 16px;
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 12px;
+      overflow-x: auto;
+    }
+    .step-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-tertiary);
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color var(--transition-fast);
+    }
+    .step-item:hover { color: var(--color-text-secondary); }
+    .step-item.active { color: var(--color-accent); font-weight: 600; }
+    .step-item.done { color: var(--color-success); }
+    .step-num {
+      display: flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #f1f5f9;
+      color: var(--color-text-tertiary);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      border: 1px solid var(--color-border);
+    }
+    .step-item.active .step-num { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+    .step-item.done .step-num { background: var(--color-success); color: #fff; border-color: var(--color-success); }
+    .step-connector {
+      width: 28px; height: 1px;
+      background: var(--color-border);
+      margin: 0 6px;
+    }
+    .step-item.done + .step-connector { background: var(--color-success); }
+
+    .editor-step-panel {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .editor-step-panel h3 {
+      font-size: var(--font-size-md);
+      margin-bottom: 4px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .step-desc {
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      margin-bottom: 18px;
+    }
+
+    /* Card radio */
+    .card-radio-group {
+      display: grid;
+      gap: 10px;
+    }
+    .card-radio-group.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .card-radio-group.cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .card-radio {
+      position: relative;
+      display: block;
+      padding: 12px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      background: var(--color-bg-surface);
+    }
+    .card-radio:hover { border-color: #94a3b8; background: #f8fafc; }
+    .card-radio input { position: absolute; opacity: 0; pointer-events: none; }
+    .card-radio.checked {
+      border-color: var(--color-accent);
+      background: var(--color-accent-light);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.1);
+    }
+    .card-radio .cr-title {
+      font-weight: 600;
+      font-size: var(--font-size-md);
+      color: var(--color-text-primary);
+      margin-bottom: 3px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .card-radio .cr-desc {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+    .card-radio .cr-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .card-radio .cr-badge.L1 { background: var(--color-l1-light); color: var(--color-l1); }
+    .card-radio .cr-badge.L2 { background: var(--color-l2-light); color: var(--color-l2); }
+    .card-radio .cr-badge.L3 { background: var(--color-l3-light); color: var(--color-l3); }
+    .card-radio .cr-badge.CU { background: var(--color-cu-light); color: var(--color-cu); }
+
+    /* Multi-select chips */
+    .chips-input {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      padding: 5px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      min-height: 34px;
+      align-items: center;
+      background: var(--color-bg-surface);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .chips-input:focus-within {
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+    .chips-input .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px;
+      background: var(--color-accent-light);
+      color: var(--color-accent);
+      border-radius: 3px;
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+    }
+    .chips-input .chip .chip-remove {
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      opacity: 0.7;
+    }
+    .chips-input .chip .chip-remove:hover { opacity: 1; }
+    .chips-input input {
+      flex: 1; min-width: 100px;
+      border: none; padding: 2px 0;
+      background: transparent;
+      font-size: var(--font-size-sm);
+    }
+    .chips-input input:focus { outline: none; box-shadow: none; }
+    .chips-suggestions {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      margin-top: 6px;
+    }
+    .chips-suggestions .suggestion {
+      padding: 2px 8px;
+      background: #f1f5f9;
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+    .chips-suggestions .suggestion:hover { background: var(--color-accent-light); color: var(--color-accent); border-color: var(--color-accent); }
+
+    /* Condition builder */
+    .condition-builder {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      background: var(--color-bg-panel-hdr);
+    }
+    .condition-row {
+      display: grid;
+      grid-template-columns: 1.4fr 0.8fr 1.4fr 0.8fr 0.8fr 28px;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .condition-row select, .condition-row input {
+      width: 100%;
+      padding: 5px 8px;
+      font-size: var(--font-size-xs);
+    }
+    .condition-row .cond-remove {
+      padding: 4px 8px;
+      background: transparent;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-danger);
+      cursor: pointer;
+      font-size: var(--font-size-sm);
+    }
+    .condition-row .cond-remove:hover { background: var(--color-danger-light); }
+    .condition-combiner {
+      display: flex; align-items: center; gap: 6px;
+      margin: 6px 0;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+    .condition-combiner select { width: 70px; padding: 3px 6px; font-size: var(--font-size-xs); }
+    .expr-preview {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #1e293b;
+      color: #fde68a;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      border-radius: var(--radius-sm);
+      word-break: break-all;
+      min-height: 28px;
+    }
+    .editor-mode-tabs {
+      display: flex; gap: 4px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .editor-mode-tab {
+      padding: 6px 14px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      cursor: pointer;
+      margin-bottom: -1px;
+    }
+    .editor-mode-tab.active {
+      color: var(--color-accent);
+      border-bottom-color: var(--color-accent);
+      font-weight: 600;
+    }
+
+    .alignment-config {
+      border: 1px dashed var(--color-cu);
+      background: var(--color-cu-light);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      margin-top: 8px;
+    }
+    .alignment-config h4 {
+      color: var(--color-cu);
+      font-size: var(--font-size-sm);
+      margin-bottom: 8px;
+    }
+    .alignment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Sandbox */
+    .sandbox {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .sandbox textarea {
+      width: 100%;
+      border: none;
+      border-bottom: 1px solid var(--color-border);
+      border-radius: 0;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      padding: 10px 12px;
+      min-height: 140px;
+      resize: vertical;
+    }
+    .sandbox textarea:focus { box-shadow: none; }
+    .sandbox-result {
+      padding: 10px 12px;
+      font-size: var(--font-size-sm);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .sandbox-result.pass { background: var(--color-success-light); color: #0f766e; }
+    .sandbox-result.fail { background: var(--color-danger-light); color: #991b1b; }
+    .sandbox-result .violation-item {
+      padding: 6px 8px;
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-danger-border);
+      border-radius: var(--radius-sm);
+      margin-top: 6px;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-primary);
+    }
+
+    .editor-nav {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 0 0;
+      border-top: 1px solid var(--color-border-light);
+      margin-top: 16px;
+    }
+
+    /* ========== Stats Dashboard (Tab 3) ========== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .kpi-card {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--color-accent);
+    }
+    .kpi-card.success::before { background: var(--color-success); }
+    .kpi-card.warning::before { background: var(--color-warning); }
+    .kpi-card.danger::before { background: var(--color-danger); }
+    .kpi-label {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--color-text-primary);
+      line-height: 1.1;
+    }
+    .kpi-trend {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      margin-top: 4px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .chart-card {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      padding: 16px;
+    }
+    .chart-card h3 {
+      font-size: var(--font-size-md);
+      margin-bottom: 12px;
+    }
+    .chart-svg { width: 100%; height: 220px; }
+
+    /* ========== Modal ========== */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,0.55);
+      z-index: 300;
+      display: none;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: var(--color-bg-surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-overlay);
+      width: 100%; max-width: 480px;
+      max-height: 90vh;
+      display: flex; flex-direction: column;
+      animation: modalIn var(--transition-base);
+    }
+    @keyframes modalIn {
+      from { transform: translateY(-12px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { font-size: var(--font-size-md); }
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-panel-hdr);
+      display: flex; justify-content: flex-end; gap: 8px;
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+
+    /* ========== Toast ========== */
+    .toast-container {
+      position: fixed; top: 70px; right: 20px;
+      z-index: 400;
+      display: flex; flex-direction: column; gap: 8px;
+      max-width: 360px;
+    }
+    .toast {
+      background: var(--color-bg-surface);
+      border-left: 4px solid var(--color-accent);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-lg);
+      padding: 10px 14px;
+      font-size: var(--font-size-sm);
+      display: flex; align-items: flex-start; gap: 8px;
+      animation: toastIn var(--transition-base);
+      min-width: 240px;
+    }
+    @keyframes toastIn {
+      from { transform: translateX(40px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .toast.success { border-left-color: var(--color-success); }
+    .toast.error   { border-left-color: var(--color-danger); }
+    .toast.warning { border-left-color: var(--color-warning); }
+    .toast.info    { border-left-color: var(--color-accent); }
+    .toast .toast-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .toast.success .toast-icon { color: var(--color-success); }
+    .toast.error   .toast-icon { color: var(--color-danger); }
+    .toast.warning .toast-icon { color: var(--color-warning); }
+    .toast.info    .toast-icon { color: var(--color-accent); }
+    .toast .toast-msg { flex: 1; word-break: break-word; }
+    .toast .toast-close { cursor: pointer; color: var(--color-text-tertiary); font-size: 16px; line-height: 1; }
+
+    /* ========== D-4: Reflections Panel (反思报告 + 孵化区) ========== */
+    .reflections-layout {
+      display: flex;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .reflections-list-panel,
+    .reflection-detail-panel {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      min-height: 560px;
+      overflow: hidden;
+    }
+    .reflections-list-panel {
+      width: 320px;
+      flex-shrink: 0;
+    }
+    .reflection-detail-panel {
+      flex: 1;
+      min-width: 0;
+    }
+    .reflections-list-panel .panel-header,
+    .reflection-detail-panel .panel-header,
+    .incubator-section .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--color-bg-panel-hdr);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .reflections-list-panel .panel-header h3,
+    .reflection-detail-panel .panel-header h3,
+    .incubator-section .panel-header h3 {
+      font-size: var(--font-size-md);
+      font-weight: 600;
+    }
+    .reflections-filter {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+    .reflections-filter input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm);
+    }
+    .reflections-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .reflection-card {
+      padding: 10px 12px;
+      border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: background var(--transition-fast), border-color var(--transition-fast);
+      background: var(--color-bg-surface);
+    }
+    .reflection-card:hover {
+      background: var(--color-accent-light);
+      border-color: var(--color-accent);
+    }
+    .reflection-card.selected {
+      background: var(--color-accent-light);
+      border-color: var(--color-accent);
+      border-left: 3px solid var(--color-accent);
+    }
+    .reflection-card .rc-date {
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      color: var(--color-text-primary);
+      font-family: var(--font-mono);
+    }
+    .reflection-card .rc-title {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .reflection-card .rc-meta {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      margin-top: 6px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .reflection-content {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+      color: var(--color-text-primary);
+      background: var(--color-bg-surface);
+    }
+    .reflection-content pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+      font-size: inherit;
+      margin: 0;
+    }
+    .reflection-content .empty-state {
+      padding: 80px 20px;
+    }
+
+    .incubator-section {
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-surface);
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .incubator-section.hidden { display: none; }
+    .incubator-list {
+      padding: 8px 12px 12px;
+    }
+    .incubator-item {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--color-bg-surface);
+      transition: box-shadow var(--transition-fast);
+    }
+    .incubator-item:hover { box-shadow: var(--shadow-sm); }
+    .incubator-item .ii-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .incubator-item .ii-rule-id {
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      background: var(--color-bg-panel-hdr);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+    }
+    .incubator-item .ii-name {
+      flex: 1;
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      color: var(--color-text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 100px;
+    }
+    .incubator-item .ii-desc {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      margin: 4px 0 6px;
+      line-height: 1.5;
+    }
+    .incubator-item .ii-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      margin-bottom: 8px;
+    }
+    .incubator-item .ii-actions {
+      display: flex;
+      gap: 6px;
+    }
+    /* 建议类型徽章（new_rule=蓝 / modify=橙 / disable=红 / level_adjust=紫） */
+    .suggestion-type-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      line-height: 1.5;
+    }
+    .suggestion-type-badge.new_rule      { background: var(--color-accent-light); color: var(--color-accent); }
+    .suggestion-type-badge.modify        { background: var(--color-warning-light); color: var(--color-warning); }
+    .suggestion-type-badge.disable       { background: var(--color-danger-light); color: var(--color-danger); }
+    .suggestion-type-badge.level_adjust  { background: var(--color-cu-light); color: var(--color-cu); }
+
+    /* 反思报告两栏在窄屏下自动堆叠 */
+    @media (max-width: 900px) {
+      .reflections-layout { flex-direction: column; }
+      .reflections-list-panel { width: 100%; }
+    }
+
+    /* ========== E-3.1: 待确认规则突出显示 ========== */
+    .rules-table tbody tr.row-pending {
+      border-left: 3px solid var(--color-warning);
+      background: var(--color-warning-light) !important;
+    }
+    .rules-table tbody tr.row-pending:hover {
+      background: #fff8e6 !important;
+    }
+    .rules-table tbody tr.row-pending.selected {
+      background: #ffe9b3 !important;
+    }
+    /* 待确认 banner 增强样式 */
+    .pending-banner .pending-ids {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      margin-left: 4px;
+    }
+    .pending-banner .pending-ids .pid-chip {
+      display: inline-block;
+      padding: 1px 6px;
+      margin: 0 2px;
+      background: rgba(217, 119, 6, 0.12);
+      border: 1px solid var(--color-warning-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-warning);
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: background var(--transition-fast);
+    }
+    .pending-banner .pending-ids .pid-chip:hover {
+      background: rgba(217, 119, 6, 0.2);
+    }
+    .pending-banner .banner-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* ========== Empty / Loading / Skeleton ========== */
+    .empty-state {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--color-text-tertiary);
+    }
+    .empty-state .empty-icon {
+      font-size: 42px;
+      margin-bottom: 12px;
+      opacity: 0.4;
+    }
+    .empty-state .empty-title { font-size: var(--font-size-md); font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px; }
+    .empty-state .empty-desc { font-size: var(--font-size-sm); }
+
+    .skeleton-row {
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+      background-size: 200% 100%;
+      animation: skeleton 1.5s ease infinite;
+      height: 14px;
+      border-radius: 3px;
+      margin: 8px 0;
+    }
+    @keyframes skeleton {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .loading-shimmer {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--color-border);
+      border-top-color: var(--color-accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    .text-mono { font-family: var(--font-mono); }
+    .text-xs { font-size: var(--font-size-xs); }
+    .text-sm { font-size: var(--font-size-sm); }
+    .text-secondary { color: var(--color-text-secondary); }
+    .text-tertiary { color: var(--color-text-tertiary); }
+    .text-danger { color: var(--color-danger); }
+    .text-success { color: var(--color-success); }
+    .text-warning { color: var(--color-warning); }
+    .mt-8 { margin-top: 8px; }
+    .mt-16 { margin-top: 16px; }
+    .mb-8 { margin-bottom: 8px; }
+    .mb-16 { margin-bottom: 16px; }
+    .flex { display: flex; }
+    .flex-1 { flex: 1; }
+    .gap-8 { gap: 8px; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .nowrap { white-space: nowrap; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- ============ Top Bar ============ -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="icon">R</div>
+      <span>规则管理子系统</span>
+      <span class="subtitle">Rule Management</span>
+    </div>
+
+    <nav class="topbar-tabs">
+      <button class="tab-btn active" data-tab="list">规则列表</button>
+      <button class="tab-btn" data-tab="editor">新建规则</button>
+      <button class="tab-btn" data-tab="stats">统计仪表盘</button>
+      <button class="tab-btn" data-tab="reflections">反思报告</button>
+    </nav>
+
+    <div class="topbar-right">
+      <div class="api-conn">
+        <span class="conn-led" id="connLed"></span>
+        <input type="text" id="apiBaseUrl" value="http://localhost:8765" placeholder="API 服务器地址">
+      </div>
+      <button class="small" id="btnRefreshConn" title="重新连接">↻</button>
+    </div>
+  </header>
+
+  <!-- ============ Main Container ============ -->
+  <main class="main-container">
+
+    <!-- ============ Tab 1: Rule List ============ -->
+    <section class="tab-panel active" id="tab-list">
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <label>层级</label>
+        <select id="filterLevel">
+          <option value="">全部</option>
+          <option value="L1-IRON">L1 铁律</option>
+          <option value="L2-LOGIC">L2 逻辑一致性</option>
+          <option value="L3-BUSINESS">L3 业务合理性</option>
+        </select>
+
+        <label>作用域</label>
+        <select id="filterScope">
+          <option value="">全部</option>
+          <option value="SINGLE_DOC">单资料</option>
+          <option value="CROSS_DOC">跨资料</option>
+          <option value="CROSS_UNIT">跨单位</option>
+        </select>
+
+        <label>状态</label>
+        <select id="filterStatus">
+          <option value="">全部</option>
+          <option value="active">active</option>
+          <option value="draft">draft</option>
+          <option value="testing">testing</option>
+          <option value="incubating">incubating</option>
+          <option value="deprecated">deprecated</option>
+          <option value="pending_confirmation">pending_confirmation</option>
+        </select>
+
+        <label>来源</label>
+        <select id="filterSource">
+          <option value="">全部</option>
+          <option value="system">system</option>
+          <option value="custom">custom</option>
+          <option value="incubated">incubated</option>
+        </select>
+
+        <label>专业</label>
+        <select id="filterProfessional">
+          <option value="">全部</option>
+          <option value="01_场道工程">01_场道工程</option>
+          <option value="02_空管工程">02_空管工程</option>
+          <option value="03_助航设施">03_助航设施</option>
+          <option value="04_弱电系统">04_弱电系统</option>
+          <option value="05_供油工程">05_供油工程</option>
+        </select>
+
+        <input type="search" id="filterQ" placeholder="🔍 关键词（名称/描述/ID）">
+
+        <button class="ghost small" id="btnResetFilter">重置</button>
+
+        <span class="filter-count">共 <strong id="filterCount">0</strong> 条</span>
+      </div>
+
+      <!-- Pending Confirmation Banner (E-3.1 增强：显示待确认规则 ID 列表 + 快捷筛选) -->
+      <div class="pending-banner" id="pendingBanner">
+        <span class="banner-icon">⚠</span>
+        <span class="banner-text">
+          有 <strong id="pendingCount">0</strong> 条跨单位规则待确认
+          <span class="pending-ids" id="pendingIds"></span>
+        </span>
+        <div class="banner-actions">
+          <button class="small" id="btnViewPending">🔍 待确认快捷筛选</button>
+        </div>
+      </div>
+
+      <!-- Rules Table -->
+      <div class="rules-table-wrap">
+        <table class="rules-table" id="rulesTable">
+          <thead>
+            <tr>
+              <th style="width:110px">ID</th>
+              <th>名称</th>
+              <th style="width:110px">层级</th>
+              <th style="width:90px">作用域</th>
+              <th style="width:130px">状态</th>
+              <th style="width:80px">版本</th>
+              <th style="width:180px">命中率</th>
+              <th style="width:80px; text-align:right">操作</th>
+            </tr>
+          </thead>
+          <tbody id="rulesTableBody">
+            <!-- Rows rendered by JS -->
+          </tbody>
+        </table>
+        <div id="emptyState" class="empty-state hidden">
+          <div class="empty-icon">📋</div>
+          <div class="empty-title">暂无规则</div>
+          <div class="empty-desc">调整筛选条件或新建一条规则</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Tab 2: Editor ============ -->
+    <section class="tab-panel" id="tab-editor">
+      <div class="editor-layout">
+        <div class="editor-main">
+          <!-- Stepper -->
+          <div class="stepper" id="stepper">
+            <div class="step-item active" data-step="1">
+              <span class="step-num">1</span><span>基本信息</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="2">
+              <span class="step-num">2</span><span>触发条件</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="3">
+              <span class="step-num">3</span><span>校验表达式</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="4">
+              <span class="step-num">4</span><span>错误消息</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="5">
+              <span class="step-num">5</span><span>测试沙箱</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="6">
+              <span class="step-num">6</span><span>保存</span>
+            </div>
+          </div>
+
+          <!-- Step 1: Basic Info -->
+          <div class="editor-step-panel" id="stepPanel1">
+            <h3>① 基本信息</h3>
+            <p class="step-desc">为规则命名并选择层级与作用域，这将决定规则的执行方式与违反后果分级。</p>
+
+            <div class="form-row">
+              <label class="field-label">规则名称<span class="required-mark">*</span></label>
+              <input type="text" id="efName" placeholder="如：高程自洽校验" data-field="name">
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">描述<span class="required-mark">*</span></label>
+              <textarea id="efDescription" rows="3" placeholder="详细描述规则的目的与适用场景" data-field="description"></textarea>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">层级<span class="required-mark">*</span></label>
+              <div class="card-radio-group cols-3" id="levelCards">
+                <label class="card-radio" data-value="L1-IRON">
+                  <input type="radio" name="level" value="L1-IRON">
+                  <div class="cr-title"><span class="cr-badge L1">L1</span>铁律</div>
+                  <div class="cr-desc">不可商榷的规范底线，违反即判定资料不合格（Fatal）</div>
+                </label>
+                <label class="card-radio" data-value="L2-LOGIC">
+                  <input type="radio" name="level" value="L2-LOGIC">
+                  <div class="cr-title"><span class="cr-badge L2">L2</span>逻辑一致性</div>
+                  <div class="cr-desc">数据自洽与数学关系校验，需人工复核（Sanity Check）</div>
+                </label>
+                <label class="card-radio" data-value="L3-BUSINESS">
+                  <input type="radio" name="level" value="L3-BUSINESS">
+                  <div class="cr-title"><span class="cr-badge L3">L3</span>业务合理性</div>
+                  <div class="cr-desc">业务经验性提示，不影响合规判定（Best Practice）</div>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">作用域<span class="required-mark">*</span></label>
+              <div class="card-radio-group cols-3" id="scopeCards">
+                <label class="card-radio" data-value="SINGLE_DOC">
+                  <input type="radio" name="scope" value="SINGLE_DOC">
+                  <div class="cr-title">单资料</div>
+                  <div class="cr-desc">校验单份资料内部字段的自洽性</div>
+                </label>
+                <label class="card-radio" data-value="CROSS_DOC">
+                  <input type="radio" name="scope" value="CROSS_DOC">
+                  <div class="cr-title">跨资料</div>
+                  <div class="cr-desc">校验同一专业多份资料间的一致性</div>
+                </label>
+                <label class="card-radio" data-value="CROSS_UNIT">
+                  <input type="radio" name="scope" value="CROSS_UNIT">
+                  <div class="cr-title"><span class="cr-badge CU">CU</span>跨单位</div>
+                  <div class="cr-desc">校验不同单位资料（如监理 vs 施工方），需协同确认</div>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">严重度</label>
+              <select id="efSeverity" data-field="severity_on_violation">
+                <option value="Fatal">Fatal — 致命</option>
+                <option value="Sanity Check">Sanity Check — 一致性校验</option>
+                <option value="Best Practice">Best Practice — 最佳实践</option>
+              </select>
+              <div class="text-xs text-tertiary mt-8">层级与严重度联动：L1→Fatal, L2→Sanity Check, L3→Best Practice</div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">规则分类</label>
+              <input type="text" id="efCategory" placeholder="如：数学自洽、跨单位数量对照" data-field="category">
+            </div>
+
+            <div class="editor-nav">
+              <span class="text-xs text-tertiary">步骤 1 / 6</span>
+              <div>
+                <button class="primary" data-goto="2">下一步 →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Trigger Condition -->
+          <div class="editor-step-panel hidden" id="stepPanel2">
+            <h3>② 触发条件</h3>
+            <p class="step-desc">定义规则何时触发，针对哪些资料类型与字段，以及适用的专业范围。</p>
+
+            <div class="form-row">
+              <label class="field-label">资料类型<span class="required-mark">*</span></label>
+              <div class="chips-input" id="docTypeChips">
+                <input type="text" placeholder="输入或选择资料类型..." id="docTypeInput">
+              </div>
+              <div class="chips-suggestions" id="docTypeSuggestions"></div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">必需字段</label>
+              <div class="chips-input" id="fieldReqChips">
+                <input type="text" placeholder="输入字段名（可多选）..." id="fieldReqInput">
+              </div>
+              <div class="text-xs text-tertiary mt-8">规则仅在资料包含这些字段时才执行</div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">适用专业</label>
+              <div class="chips-input" id="profChips">
+                <input type="text" placeholder="如 01_场道工程..." id="profInput">
+              </div>
+              <div class="chips-suggestions" id="profSuggestions">
+                <span class="suggestion" data-value="01_场道工程">01_场道工程</span>
+                <span class="suggestion" data-value="02_空管工程">02_空管工程</span>
+                <span class="suggestion" data-value="03_助航设施">03_助航设施</span>
+                <span class="suggestion" data-value="04_弱电系统">04_弱电系统</span>
+                <span class="suggestion" data-value="05_供油工程">05_供油工程</span>
+                <span class="suggestion" data-value="*">*（全部专业）</span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">适用分部分项代码</label>
+              <div class="chips-input" id="subdivisionChips">
+                <input type="text" placeholder="如 01-03..." id="subdivisionInput">
+              </div>
+            </div>
+
+            <!-- Alignment (only for CROSS_UNIT) -->
+            <div class="alignment-config hidden" id="alignmentConfig">
+              <h4>⚡ 跨单位对齐配置（CROSS_UNIT 必填）</h4>
+              <p class="text-xs text-secondary mb-8">此规则须经协同确认方可生效。</p>
+              <div class="alignment-grid">
+                <div>
+                  <label class="field-label">甲方角色</label>
+                  <select id="alPartyARole" data-alignment="party_a.role">
+                    <option value="supervisor">supervisor（监理方）</option>
+                    <option value="contractor">contractor（施工方）</option>
+                    <option value="designer">designer（设计方）</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label">甲方资料类型</label>
+                  <input type="text" id="alDocTypeA" placeholder="如：监理旁站记录" data-alignment="party_a.doc_type">
+                </div>
+                <div>
+                  <label class="field-label">乙方角色</label>
+                  <select id="alPartyBRole" data-alignment="party_b.role">
+                    <option value="contractor">contractor（施工方）</option>
+                    <option value="supervisor">supervisor（监理方）</option>
+                    <option value="designer">designer（设计方）</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label">乙方资料类型</label>
+                  <input type="text" id="alDocTypeB" placeholder="如：碎石桩施工记录" data-alignment="party_b.doc_type">
+                </div>
+                <div>
+                  <label class="field-label">对齐键（join_key）</label>
+                  <div class="chips-input" id="joinKeyChips">
+                    <input type="text" placeholder="如 pile_no..." id="joinKeyInput">
+                  </div>
+                  <div class="chips-suggestions" id="joinKeySuggestions">
+                    <span class="suggestion" data-value="pile_no">pile_no</span>
+                    <span class="suggestion" data-value="date">date</span>
+                    <span class="suggestion" data-value="doc_id">doc_id</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="field-label">聚合方式</label>
+                  <select id="alAggregation" data-alignment="aggregation">
+                    <option value="none">none（不聚合）</option>
+                    <option value="sum">sum（求和）</option>
+                    <option value="avg">avg（平均）</option>
+                    <option value="max">max（最大）</option>
+                    <option value="min">min（最小）</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label">甲方字段（field_a）</label>
+                  <input type="text" id="alFieldA" placeholder="如：混凝土灌入量" data-alignment="field_a">
+                </div>
+                <div>
+                  <label class="field-label">乙方字段（field_b）</label>
+                  <input type="text" id="alFieldB" placeholder="如：灌入量" data-alignment="field_b">
+                </div>
+              </div>
+            </div>
+
+            <div class="editor-nav">
+              <span class="text-xs text-tertiary">步骤 2 / 6</span>
+              <div>
+                <button data-goto="1">← 上一步</button>
+                <button class="primary" data-goto="3">下一步 →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Check Expression -->
+          <div class="editor-step-panel hidden" id="stepPanel3">
+            <h3>③ 校验表达式</h3>
+            <p class="step-desc">定义规则的核心校验逻辑。可视化模式适合非技术用户，代码模式适合高级用户。</p>
+
+            <div class="editor-mode-tabs">
+              <button class="editor-mode-tab active" data-mode="visual">可视化模式</button>
+              <button class="editor-mode-tab" data-mode="code">代码模式</button>
+            </div>
+
+            <!-- Visual mode -->
+            <div id="visualMode">
+              <div class="condition-builder" id="conditionBuilder">
+                <!-- Conditions rendered by JS -->
+              </div>
+              <div class="flex gap-8 mt-8">
+                <button class="small" id="btnAddCondition">+ 添加条件</button>
+                <button class="small" id="btnClearConditions">清空</button>
+              </div>
+
+              <div class="form-row mt-16">
+                <label class="field-label">容差（可选）</label>
+                <input type="number" id="efTolerance" placeholder="如 0.1（表示 ±0.1）" step="0.01">
+              </div>
+
+              <div class="form-row">
+                <label class="field-label">生成的表达式</label>
+                <div class="expr-preview" id="exprPreview">（请添加条件）</div>
+              </div>
+            </div>
+
+            <!-- Code mode -->
+            <div id="codeMode" class="hidden">
+              <div class="form-row">
+                <label class="field-label">表达式语言</label>
+                <select id="efExprLang">
+                  <option value="jinja-expr">jinja-expr</option>
+                  <option value="python_eval">python_eval</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label class="field-label">校验表达式（返回 true 表示通过）<span class="required-mark">*</span></label>
+                <textarea id="efExprCode" rows="4" placeholder="如：abs(实长 - (桩顶高程 - 桩底高程)) &lt;= 0.1"></textarea>
+              </div>
+              <div class="text-xs text-tertiary mt-8">
+                可用变量：字段名直接引用（如 <code>实长</code>）、<code>abs()</code>、<code>max()</code>、<code>min()</code>、<code>len()</code> 等数学函数
+              </div>
+            </div>
+
+            <div class="editor-nav">
+              <span class="text-xs text-tertiary">步骤 3 / 6</span>
+              <div>
+                <button data-goto="2">← 上一步</button>
+                <button class="primary" data-goto="4">下一步 →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4: Error Message & Remediation -->
+          <div class="editor-step-panel hidden" id="stepPanel4">
+            <h3>④ 错误消息与补救</h3>
+            <p class="step-desc">定义违规时展示的错误消息模板和补救建议。支持 <code>{字段名}</code> 占位符。</p>
+
+            <div class="form-row">
+              <label class="field-label">错误消息模板<span class="required-mark">*</span></label>
+              <textarea id="efErrorTemplate" rows="3" placeholder="如：桩号 {pile_no} 高程自洽失败：实长 {实长}m，差异 {diff}m 超出容差" data-field="error_template"></textarea>
+              <div class="text-xs text-tertiary mt-8">可用占位符：<code>{pile_no}</code>、<code>{实长}</code>、<code>{桩顶高程}</code>、<code>{桩底高程}</code>、<code>{diff}</code>、<code>{computed}</code> 等</div>
+            </div>
+
+            <div class="form-row">
+              <label class="field-label">补救建议</label>
+              <textarea id="efRemediation" rows="3" placeholder="如：核查实长记录是否被涂改，或高程数据是否抄写错误" data-field="remediation"></textarea>
+            </div>
+
+            <div class="editor-nav">
+              <span class="text-xs text-tertiary">步骤 4 / 6</span>
+              <div>
+                <button data-goto="3">← 上一步</button>
+                <button class="primary" data-goto="5">下一步 →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 5: Sandbox Test -->
+          <div class="editor-step-panel hidden" id="stepPanel5">
+            <h3>⑤ 测试沙箱</h3>
+            <p class="step-desc">用样例数据验证规则。规则需先保存为草稿才能在沙箱中测试。</p>
+
+            <div id="sandboxWrap">
+              <div class="form-row">
+                <label class="field-label">样例数据（JSON 数组或单行对象）</label>
+                <div class="sandbox">
+                  <textarea id="sandboxData" placeholder='[{&#10;  "pile_no": "Z001",&#10;  "实长": 12.5,&#10;  "桩顶高程": 105.2,&#10;  "桩底高程": 92.7&#10;}]'></textarea>
+                  <div class="sandbox-result" id="sandboxResult" style="display:none"></div>
+                </div>
+              </div>
+              <div class="flex gap-8">
+                <button class="primary" id="btnRunSandbox">▶ 运行测试</button>
+                <button class="small" id="btnLoadSample">载入示例</button>
+                <span class="text-xs text-tertiary" id="sandboxHint" style="align-self:center">规则保存后即可测试</span>
+              </div>
+            </div>
+
+            <div class="editor-nav">
+              <span class="text-xs text-tertiary">步骤 5 / 6</span>
+              <div>
+                <button data-goto="4">← 上一步</button>
+                <button class="primary" data-goto="6">下一步 →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 6: Save -->
+          <div class="editor-step-panel hidden" id="stepPanel6">
+            <h3>⑥ 保存规则</h3>
+            <p class="step-desc">确认配置无误后保存。新建规则默认为 <code>draft</code> 状态，仅创建者可见。</p>
+
+            <div class="form-row">
+              <label class="field-label">所有者（owner）</label>
+              <input type="text" id="efOwner" placeholder="如：admin" value="admin" data-field="owner">
+            </div>
+
+            <div class="detail-block mono" id="saveSummary">
+              <!-- Summary rendered by JS -->
+            </div>
+
+            <div class="flex gap-8 mt-16">
+              <button class="primary" id="btnSaveDraft">💾 保存为草稿</button>
+              <button class="success" id="btnSaveAndTest">🚀 保存并提交测试</button>
+              <button id="btnResetEditor">↻ 重置编辑器</button>
+            </div>
+
+            <div class="editor-nav">
+              <span class="text-xs text-tertiary">步骤 6 / 6</span>
+              <div>
+                <button data-goto="5">← 上一步</button>
+                <button class="ghost" id="btnBackToList">返回列表</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live JSON Preview -->
+        <aside class="editor-preview">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>实时 JSON 预览</h3>
+              <button class="small ghost" id="btnCopyJson" title="复制 JSON">📋</button>
+            </div>
+            <div class="panel-body">
+              <pre class="json-preview" id="jsonPreview">// 配置后将实时生成规则 JSON</pre>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ Tab 3: Stats Dashboard ============ -->
+    <section class="tab-panel" id="tab-stats">
+      <!-- KPI Cards -->
+      <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi-card">
+          <div class="kpi-label">规则总数</div>
+          <div class="kpi-value" id="kpiTotal">0</div>
+          <div class="kpi-trend" id="kpiTotalTrend">加载中...</div>
+        </div>
+        <div class="kpi-card success">
+          <div class="kpi-label">Active 规则</div>
+          <div class="kpi-value" id="kpiActive">0</div>
+          <div class="kpi-trend" id="kpiActiveTrend">加载中...</div>
+        </div>
+        <div class="kpi-card warning">
+          <div class="kpi-label">草稿/测试中</div>
+          <div class="kpi-value" id="kpiDraft">0</div>
+          <div class="kpi-trend" id="kpiDraftTrend">加载中...</div>
+        </div>
+        <div class="kpi-card danger">
+          <div class="kpi-label">平均命中率</div>
+          <div class="kpi-value" id="kpiHitRate">0%</div>
+          <div class="kpi-trend" id="kpiHitRateTrend">加载中...</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>按层级分布</h3>
+          <svg class="chart-svg" id="pieChartSvg" viewBox="0 0 320 220"></svg>
+          <div id="pieLegend" class="flex gap-8 mt-8" style="flex-wrap:wrap"></div>
+        </div>
+        <div class="chart-card">
+          <h3>按状态分布</h3>
+          <svg class="chart-svg" id="barChartSvg" viewBox="0 0 320 220"></svg>
+        </div>
+      </div>
+
+      <!-- Top 10 Tables -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>低活跃规则 TOP 10（命中率最低）</h3>
+          <table class="rules-table" id="lowHitTable">
+            <thead>
+              <tr><th>ID</th><th>名称</th><th>层级</th><th style="width:100px">命中率</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="chart-card">
+          <h3>高误报率规则 TOP 10</h3>
+          <table class="rules-table" id="highFprTable">
+            <thead>
+              <tr><th>ID</th><th>名称</th><th>层级</th><th style="width:100px">误报率</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Tab 4: Reflections (D-4 反思报告 + 候选规则审核) ============ -->
+    <section class="tab-panel" id="tab-reflections">
+      <div class="reflections-layout">
+        <!-- 左栏：反思报告列表 -->
+        <div class="reflections-list-panel">
+          <div class="panel-header">
+            <h3>反思报告</h3>
+            <button class="primary small" id="btnTriggerReflection" title="立即触发一次反思">⚡ 立即反思</button>
+          </div>
+          <div class="reflections-filter">
+            <input type="search" id="reflectionSearch" placeholder="🔍 按日期/标题搜索">
+          </div>
+          <div id="reflectionsList" class="reflections-list">
+            <!-- 渲染报告卡片 -->
+          </div>
+        </div>
+        <!-- 右栏：报告内容 + 候选规则审核 -->
+        <div class="reflection-detail-panel">
+          <div id="reflectionContent" class="reflection-content">
+            <div class="empty-state">
+              <div class="empty-icon">📝</div>
+              <div class="empty-title">选择左侧报告查看</div>
+              <div class="empty-desc">点击列表中的反思报告以查看内容</div>
+            </div>
+          </div>
+          <div id="incubatorSection" class="incubator-section hidden">
+            <div class="panel-header">
+              <h3>孵化区候选规则</h3>
+              <span class="text-secondary text-xs" id="incubatorCount">0 条</span>
+            </div>
+            <div id="incubatorList" class="incubator-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ Detail Drawer ============ -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <aside class="detail-drawer" id="detailDrawer">
+    <div class="drawer-header">
+      <h3 id="drawerTitle">规则详情</h3>
+      <button class="drawer-close" id="drawerClose">×</button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+      <!-- Detail content rendered by JS -->
+    </div>
+    <div class="drawer-footer" id="drawerFooter">
+      <!-- Action buttons rendered by JS -->
+    </div>
+  </aside>
+
+  <!-- ============ Modal ============ -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">标题</h3>
+        <button class="drawer-close" id="modalClose">×</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <!-- ============ Toast Container ============ -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+  /* ================================================================
+     rule-manager.html — JavaScript
+     ============================================================ */
+
+  // ========== Field Dictionary (按资料类型预置) ==========
+  const FIELD_DICTIONARY = {
+    '碎石桩施工记录': ['pile_no', 'design_length', 'diameter', 'bottom_elev', 'top_elev', 'actual_length', 'current', 're_penetration', 'volume', 'filling_coeff', 'verticality', 'start_time', 'end_time', 'remark'],
+    'PHC管桩施工记录': ['pile_no', 'design_length', 'diameter', 'pile_top_elev', 'pile_bottom_elev', 'actual_length', 'hammer_weight', 'drop_height', 'final_penetration', 'total_blows', 'welding_count', 'verticality', 'start_time', 'end_time'],
+    '检验批质量验收记录': ['检验批编号', '分项工程名称', '验收部位', '工程量', '施工单位', '项目经理', '施工员', '质量员', '监理工程师', '验收日期', '验收结论', '备注'],
+    '监理旁站记录': ['旁站编号', '旁站部位', '旁站开始时间', '旁站结束时间', '监理人员', '施工内容', '混凝土灌入量', '备注'],
+    '开工令': ['文件编号', '开工日期', '项目名称', '签发单位', '签发人'],
+    '开工报审表': ['报审编号', '报审日期', '项目名称', '施工单位', '项目经理', '监理审批意见', '审批日期'],
+    '工程延期报审表': ['报审编号', '申请日期', '事件日期', '批准日期', '延期天数', '施工单位', '监理意见'],
+    '默认字段集': ['pile_no', 'date', 'doc_id', '项目名称', '施工单位', '监理单位', '专业', '分部分项', '备注'],
+  };
+
+  const DOC_TYPE_SUGGESTIONS = ['碎石桩施工记录', 'PHC管桩施工记录', '检验批质量验收记录', '监理旁站记录', '开工令', '开工报审表', '工程延期报审表'];
+
+  // ========== Operators ==========
+  const OPERATORS = [
+    { value: '==', label: '=' },
+    { value: '!=', label: '≠' },
+    { value: '>',  label: '>' },
+    { value: '<',  label: '<' },
+    { value: '>=', label: '≥' },
+    { value: '<=', label: '≤' },
+    { value: 'within',   label: 'within（在范围内）' },
+    { value: 'between',  label: 'between（介于）' },
+  ];
+
+  // ========== API Object ==========
+  const api = {
+    baseUrl: 'http://localhost:8765',
+    async _fetch(path, options = {}) {
+      const url = this.baseUrl + path;
+      try {
+        const resp = await fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        });
+        const text = await resp.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch { data = { code: -1, msg: '响应解析失败: ' + text.slice(0, 200), data: null }; }
+        return data;
+      } catch (e) {
+        return { code: -1, msg: '网络错误: ' + e.message, data: null };
+      }
+    },
+    async getRules(params = {}) {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, v); });
+      const q = qs.toString();
+      return this._fetch('/api/rules' + (q ? '?' + q : ''));
+    },
+    async getRule(id) { return this._fetch('/api/rules/' + encodeURIComponent(id)); },
+    async createRule(data) {
+      return this._fetch('/api/rules', { method: 'POST', body: JSON.stringify(data) });
+    },
+    async updateRule(id, data) {
+      return this._fetch('/api/rules/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(data) });
+    },
+    async deleteRule(id) {
+      return this._fetch('/api/rules/' + encodeURIComponent(id), { method: 'DELETE' });
+    },
+    async confirm(id, confirmor, decision, reason = '') {
+      return this._fetch('/api/rules/' + encodeURIComponent(id) + '/confirm', {
+        method: 'POST', body: JSON.stringify({ confirmor, decision, reason })
+      });
+    },
+    async forceConfirm(id, admin, reason) {
+      return this._fetch('/api/rules/' + encodeURIComponent(id) + '/force_confirm', {
+        method: 'POST', body: JSON.stringify({ admin, reason })
+      });
+    },
+    async transition(id, to, reason = '', operator = 'admin', opts = {}) {
+      const payload = { to, reason, operator };
+      if (opts.effectiveScope) payload.effective_scope = opts.effectiveScope;
+      if (opts.projectScope) payload.project_scope = opts.projectScope;
+      return this._fetch('/api/rules/' + encodeURIComponent(id) + '/transition', {
+        method: 'POST', body: JSON.stringify(payload)
+      });
+    },
+    async getStats(id) { return this._fetch('/api/rules/' + encodeURIComponent(id) + '/stats'); },
+    async getChangelog(id) { return this._fetch('/api/rules/' + encodeURIComponent(id) + '/changelog'); },
+    async testRule(id, sampleData, docData = null) {
+      const body = { sample_data: sampleData };
+      if (docData) body.doc_data = docData;
+      return this._fetch('/api/rules/' + encodeURIComponent(id) + '/test', {
+        method: 'POST', body: JSON.stringify(body)
+      });
+    },
+    async getRegistry() { return this._fetch('/registry'); },
+    async getOverallStats() { return this._fetch('/stats'); },
+    // ===== D-4: 反思报告 + 孵化区 API =====
+    async getReflections() { return this._fetch('/api/reflections'); },
+    async getReflection(date) {
+      const d = encodeURIComponent(date);
+      return this._fetch('/api/reflections/' + d);
+    },
+    async triggerReflection(days = 7, dryRun = false) {
+      return this._fetch('/api/reflections/trigger', {
+        method: 'POST', body: JSON.stringify({ days: days, dry_run: dryRun })
+      });
+    },
+    async getIncubator() { return this._fetch('/api/incubator'); },
+    async getIncubatorRule(id) {
+      return this._fetch('/api/incubator/' + encodeURIComponent(id));
+    },
+    async promoteIncubator(id, reason) {
+      return this._fetch('/api/incubator/' + encodeURIComponent(id) + '/promote', {
+        method: 'POST', body: JSON.stringify({ reason })
+      });
+    },
+    async rejectIncubator(id, reason) {
+      return this._fetch('/api/incubator/' + encodeURIComponent(id) + '/reject', {
+        method: 'POST', body: JSON.stringify({ reason })
+      });
+    },
+  };
+
+  // ========== State ==========
+  const state = {
+    currentTab: 'list',
+    filters: { level: '', scope: '', status: '', source: '', professional: '', q: '' },
+    rules: [],
+    selectedRule: null,
+    selectedRuleId: null,
+    editorDraft: null,
+    editorStep: 1,
+    editorMode: 'visual',
+    editingRuleId: null,
+    conditions: [{ field: '', op: '', compareType: 'const', compareValue: '', tolerance: '' }],
+    conditionCombiner: 'and',
+    chipsData: {
+      docType: [],
+      fieldReq: [],
+      prof: [],
+      subdivision: [],
+      joinKey: [],
+    },
+  };
+
+  // ========== Utilities ==========
+  function $(sel, parent = document) { return parent.querySelector(sel); }
+  function $$(sel, parent = document) { return Array.from(parent.querySelectorAll(sel)); }
+
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function levelShort(level) {
+    return { 'L1-IRON': 'L1', 'L2-LOGIC': 'L2', 'L3-BUSINESS': 'L3' }[level] || level;
+  }
+  function levelClass(level) {
+    if (level === 'L1-IRON') return 'L1';
+    if (level === 'L2-LOGIC') return 'L2';
+    if (level === 'L3-BUSINESS') return 'L3';
+    return 'L2';
+  }
+  function idPrefixClass(ruleId) {
+    if (ruleId && ruleId.startsWith('IR-')) return 'L1';
+    if (ruleId && ruleId.startsWith('LG-')) return 'L2';
+    if (ruleId && ruleId.startsWith('BZ-')) return 'L3';
+    if (ruleId && ruleId.startsWith('CU-')) return 'CU';
+    return 'L2';
+  }
+
+  function formatDateTime(s) {
+    if (!s) return '—';
+    if (typeof s !== 'string') return String(s);
+    return s.replace('T', ' ').replace(/\+08:00$/, '').replace(/\.\d+$/, '');
+  }
+
+  function showToast(msg, type = 'info', duration = 3500) {
+    const container = $('#toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    const icon = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' }[type] || 'ℹ';
+    toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-msg">${escapeHtml(msg)}</span><span class="toast-close">×</span>`;
+    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
+  }
+
+  function showModal({ title, bodyHtml, footerHtml, onMount }) {
+    $('#modalTitle').textContent = title;
+    $('#modalBody').innerHTML = bodyHtml;
+    $('#modalFooter').innerHTML = footerHtml || '';
+    $('#modalOverlay').classList.add('visible');
+    if (onMount) onMount($('#modalBody'), $('#modalFooter'));
+  }
+  function closeModal() { $('#modalOverlay').classList.remove('visible'); }
+
+  function confirmDialog(title, message, onConfirm, confirmText = '确认', confirmClass = 'primary') {
+    showModal({
+      title,
+      bodyHtml: `<p>${escapeHtml(message)}</p>`,
+      footerHtml: `<button id="modalCancel">取消</button><button class="${confirmClass}" id="modalConfirm">${confirmText}</button>`,
+      onMount: (body, footer) => {
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#modalConfirm').addEventListener('click', () => {
+          closeModal();
+          onConfirm();
+        });
+      }
+    });
+  }
+
+  function promptDialog(title, label, placeholder, onSubmit, opts = {}) {
+    const inputId = 'promptInput';
+    showModal({
+      title,
+      bodyHtml: `<div class="form-row"><label class="field-label">${escapeHtml(label)}</label><input type="text" id="${inputId}" placeholder="${escapeHtml(placeholder || '')}" value="${escapeHtml(opts.defaultValue || '')}"></div>`,
+      footerHtml: `<button id="modalCancel">取消</button><button class="${opts.confirmClass || 'primary'}" id="modalConfirm">${opts.confirmText || '确认'}</button>`,
+      onMount: (body, footer) => {
+        const input = body.querySelector('#' + inputId);
+        input.focus();
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { footer.querySelector('#modalConfirm').click(); } });
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#modalConfirm').addEventListener('click', () => {
+          const val = input.value.trim();
+          closeModal();
+          onSubmit(val);
+        });
+      }
+    });
+  }
+
+  // ========== Toast helpers
+  function toastOk(msg) { showToast(msg, 'success'); }
+  function toastErr(msg) { showToast(msg, 'error', 5000); }
+  function toastWarn(msg) { showToast(msg, 'warning', 4500); }
+  function toastInfo(msg) { showToast(msg, 'info'); }
+
+  // ========== Connection Status ==========
+  async function checkConnection() {
+    const led = $('#connLed');
+    led.className = 'conn-led loading';
+    api.baseUrl = $('#apiBaseUrl').value.trim().replace(/\/+$/, '');
+    const r = await api.getOverallStats();
+    if (r && r.code === 0) {
+      led.className = 'conn-led ok';
+      led.title = '已连接 · 规则总数 ' + (r.data && r.data.total_rules || 0);
+      return true;
+    } else {
+      led.className = 'conn-led fail';
+      led.title = (r && r.msg) || '连接失败';
+      return false;
+    }
+  }
+
+  // ========== Tab Switching ==========
+  function switchTab(tabName) {
+    state.currentTab = tabName;
+    $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+    $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tabName));
+    if (tabName === 'list') loadRules();
+    else if (tabName === 'stats') loadStatsDashboard();
+    else if (tabName === 'editor') updateJsonPreview();
+    else if (tabName === 'reflections') loadReflections();
+  }
+
+  // ========== Tab 1: Rule List ==========
+  function getFilters() {
+    return {
+      level: $('#filterLevel').value,
+      scope: $('#filterScope').value,
+      status: $('#filterStatus').value,
+      source: $('#filterSource').value,
+      q: $('#filterQ').value.trim(),
+    };
+  }
+
+  async function loadRules() {
+    const tbody = $('#rulesTableBody');
+    const empty = $('#emptyState');
+    tbody.innerHTML = `<tr><td colspan="8" style="padding:30px;text-align:center"><span class="loading-shimmer"></span> <span class="text-secondary">加载中...</span></td></tr>`;
+    empty.classList.add('hidden');
+
+    const filters = getFilters();
+    const profFilter = $('#filterProfessional').value;
+    state.filters = { ...filters, professional: profFilter };
+
+    const r = await api.getRules(filters);
+    if (r.code !== 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="padding:20px;color:var(--color-danger)">${escapeHtml(r.msg || '加载失败')}</td></tr>`;
+      return;
+    }
+
+    let rules = r.data.rules || [];
+    // Client-side professional filter (since API may not support it)
+    if (profFilter) {
+      rules = rules.filter(rule => {
+        // We need full rule data for professional filter; fall back to fetching detail.
+        // For performance, do a coarse filter based on rule_id prefix here.
+        // Note: professional is in applies_to, not in list response.
+        return true; // Defer to detail-level filter
+      });
+    }
+
+    state.rules = rules;
+    $('#filterCount').textContent = rules.length;
+
+    if (rules.length === 0) {
+      tbody.innerHTML = '';
+      empty.classList.remove('hidden');
+    } else {
+      renderRulesTable(rules);
+    }
+
+    // Update pending confirmation banner
+    updatePendingBanner(rules);
+  }
+
+  function updatePendingBanner(rules) {
+    const pending = rules.filter(r => r.status === 'pending_confirmation');
+    const banner = $('#pendingBanner');
+    if (pending.length > 0) {
+      banner.classList.add('visible');
+      $('#pendingCount').textContent = pending.length;
+      // E-3.1：显示待确认规则 ID 列表（前 3 个 + "等 N 条"），点击可跳转到该规则详情
+      const idsEl = $('#pendingIds');
+      const top3 = pending.slice(0, 3);
+      let html = top3.map(r =>
+        `<span class="pid-chip" data-rule-id="${escapeHtml(r.rule_id)}" title="点击查看详情">${escapeHtml(r.rule_id)}</span>`
+      ).join('');
+      if (pending.length > 3) {
+        html += `<span class="text-secondary">等 ${pending.length} 条</span>`;
+      }
+      idsEl.innerHTML = html;
+      // 绑定 chip 点击事件 → 打开详情
+      $$('#pendingIds .pid-chip').forEach(chip => {
+        chip.addEventListener('click', e => {
+          e.stopPropagation();
+          const rid = chip.dataset.ruleId;
+          if (rid) openDetail(rid);
+        });
+      });
+    } else {
+      banner.classList.remove('visible');
+      $('#pendingIds').innerHTML = '';
+    }
+  }
+
+  function renderRulesTable(rules) {
+    const tbody = $('#rulesTableBody');
+    tbody.innerHTML = rules.map(rule => {
+      const lc = levelClass(rule.level);
+      const ls = levelShort(rule.level);
+      const pc = idPrefixClass(rule.rule_id);
+      const hitRate = (rule.hit_rate || 0) * 100;
+      const hitRateDisplay = rule.hit_rate != null ? hitRate.toFixed(1) + '%' : '—';
+      // E-3.1：pending_confirmation 状态添加醒目样式（左侧色条 + 淡黄色背景）
+      const rowClasses = [];
+      if (state.selectedRuleId === rule.rule_id) rowClasses.push('selected');
+      if (rule.status === 'pending_confirmation') rowClasses.push('row-pending');
+      return `
+        <tr data-rule-id="${escapeHtml(rule.rule_id)}" class="${rowClasses.join(' ')}">
+          <td class="rule-id-cell">
+            <span class="id-tag ${pc}">${escapeHtml(rule.rule_id.split('-')[0])}</span>${escapeHtml(rule.rule_id)}
+          </td>
+          <td>${escapeHtml(rule.name || '—')}</td>
+          <td><span class="level-badge ${lc}">${ls}</span></td>
+          <td><span class="scope-badge ${rule.scope}">${scopeLabel(rule.scope)}</span></td>
+          <td><span class="status-badge ${rule.status}">${escapeHtml(rule.status)}</span></td>
+          <td class="text-mono text-xs">${escapeHtml(rule.version || '—')}</td>
+          <td>
+            <div class="hit-rate-cell">
+              <div class="hit-rate-bar"><div class="hit-rate-fill" style="width:${Math.min(hitRate, 100)}%"></div></div>
+              <span class="hit-rate-text">${hitRateDisplay}</span>
+            </div>
+          </td>
+          <td class="action-cell">
+            <button class="action-menu-btn" data-action="menu" data-rule-id="${escapeHtml(rule.rule_id)}">⋮</button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    // Bind row clicks
+    $$('#rulesTableBody tr[data-rule-id]').forEach(tr => {
+      tr.addEventListener('click', e => {
+        if (e.target.closest('[data-action="menu"]')) return;
+        openDetail(tr.dataset.ruleId);
+      });
+    });
+
+    // Bind action menus
+    $$('#rulesTableBody [data-action="menu"]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openActionMenu(btn, btn.dataset.ruleId);
+      });
+    });
+  }
+
+  function scopeLabel(scope) {
+    return { SINGLE_DOC: '单资料', CROSS_DOC: '跨资料', CROSS_UNIT: '跨单位' }[scope] || scope;
+  }
+
+  // ========== Action Menu ==========
+  function closeActionMenu() {
+    const existing = $('.action-dropdown.visible');
+    if (existing) existing.remove();
+    document.removeEventListener('click', closeActionMenu);
+  }
+
+  function openActionMenu(anchor, ruleId) {
+    closeActionMenu();
+    const rule = state.rules.find(r => r.rule_id === ruleId) || {};
+    const isCrossUnit = rule.scope === 'CROSS_UNIT';
+    const isDraft = rule.status === 'draft';
+    const isActive = rule.status === 'active';
+    const isDeprecated = rule.status === 'deprecated';
+    const isPending = rule.status === 'pending_confirmation';
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'action-dropdown visible';
+    dropdown.innerHTML = `
+      <button data-act="detail">👁 查看详情</button>
+      <button data-act="edit">✏ 编辑</button>
+      <div class="divider"></div>
+      ${isActive
+        ? `<button data-act="disable">⏸ 停用</button>`
+        : (isDeprecated ? `<button data-act="enable">▶ 启用</button>` : ``)}
+      ${isCrossUnit && isPending ? `<button data-act="confirm">✓ 协同确认</button>` : ``}
+      ${isPending ? `<button data-act="force_confirm" class="warning">⚡ 强制确认</button>` : ``}
+      <button data-act="test">🧪 测试</button>
+      <div class="divider"></div>
+      ${isDraft ? `<button data-act="delete" class="danger">🗑 删除</button>` : `<button data-act="delete" disabled>🗑 删除（仅 draft 可删）</button>`}
+    `;
+
+    document.body.appendChild(dropdown);
+    const rect = anchor.getBoundingClientRect();
+    dropdown.style.top = (rect.bottom + 4) + 'px';
+    dropdown.style.left = (rect.right - dropdown.offsetWidth) + 'px';
+    // Adjust if off-screen
+    setTimeout(() => {
+      const r = dropdown.getBoundingClientRect();
+      if (r.right > window.innerWidth) {
+        dropdown.style.left = (window.innerWidth - r.width - 10) + 'px';
+      }
+    }, 0);
+
+    dropdown.querySelectorAll('button[data-act]').forEach(b => {
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        closeActionMenu();
+        handleAction(b.dataset.act, ruleId);
+      });
+    });
+
+    setTimeout(() => document.addEventListener('click', closeActionMenu), 0);
+  }
+
+  function handleAction(act, ruleId) {
+    if (act === 'detail') openDetail(ruleId);
+    else if (act === 'edit') openEditFromList(ruleId);
+    else if (act === 'disable') confirmTransition(ruleId, 'deprecated', '停用规则');
+    else if (act === 'enable') confirmTransition(ruleId, 'active', '启用规则');
+    else if (act === 'confirm') openConfirmDialog(ruleId);
+    else if (act === 'force_confirm') openForceConfirmDialog(ruleId);
+    else if (act === 'test') openTestModal(ruleId);
+    else if (act === 'delete') confirmDelete(ruleId);
+  }
+
+  function confirmTransition(ruleId, toState, label) {
+    // B-4.4：流转到 active 时弹窗收集 effective_scope / project_scope
+    if (toState === 'active') {
+      openTransitionToActiveDialog(ruleId, label);
+      return;
+    }
+    promptDialog(label, '请输入操作原因（可选）', '如：审核需要/规则调整', (reason) => {
+      doTransition(ruleId, toState, reason);
+    }, { confirmText: '确认', confirmClass: toState === 'deprecated' ? 'danger' : 'success' });
+  }
+
+  function openTransitionToActiveDialog(ruleId, label) {
+    const bodyHtml = `
+      <div class="form-row">
+        <label class="field-label">操作原因（可选）</label>
+        <input type="text" id="trReason" placeholder="如：审核需要/规则调整">
+      </div>
+      <div class="form-row">
+        <label class="field-label">生效范围（effective_scope）<span class="required-mark">*</span></label>
+        <div style="display:flex;gap:16px;align-items:center;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--color-text-primary);font-size:var(--font-size-sm);margin-bottom:0">
+            <input type="radio" name="trScope" value="global" checked> 全局生效
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--color-text-primary);font-size:var(--font-size-sm);margin-bottom:0">
+            <input type="radio" name="trScope" value="project"> 项目级生效
+          </label>
+        </div>
+      </div>
+      <div class="form-row" id="trProjectScopeRow" style="display:none">
+        <label class="field-label">生效项目（project_scope，逗号分隔）<span class="required-mark">*</span></label>
+        <input type="text" id="trProjectScope" placeholder="如：项目A, 项目B, 项目C">
+      </div>`;
+    const footerHtml = `<button id="modalCancel">取消</button><button class="success" id="modalConfirm">确认激活</button>`;
+    showModal({
+      title: `${label} · ${ruleId}`,
+      bodyHtml,
+      footerHtml,
+      onMount: (body, footer) => {
+        const scopeRow = body.querySelector('#trProjectScopeRow');
+        body.querySelectorAll('input[name="trScope"]').forEach(r => {
+          r.addEventListener('change', () => {
+            scopeRow.style.display = r.value === 'project' && r.checked ? 'block' : 'none';
+          });
+        });
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#modalConfirm').addEventListener('click', async () => {
+          const reason = body.querySelector('#trReason').value.trim();
+          const scope = body.querySelector('input[name="trScope"]:checked').value;
+          let projectScope = null;
+          if (scope === 'project') {
+            const psText = body.querySelector('#trProjectScope').value.trim();
+            if (!psText) { toastWarn('请填写生效项目'); return; }
+            projectScope = psText.split(',').map(s => s.trim()).filter(s => s);
+            if (projectScope.length === 0) { toastWarn('生效项目不能为空'); return; }
+          }
+          closeModal();
+          await doTransition(ruleId, 'active', reason, { effectiveScope: scope, projectScope });
+        });
+      }
+    });
+  }
+
+  async function doTransition(ruleId, toState, reason, opts = {}) {
+    const r = await api.transition(ruleId, toState, reason, 'admin', opts);
+    if (r.code === 0) {
+      toastOk(r.msg || '操作成功');
+      loadRules();
+      if (state.selectedRuleId === ruleId) openDetail(ruleId);
+    } else {
+      toastErr(r.msg || '操作失败');
+    }
+  }
+
+  function openForceConfirmDialog(ruleId) {
+    const bodyHtml = `
+      <div class="form-row">
+        <label class="field-label">管理员（admin）<span class="required-mark">*</span></label>
+        <input type="text" id="fcAdmin" placeholder="如：admin_zhang">
+      </div>
+      <div class="form-row">
+        <label class="field-label">强制确认理由（reason，至少 5 字符）<span class="required-mark">*</span></label>
+        <textarea id="fcReason" rows="4" placeholder="如：监理方未响应超过 7 天，依据现场实际情况强制确认"></textarea>
+      </div>
+      <div class="form-row" style="background:var(--color-warning-light);border:1px solid var(--color-warning-border);border-radius:var(--radius-sm);padding:10px 12px">
+        <div style="font-size:var(--font-size-sm);color:var(--color-warning);font-weight:600">⚠ 强制确认说明</div>
+        <div style="font-size:var(--font-size-xs);color:var(--color-text-secondary);margin-top:4px;line-height:1.5">
+          强制确认会将规则从 pending_confirmation 直接流转到 active，跳过协同确认流程。
+          操作将记录到 changelog（含 force_confirm=true 标记、admin 与 reason），便于审计追溯。
+        </div>
+      </div>`;
+    const footerHtml = `<button id="modalCancel">取消</button><button class="warning" id="modalConfirm">⚡ 强制确认</button>`;
+    showModal({
+      title: `管理员强制确认 · ${ruleId}`,
+      bodyHtml,
+      footerHtml,
+      onMount: (body, footer) => {
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#modalConfirm').addEventListener('click', async () => {
+          const admin = body.querySelector('#fcAdmin').value.trim();
+          const reason = body.querySelector('#fcReason').value.trim();
+          if (!admin) { toastWarn('请填写管理员账号'); return; }
+          if (!reason || reason.length < 5) { toastWarn('理由至少 5 个字符'); return; }
+          closeModal();
+          const r = await api.forceConfirm(ruleId, admin, reason);
+          if (r.code === 0) {
+            toastOk(r.msg || '强制确认成功');
+            // E-3.2：通知发起方（通过审核记忆流记录）
+            const memEvent = r.data && r.data.memory_event;
+            const ownerName = (r.data && r.data.owner) || 'unknown';
+            if (memEvent && memEvent.recorded) {
+              toastInfo(`已通知发起方 ${ownerName}（通过审核记忆流记录）`);
+            } else if (memEvent && memEvent.reason) {
+              toastWarn(`通知发起方失败：${memEvent.reason}`);
+            }
+            loadRules();
+            if (state.selectedRuleId === ruleId) openDetail(ruleId);
+          } else {
+            toastErr(r.msg || '强制确认失败');
+          }
+        });
+      }
+    });
+  }
+
+  function confirmDelete(ruleId) {
+    confirmDialog('删除规则', `确认删除规则 ${ruleId}？此操作仅对 draft 状态规则可用，且不可撤销。`, async () => {
+      const r = await api.deleteRule(ruleId);
+      if (r.code === 0) {
+        toastOk('删除成功');
+        loadRules();
+        closeDetail();
+      } else {
+        toastErr(r.msg || '删除失败');
+      }
+    }, '删除', 'danger');
+  }
+
+  function openConfirmDialog(ruleId) {
+    // E-3.2：显示发起方（owner）信息，让确认方知道通知对象
+    const rule = state.rules.find(r => r.rule_id === ruleId) || state.selectedRule || {};
+    const owner = rule.owner || '（未设置）';
+    const bodyHtml = `
+      <div class="form-row" style="background:var(--color-bg-panel-hdr);border:1px solid var(--color-border-light);border-radius:var(--radius-sm);padding:8px 12px;font-size:var(--font-size-sm)">
+        <span class="text-secondary">发起方（owner）：</span>
+        <strong class="mono">${escapeHtml(owner)}</strong>
+        <span class="text-tertiary text-xs" style="margin-left:8px">确认/驳回后将通过审核记忆流记录事件</span>
+      </div>
+      <div class="form-row">
+        <label class="field-label">确认人（confirmor）<span class="required-mark">*</span></label>
+        <input type="text" id="cfConfirmor" placeholder="如：supervisor_zhang">
+      </div>
+      <div class="form-row">
+        <label class="field-label">决定（decision）<span class="required-mark">*</span></label>
+        <select id="cfDecision">
+          <option value="approve">approve（确认通过 → active）</option>
+          <option value="reject">reject（驳回 → incubating）</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="field-label">理由（可选）</label>
+        <textarea id="cfReason" rows="3" placeholder="说明确认或驳回的理由"></textarea>
+      </div>`;
+    const footerHtml = `<button id="modalCancel">取消</button><button class="primary" id="modalConfirm">提交确认</button>`;
+    showModal({
+      title: `协同确认 · ${ruleId}`,
+      bodyHtml,
+      footerHtml,
+      onMount: (body, footer) => {
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#modalConfirm').addEventListener('click', async () => {
+          const confirmor = body.querySelector('#cfConfirmor').value.trim();
+          const decision = body.querySelector('#cfDecision').value;
+          const reason = body.querySelector('#cfReason').value.trim();
+          if (!confirmor) { toastWarn('请填写确认人'); return; }
+          closeModal();
+          const r = await api.confirm(ruleId, confirmor, decision, reason);
+          if (r.code === 0) {
+            toastOk(r.msg || '协同确认成功');
+            // E-3.2：通知发起方（单机面板下通过审核记忆流记录，后端已写入）
+            const memEvent = r.data && r.data.memory_event;
+            const ownerName = (r.data && r.data.owner) || owner;
+            if (memEvent && memEvent.recorded) {
+              toastInfo(`已通知发起方 ${ownerName}（通过审核记忆流记录）`);
+            } else if (memEvent && memEvent.reason) {
+              toastWarn(`通知发起方失败：${memEvent.reason}`);
+            }
+            loadRules();
+            if (state.selectedRuleId === ruleId) openDetail(ruleId);
+          } else {
+            toastErr(r.msg || '确认失败');
+          }
+        });
+      }
+    });
+  }
+
+  function openTestModal(ruleId) {
+    const rule = state.rules.find(r => r.rule_id === ruleId) || {};
+    const isCrossUnit = rule.scope === 'CROSS_UNIT';
+    const sample = isCrossUnit
+      ? JSON.stringify({ party_a_data: [{ pile_no: 'Z001', 混凝土灌入量: 12.5 }], party_b_data: [{ pile_no: 'Z001', 灌入量: 13.2 }] }, null, 2)
+      : JSON.stringify([{ pile_no: 'Z001', 实长: 12.5, 桩顶高程: 105.2, 桩底高程: 92.7 }], null, 2);
+
+    const bodyHtml = `
+      <div class="form-row">
+        <label class="field-label">样例数据（JSON）</label>
+        <textarea id="tmData" rows="8" style="width:100%;font-family:var(--font-mono);font-size:11px">${sample}</textarea>
+      </div>
+      <div id="tmResult" class="sandbox-result" style="display:none"></div>`;
+    const footerHtml = `<button id="modalCancel">关闭</button><button class="primary" id="tmRun">▶ 运行测试</button>`;
+    showModal({
+      title: `沙箱测试 · ${ruleId}`,
+      bodyHtml,
+      footerHtml,
+      onMount: (body, footer) => {
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#tmRun').addEventListener('click', async () => {
+          const dataText = body.querySelector('#tmData').value.trim();
+          let parsed;
+          try { parsed = JSON.parse(dataText); }
+          catch (e) { toastErr('JSON 解析失败: ' + e.message); return; }
+          const resultEl = body.querySelector('#tmResult');
+          resultEl.style.display = 'block';
+          resultEl.className = 'sandbox-result';
+          resultEl.innerHTML = '<span class="loading-shimmer"></span> 测试中...';
+          const r = isCrossUnit
+            ? await api.testRule(ruleId, parsed.party_a_data || parsed, parsed)
+            : await api.testRule(ruleId, parsed);
+          if (r.code !== 0) {
+            resultEl.className = 'sandbox-result fail';
+            resultEl.textContent = '测试失败: ' + (r.msg || '未知错误');
+            return;
+          }
+          const violations = r.data.violations || [];
+          if (r.data.passed) {
+            resultEl.className = 'sandbox-result pass';
+            resultEl.innerHTML = '✓ 测试通过，无违规';
+          } else {
+            resultEl.className = 'sandbox-result fail';
+            resultEl.innerHTML = `✕ 命中 ${violations.length} 条违规` + violations.map(v =>
+              `<div class="violation-item">${escapeHtml(JSON.stringify(v, null, 2))}</div>`
+            ).join('');
+          }
+        });
+      }
+    });
+  }
+
+  // ========== Detail Drawer ==========
+  async function openDetail(ruleId) {
+    state.selectedRuleId = ruleId;
+    $$('#rulesTableBody tr').forEach(tr => {
+      tr.classList.toggle('selected', tr.dataset.ruleId === ruleId);
+    });
+    const drawer = $('#detailDrawer');
+    const overlay = $('#drawerOverlay');
+    const body = $('#drawerBody');
+    drawer.classList.add('visible');
+    overlay.classList.add('visible');
+    $('#drawerTitle').innerHTML = '<span class="loading-shimmer"></span> 加载中...';
+    body.innerHTML = '<div class="empty-state"><div class="loading-shimmer"></div><div class="empty-desc">加载规则详情...</div></div>';
+    $('#drawerFooter').innerHTML = '';
+
+    const r = await api.getRule(ruleId);
+    if (r.code !== 0) {
+      $('#drawerTitle').textContent = '加载失败';
+      body.innerHTML = `<div class="empty-state"><div class="empty-icon">✕</div><div class="empty-title">加载失败</div><div class="empty-desc">${escapeHtml(r.msg || '未知错误')}</div></div>`;
+      return;
+    }
+    const rule = r.data;
+    state.selectedRule = rule;
+    renderRuleDetail(rule);
+  }
+
+  function closeDetail() {
+    $('#detailDrawer').classList.remove('visible');
+    $('#drawerOverlay').classList.remove('visible');
+    state.selectedRuleId = null;
+    state.selectedRule = null;
+    $$('#rulesTableBody tr').forEach(tr => tr.classList.remove('selected'));
+  }
+
+  function renderRuleDetail(rule) {
+    $('#drawerTitle').innerHTML = `<span class="id-tag ${idPrefixClass(rule.rule_id)}">${escapeHtml(rule.rule_id.split('-')[0])}</span> ${escapeHtml(rule.name || rule.rule_id)}`;
+    const body = $('#drawerBody');
+    const lc = levelClass(rule.level);
+    const ls = levelShort(rule.level);
+    const stats = rule.stats || {};
+
+    body.innerHTML = `
+      <div class="detail-section">
+        <h4>基本信息</h4>
+        <div class="detail-grid">
+          <div class="label">规则 ID</div><div class="value mono">${escapeHtml(rule.rule_id)}</div>
+          <div class="label">名称</div><div class="value">${escapeHtml(rule.name || '—')}</div>
+          <div class="label">层级</div><div class="value"><span class="level-badge ${lc}">${ls}</span> ${escapeHtml(rule.level)}</div>
+          <div class="label">作用域</div><div class="value"><span class="scope-badge ${rule.scope}">${scopeLabel(rule.scope)}</span></div>
+          <div class="label">状态</div><div class="value"><span class="status-badge ${rule.status}">${escapeHtml(rule.status)}</span></div>
+          <div class="label">版本</div><div class="value mono">${escapeHtml(rule.version || '—')}</div>
+          <div class="label">来源</div><div class="value mono">${escapeHtml(rule.source || '—')}</div>
+          <div class="label">分类</div><div class="value">${escapeHtml(rule.category || '—')}</div>
+          <div class="label">严重度</div><div class="value">${escapeHtml(rule.severity_on_violation || '—')}</div>
+          <div class="label">所有者</div><div class="value">${escapeHtml(rule.owner || '—')}</div>
+          <div class="label">创建时间</div><div class="value mono">${escapeHtml(formatDateTime(rule.created_at))}</div>
+          <div class="label">更新时间</div><div class="value mono">${escapeHtml(formatDateTime(rule.updated_at))}</div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>描述</h4>
+        <div class="detail-block">${escapeHtml(rule.description || '—')}</div>
+      </div>
+
+      ${rule.remediation ? `
+      <div class="detail-section">
+        <h4>补救建议</h4>
+        <div class="detail-block">${escapeHtml(rule.remediation)}</div>
+      </div>` : ''}
+
+      <div class="detail-section">
+        <h4>触发条件（trigger_when）</h4>
+        <div class="detail-block mono">${escapeHtml(JSON.stringify(rule.trigger_when || {}, null, 2))}</div>
+      </div>
+
+      <div class="detail-section">
+        <h4>校验表达式（check_expr）</h4>
+        <div class="detail-block mono">${escapeHtml(JSON.stringify(rule.check_expr || {}, null, 2))}</div>
+      </div>
+
+      <div class="detail-section">
+        <h4>错误消息模板</h4>
+        <div class="detail-block error-template">${escapeHtml(rule.error_template || '—')}</div>
+      </div>
+
+      ${rule.applies_to ? `
+      <div class="detail-section">
+        <h4>适用范围（applies_to）</h4>
+        <div class="detail-block mono">${escapeHtml(JSON.stringify(rule.applies_to, null, 2))}</div>
+      </div>` : ''}
+
+      ${rule.alignment ? `
+      <div class="detail-section">
+        <h4>跨单位对齐配置（alignment）</h4>
+        <div class="detail-block mono">${escapeHtml(JSON.stringify(rule.alignment, null, 2))}</div>
+        ${rule.confirmation_required ? '<div class="text-xs text-warning mt-8">⚡ 此规则需协同确认方可生效</div>' : ''}
+      </div>` : ''}
+
+      <div class="detail-section">
+        <h4>统计信息（stats）</h4>
+        <div class="detail-grid">
+          <div class="label">总命中数</div><div class="value mono">${stats.total_hits ?? 0}</div>
+          <div class="label">总审核数</div><div class="value mono">${stats.total_reviews ?? 0}</div>
+          <div class="label">命中率</div><div class="value mono">${((stats.hit_rate || 0) * 100).toFixed(2)}%</div>
+          <div class="label">误报数</div><div class="value mono">${stats.false_positive_count ?? 0}</div>
+          <div class="label">误报率</div><div class="value mono">${((stats.false_positive_rate || 0) * 100).toFixed(2)}%</div>
+          <div class="label">最近命中</div><div class="value mono">${escapeHtml(formatDateTime(stats.last_hit_at))}</div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>变更历史（changelog）</h4>
+        <div class="changelog-timeline">
+          ${(rule.changelog || []).slice().reverse().map(c => `
+            <div class="changelog-item">
+              <div>
+                <span class="cl-version">v${escapeHtml(c.version || '?')}</span>
+                <span class="cl-date">${escapeHtml(c.date || '—')}</span>
+                <span class="cl-author">· ${escapeHtml(c.author || '—')}</span>
+              </div>
+              <div class="cl-change">${escapeHtml(c.change || '—')}</div>
+            </div>
+          `).join('') || '<div class="text-secondary text-sm">暂无变更记录</div>'}
+        </div>
+      </div>
+    `;
+
+    // Render footer actions
+    const isActive = rule.status === 'active';
+    const isDeprecated = rule.status === 'deprecated';
+    const isDraft = rule.status === 'draft';
+    const isTesting = rule.status === 'testing';
+    const isIncubating = rule.status === 'incubating';
+    const isPending = rule.status === 'pending_confirmation';
+    const isCrossUnit = rule.scope === 'CROSS_UNIT';
+
+    let footerHtml = '';
+    footerHtml += `<button class="small" data-act="edit">✏ 编辑</button>`;
+    footerHtml += `<button class="small" data-act="test">🧪 测试</button>`;
+    if (isActive) footerHtml += `<button class="small warning" data-act="disable">⏸ 停用</button>`;
+    if (isDeprecated) footerHtml += `<button class="small success" data-act="enable">▶ 启用</button>`;
+    if (isDraft) footerHtml += `<button class="small primary" data-act="to-testing">🚀 提交测试</button>`;
+    if (isTesting) footerHtml += `<button class="small primary" data-act="to-incubating">📥 进入孵化</button>`;
+    if (isIncubating) footerHtml += `<button class="small success" data-act="to-active">✓ 激活</button>`;
+    if (isCrossUnit && isPending) footerHtml += `<button class="small primary" data-act="confirm">✓ 协同确认</button>`;
+    footerHtml += `<button class="small danger" data-act="delete" ${isDraft ? '' : 'disabled'}>🗑 删除</button>`;
+
+    $('#drawerFooter').innerHTML = footerHtml;
+    $$('#drawerFooter button[data-act]').forEach(btn => {
+      btn.addEventListener('click', () => handleDetailAction(btn.dataset.act, rule));
+    });
+  }
+
+  function handleDetailAction(act, rule) {
+    const id = rule.rule_id;
+    if (act === 'edit') {
+      closeDetail();
+      openEditFromList(id);
+    } else if (act === 'test') {
+      openTestModal(id);
+    } else if (act === 'disable') {
+      confirmTransition(id, 'deprecated', '停用规则');
+    } else if (act === 'enable') {
+      confirmTransition(id, 'active', '启用规则');
+    } else if (act === 'to-testing') {
+      confirmTransition(id, 'testing', '提交测试');
+    } else if (act === 'to-incubating') {
+      confirmTransition(id, 'incubating', '进入孵化');
+    } else if (act === 'to-active') {
+      if (rule.scope === 'CROSS_UNIT' && rule.confirmation_required) {
+        toastWarn('跨单位规则需协同确认后方可激活，请使用"协同确认"按钮');
+        return;
+      }
+      confirmTransition(id, 'active', '激活规则');
+    } else if (act === 'confirm') {
+      openConfirmDialog(id);
+    } else if (act === 'delete') {
+      confirmDelete(id);
+    }
+  }
+
+  // ========== Edit existing rule ==========
+  async function openEditFromList(ruleId) {
+    const r = await api.getRule(ruleId);
+    if (r.code !== 0) { toastErr(r.msg || '加载失败'); return; }
+    const rule = r.data;
+    state.editingRuleId = ruleId;
+
+    // Switch to editor tab
+    switchTab('editor');
+
+    // Fill step 1
+    $('#efName').value = rule.name || '';
+    $('#efDescription').value = rule.description || '';
+    $('#efSeverity').value = rule.severity_on_violation || 'Sanity Check';
+    $('#efCategory').value = rule.category || '';
+
+    // Card radios
+    selectCardRadio('levelCards', rule.level);
+    selectCardRadio('scopeCards', rule.scope);
+
+    // Step 2 chips
+    state.chipsData.docType = (rule.trigger_when && rule.trigger_when.doc_type) || (rule.trigger_when && rule.trigger_when.doc_type_a ? [rule.trigger_when.doc_type_a, rule.trigger_when.doc_type_b] : []);
+    state.chipsData.fieldReq = (rule.trigger_when && rule.trigger_when.field_required) || [];
+    state.chipsData.prof = (rule.applies_to && rule.applies_to.professional) || [];
+    state.chipsData.subdivision = (rule.applies_to && rule.applies_to.subdivision_codes) || [];
+    renderAllChips();
+
+    // Alignment
+    if (rule.alignment) {
+      $('#alPartyARole').value = rule.alignment.party_a ? rule.alignment.party_a.role : 'supervisor';
+      $('#alDocTypeA').value = rule.alignment.party_a ? rule.alignment.party_a.doc_type : '';
+      $('#alPartyBRole').value = rule.alignment.party_b ? rule.alignment.party_b.role : 'contractor';
+      $('#alDocTypeB').value = rule.alignment.party_b ? rule.alignment.party_b.doc_type : '';
+      $('#alAggregation').value = rule.alignment.aggregation || 'none';
+      $('#alFieldA').value = rule.alignment.field_a || '';
+      $('#alFieldB').value = rule.alignment.field_b || '';
+      state.chipsData.joinKey = rule.alignment.join_key || [];
+      renderChips('joinKeyChips', state.chipsData.joinKey, 'joinKeyInput');
+    }
+
+    // Step 3 expression
+    if (rule.check_expr && rule.check_expr.expr) {
+      $('#efExprCode').value = rule.check_expr.expr;
+      $('#efExprLang').value = rule.check_expr.language || 'jinja-expr';
+      // Try to parse simple expressions into conditions
+      parseExpressionToConditions(rule.check_expr.expr);
+      renderConditions();
+      updateExprPreview();
+    }
+
+    // Step 4
+    $('#efErrorTemplate').value = rule.error_template || '';
+    $('#efRemediation').value = rule.remediation || '';
+
+    // Step 6 owner
+    $('#efOwner').value = rule.owner || 'admin';
+
+    updateAlignmentVisibility();
+    updateJsonPreview();
+    toastInfo(`已加载规则 ${ruleId}，编辑后将更新此规则`);
+  }
+
+  function selectCardRadio(groupId, value) {
+    $$(`#${groupId} .card-radio`).forEach(card => {
+      card.classList.toggle('checked', card.dataset.value === value);
+      const input = card.querySelector('input');
+      if (input) input.checked = card.dataset.value === value;
+    });
+  }
+
+  function parseExpressionToConditions(expr) {
+    if (!expr) { state.conditions = [{ field: '', op: '', compareType: 'const', compareValue: '', tolerance: '' }]; return; }
+    // Try splitting by AND/OR
+    let parts = [];
+    let combiner = 'and';
+    if (/ and /i.test(expr)) {
+      parts = expr.split(/\s+and\s+/i);
+      combiner = 'and';
+    } else if (/ or /i.test(expr)) {
+      parts = expr.split(/\s+or\s+/i);
+      combiner = 'or';
+    } else {
+      parts = [expr];
+    }
+    state.conditionCombiner = combiner;
+    state.conditions = parts.map(p => parseSingleCondition(p.trim())).filter(c => c);
+    if (state.conditions.length === 0) {
+      state.conditions = [{ field: '', op: '', compareType: 'const', compareValue: '', tolerance: '' }];
+    }
+  }
+
+  function parseSingleCondition(expr) {
+    // Match: field op value  or  abs(field - other) <= tolerance
+    const ops = ['>=', '<=', '!=', '==', '>', '<', 'within', 'between'];
+    for (const op of ops) {
+      const idx = expr.indexOf(op);
+      if (idx > 0) {
+        const field = expr.substring(0, idx).trim().replace(/^abs\(|\)$/g, '');
+        const value = expr.substring(idx + op.length).trim();
+        return { field, op, compareType: 'const', compareValue: value, tolerance: '' };
+      }
+    }
+    return null;
+  }
+
+  // ========== Editor: Chips Input ==========
+  function renderAllChips() {
+    renderChips('docTypeChips', state.chipsData.docType, 'docTypeInput');
+    renderChips('fieldReqChips', state.chipsData.fieldReq, 'fieldReqInput');
+    renderChips('profChips', state.chipsData.prof, 'profInput');
+    renderChips('subdivisionChips', state.chipsData.subdivision, 'subdivisionInput');
+    renderChips('joinKeyChips', state.chipsData.joinKey, 'joinKeyInput');
+    updateDocTypeSuggestions();
+  }
+
+  function renderChips(containerId, items, inputId) {
+    const container = $('#' + containerId);
+    if (!container) return;
+    const input = $('#' + inputId);
+    const itemsHtml = items.map((item, idx) =>
+      `<span class="chip">${escapeHtml(item)}<span class="chip-remove" data-idx="${idx}">×</span></span>`
+    ).join('');
+    // Keep input element
+    container.innerHTML = itemsHtml + `<input type="text" placeholder="${input ? input.placeholder : ''}" id="${inputId}">`;
+    const newInput = $('#' + inputId);
+    if (newInput && input) {
+      newInput.placeholder = input.placeholder;
+    }
+    bindChipsInput(containerId, inputId, items);
+  }
+
+  function bindChipsInput(containerId, inputId, items) {
+    const container = $('#' + containerId);
+    const input = $('#' + inputId);
+    if (!container || !input) return;
+
+    // Remove chip
+    container.querySelectorAll('.chip-remove').forEach(rm => {
+      rm.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx = parseInt(rm.dataset.idx);
+        items.splice(idx, 1);
+        renderChips(containerId, items, inputId);
+        updateJsonPreview();
+        if (containerId === 'docTypeChips') updateDocTypeSuggestions();
+      });
+    });
+
+    // Input keydown
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const val = input.value.trim().replace(/,$/, '');
+        if (val && !items.includes(val)) {
+          items.push(val);
+          renderChips(containerId, items, inputId);
+          updateJsonPreview();
+          if (containerId === 'docTypeChips') updateDocTypeSuggestions();
+        } else {
+          input.value = '';
+        }
+      } else if (e.key === 'Backspace' && !input.value && items.length > 0) {
+        items.pop();
+        renderChips(containerId, items, inputId);
+        updateJsonPreview();
+        if (containerId === 'docTypeChips') updateDocTypeSuggestions();
+      }
+    });
+  }
+
+  function updateDocTypeSuggestions() {
+    const container = $('#docTypeSuggestions');
+    if (!container) return;
+    const available = DOC_TYPE_SUGGESTIONS.filter(s => !state.chipsData.docType.includes(s));
+    container.innerHTML = available.map(s => `<span class="suggestion" data-value="${escapeHtml(s)}">${escapeHtml(s)}</span>`).join('');
+    container.querySelectorAll('.suggestion').forEach(s => {
+      s.addEventListener('click', () => {
+        if (!state.chipsData.docType.includes(s.dataset.value)) {
+          state.chipsData.docType.push(s.dataset.value);
+          renderChips('docTypeChips', state.chipsData.docType, 'docTypeInput');
+          updateJsonPreview();
+          updateDocTypeSuggestions();
+        }
+      });
+    });
+  }
+
+  function setupProfSuggestions() {
+    $$('#profSuggestions .suggestion').forEach(s => {
+      s.addEventListener('click', () => {
+        if (!state.chipsData.prof.includes(s.dataset.value)) {
+          state.chipsData.prof.push(s.dataset.value);
+          renderChips('profChips', state.chipsData.prof, 'profInput');
+          updateJsonPreview();
+        }
+      });
+    });
+    $$('#joinKeySuggestions .suggestion').forEach(s => {
+      s.addEventListener('click', () => {
+        if (!state.chipsData.joinKey.includes(s.dataset.value)) {
+          state.chipsData.joinKey.push(s.dataset.value);
+          renderChips('joinKeyChips', state.chipsData.joinKey, 'joinKeyInput');
+          updateJsonPreview();
+        }
+      });
+    });
+  }
+
+  // ========== Editor: Card Radio ==========
+  function setupCardRadios() {
+    $$('.card-radio-group').forEach(group => {
+      group.querySelectorAll('.card-radio').forEach(card => {
+        card.addEventListener('click', () => {
+          group.querySelectorAll('.card-radio').forEach(c => c.classList.remove('checked'));
+          card.classList.add('checked');
+          const input = card.querySelector('input');
+          if (input) input.checked = true;
+
+          // Level → Severity linkage
+          if (group.id === 'levelCards') {
+            const level = card.dataset.value;
+            const sevMap = { 'L1-IRON': 'Fatal', 'L2-LOGIC': 'Sanity Check', 'L3-BUSINESS': 'Best Practice' };
+            $('#efSeverity').value = sevMap[level] || 'Sanity Check';
+          }
+          if (group.id === 'scopeCards') {
+            updateAlignmentVisibility();
+          }
+          updateJsonPreview();
+        });
+      });
+    });
+  }
+
+  function updateAlignmentVisibility() {
+    const scope = getSelectedRadio('scopeCards');
+    const align = $('#alignmentConfig');
+    if (scope === 'CROSS_UNIT') {
+      align.classList.remove('hidden');
+    } else {
+      align.classList.add('hidden');
+    }
+  }
+
+  function getSelectedRadio(groupId) {
+    const checked = $(`#${groupId} input:checked`);
+    return checked ? checked.value : '';
+  }
+
+  // ========== Editor: Conditions ==========
+  function renderConditions() {
+    const builder = $('#conditionBuilder');
+    builder.innerHTML = state.conditions.map((cond, idx) => `
+      <div class="condition-row" data-idx="${idx}">
+        <select class="cond-field" data-key="field">
+          <option value="">选择字段...</option>
+          ${getFieldOptions(cond.field)}
+        </select>
+        <select class="cond-op" data-key="op">
+          ${OPERATORS.map(o => `<option value="${o.value}" ${o.value === cond.op ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+        </select>
+        <input type="text" class="cond-value" data-key="compareValue" placeholder="比较值（字段名/常量）" value="${escapeHtml(cond.compareValue || '')}">
+        <select class="cond-compareType" data-key="compareType">
+          <option value="const" ${cond.compareType === 'const' ? 'selected' : ''}>常量</option>
+          <option value="field" ${cond.compareType === 'field' ? 'selected' : ''}>另一字段</option>
+          <option value="agg" ${cond.compareType === 'agg' ? 'selected' : ''}>聚合值</option>
+        </select>
+        <input type="number" class="cond-tolerance" data-key="tolerance" placeholder="容差" step="0.01" value="${escapeHtml(cond.tolerance || '')}">
+        <button class="cond-remove" data-idx="${idx}" ${state.conditions.length === 1 ? 'disabled' : ''}>×</button>
+      </div>
+      ${idx < state.conditions.length - 1 ? `
+        <div class="condition-combiner">
+          <select class="cond-combiner-select" data-idx="${idx}">
+            <option value="and" ${state.conditionCombiner === 'and' ? 'selected' : ''}>AND</option>
+            <option value="or"  ${state.conditionCombiner === 'or'  ? 'selected' : ''}>OR</option>
+          </select>
+        </div>` : ''}
+    `).join('');
+
+    // Bind events
+    builder.querySelectorAll('.condition-row').forEach((row, idx) => {
+      row.querySelectorAll('select, input').forEach(el => {
+        el.addEventListener('change', () => {
+          const key = el.dataset.key;
+          state.conditions[idx][key] = el.value;
+          updateExprPreview();
+          updateJsonPreview();
+        });
+        el.addEventListener('input', () => {
+          const key = el.dataset.key;
+          state.conditions[idx][key] = el.value;
+          updateExprPreview();
+          updateJsonPreview();
+        });
+      });
+      row.querySelector('.cond-remove').addEventListener('click', () => {
+        if (state.conditions.length > 1) {
+          state.conditions.splice(idx, 1);
+          renderConditions();
+          updateExprPreview();
+          updateJsonPreview();
+        }
+      });
+    });
+    builder.querySelectorAll('.cond-combiner-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        state.conditionCombiner = sel.value;
+        updateExprPreview();
+        updateJsonPreview();
+      });
+    });
+  }
+
+  function getFieldOptions(selected) {
+    const docTypes = state.chipsData.docType;
+    let fields = new Set();
+    docTypes.forEach(dt => {
+      if (FIELD_DICTIONARY[dt]) FIELD_DICTIONARY[dt].forEach(f => fields.add(f));
+    });
+    // Also include default fields
+    FIELD_DICTIONARY['默认字段集'].forEach(f => fields.add(f));
+    // If no doc types selected, show all known fields
+    if (docTypes.length === 0) {
+      Object.values(FIELD_DICTIONARY).forEach(arr => arr.forEach(f => fields.add(f)));
+    }
+    const options = Array.from(fields);
+    return options.map(f => `<option value="${escapeHtml(f)}" ${f === selected ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('');
+  }
+
+  function buildExpressionString() {
+    const parts = state.conditions.map(c => {
+      if (!c.field || !c.op) return null;
+      const rhs = c.compareValue || '';
+      let lhs = c.field;
+      let rhsStr = rhs;
+      if (c.compareType === 'field') {
+        rhsStr = rhs;
+      } else if (c.compareType === 'agg') {
+        rhsStr = 'agg(' + rhs + ')';
+      }
+      if (c.op === 'within') {
+        // within: abs(lhs - rhs) <= tolerance
+        return `abs(${lhs} - ${rhsStr}) ${c.tolerance ? '<= ' + c.tolerance : '<= 0'}`;
+      } else if (c.op === 'between') {
+        // between: lhs >= min and lhs <= max (compareValue should be "min,max")
+        const [mn, mx] = rhs.split(',').map(s => s.trim());
+        return `${lhs} >= ${mn || 0} and ${lhs} <= ${mx || 0}`;
+      } else {
+        let opStr = c.op;
+        return `${lhs} ${opStr} ${rhsStr}`;
+      }
+    }).filter(p => p);
+    if (parts.length === 0) return '';
+    return parts.join(' ' + state.conditionCombiner + ' ');
+  }
+
+  function updateExprPreview() {
+    const expr = buildExpressionString();
+    $('#exprPreview').textContent = expr || '（请添加条件）';
+    // Sync to code mode textarea
+    if (expr) $('#efExprCode').value = expr;
+  }
+
+  // ========== Editor: Mode Tabs ==========
+  function setupEditorModeTabs() {
+    $$('.editor-mode-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        $$('.editor-mode-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        state.editorMode = tab.dataset.mode;
+        $('#visualMode').classList.toggle('hidden', state.editorMode !== 'visual');
+        $('#codeMode').classList.toggle('hidden', state.editorMode !== 'code');
+        if (state.editorMode === 'code') {
+          // Sync from visual to code
+          const expr = buildExpressionString();
+          if (expr) $('#efExprCode').value = expr;
+        }
+        updateJsonPreview();
+      });
+    });
+    // Code mode input updates
+    $('#efExprCode').addEventListener('input', updateJsonPreview);
+    $('#efExprLang').addEventListener('change', updateJsonPreview);
+    $('#efTolerance').addEventListener('input', updateJsonPreview);
+  }
+
+  // ========== Editor: Step Navigation ==========
+  function gotoStep(step) {
+    if (step < 1) step = 1;
+    if (step > 6) step = 6;
+    state.editorStep = step;
+    for (let i = 1; i <= 6; i++) {
+      const panel = $('#stepPanel' + i);
+      if (panel) panel.classList.toggle('hidden', i !== step);
+    }
+    $$('#stepper .step-item').forEach(item => {
+      const s = parseInt(item.dataset.step);
+      item.classList.toggle('active', s === step);
+      item.classList.toggle('done', s < step);
+    });
+    if (step === 6) renderSaveSummary();
+    updateJsonPreview();
+  }
+
+  function setupStepper() {
+    $$('#stepper .step-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const step = parseInt(item.dataset.step);
+        gotoStep(step);
+      });
+    });
+    $$('[data-goto]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = parseInt(btn.dataset.goto);
+        // Validate current step
+        if (!validateStep(state.editorStep)) return;
+        gotoStep(target);
+      });
+    });
+  }
+
+  function validateStep(step) {
+    if (step === 1) {
+      const name = $('#efName').value.trim();
+      const desc = $('#efDescription').value.trim();
+      const level = getSelectedRadio('levelCards');
+      const scope = getSelectedRadio('scopeCards');
+      if (!name) { toastWarn('请填写规则名称'); return false; }
+      if (!desc) { toastWarn('请填写描述'); return false; }
+      if (!level) { toastWarn('请选择层级'); return false; }
+      if (!scope) { toastWarn('请选择作用域'); return false; }
+    }
+    if (step === 2) {
+      const scope = getSelectedRadio('scopeCards');
+      if (state.chipsData.docType.length === 0) { toastWarn('请至少选择一个资料类型'); return false; }
+      if (scope === 'CROSS_UNIT') {
+        if (state.chipsData.joinKey.length === 0) { toastWarn('跨单位规则请填写对齐键'); return false; }
+        if (!$('#alDocTypeA').value || !$('#alDocTypeB').value) { toastWarn('跨单位规则请填写双方资料类型'); return false; }
+        if (!$('#alFieldA').value || !$('#alFieldB').value) { toastWarn('跨单位规则请填写双方字段'); return false; }
+      }
+    }
+    if (step === 3) {
+      const expr = state.editorMode === 'visual' ? buildExpressionString() : $('#efExprCode').value.trim();
+      if (!expr) { toastWarn('请填写校验表达式'); return false; }
+    }
+    if (step === 4) {
+      if (!$('#efErrorTemplate').value.trim()) { toastWarn('请填写错误消息模板'); return false; }
+    }
+    return true;
+  }
+
+  // ========== Editor: Build Rule JSON ==========
+  function buildRuleJson() {
+    const level = getSelectedRadio('levelCards');
+    const scope = getSelectedRadio('scopeCards');
+    const name = $('#efName').value.trim();
+    const desc = $('#efDescription').value.trim();
+    const severity = $('#efSeverity').value;
+    const category = $('#efCategory').value.trim();
+    const owner = $('#efOwner').value.trim() || 'admin';
+
+    const triggerWhen = {};
+    if (scope === 'CROSS_UNIT') {
+      triggerWhen.doc_type_a = $('#alDocTypeA').value.trim();
+      triggerWhen.doc_type_b = $('#alDocTypeB').value.trim();
+      triggerWhen.require_both = true;
+    } else {
+      triggerWhen.doc_type = state.chipsData.docType.length > 0 ? state.chipsData.docType : ['*'];
+    }
+    triggerWhen.field_required = state.chipsData.fieldReq;
+
+    // Check expr
+    const expr = state.editorMode === 'visual' ? buildExpressionString() : $('#efExprCode').value.trim();
+    const lang = $('#efExprLang').value;
+    const checkExpr = {
+      type: scope === 'CROSS_UNIT' ? 'cross_compare' : 'expression',
+      expr: expr,
+      language: lang,
+    };
+    if (scope !== 'CROSS_UNIT') checkExpr.fallback = 'python_eval';
+
+    // Error template & remediation
+    const errorTemplate = $('#efErrorTemplate').value.trim();
+    const remediation = $('#efRemediation').value.trim();
+
+    // Applies to
+    const appliesTo = {
+      professional: state.chipsData.prof.length > 0 ? state.chipsData.prof : ['*'],
+      subdivision_codes: state.chipsData.subdivision,
+    };
+
+    const rule = {
+      name,
+      description: desc,
+      level,
+      scope,
+      category: category || '用户自定义',
+      trigger_when: triggerWhen,
+      check_expr: checkExpr,
+      error_template: errorTemplate,
+      severity_on_violation: severity,
+      remediation,
+      source: 'custom',
+      version: '1.0.0',
+      owner,
+      applies_to: appliesTo,
+      stats: {
+        total_hits: 0, total_reviews: 0, hit_rate: 0.0,
+        false_positive_count: 0, false_positive_rate: 0.0,
+        last_hit_at: null, last_review_at: null
+      },
+      alignment: null,
+      changelog: [],
+    };
+
+    if (state.editingRuleId) {
+      rule.rule_id = state.editingRuleId;
+    }
+
+    if (scope === 'CROSS_UNIT') {
+      rule.alignment = {
+        party_a: {
+          role: $('#alPartyARole').value,
+          label: roleLabel($('#alPartyARole').value),
+          doc_type: $('#alDocTypeA').value.trim(),
+        },
+        party_b: {
+          role: $('#alPartyBRole').value,
+          label: roleLabel($('#alPartyBRole').value),
+          doc_type: $('#alDocTypeB').value.trim(),
+        },
+        join_key: state.chipsData.joinKey,
+        field_a: $('#alFieldA').value.trim(),
+        field_b: $('#alFieldB').value.trim(),
+        aggregation: $('#alAggregation').value,
+      };
+      rule.confirmation_required = true;
+      rule.confirmation_scope = 'both_parties_or_admin';
+    }
+
+    return rule;
+  }
+
+  function roleLabel(role) {
+    return { supervisor: '监理方', contractor: '施工方', designer: '设计方' }[role] || role;
+  }
+
+  function updateJsonPreview() {
+    const rule = buildRuleJson();
+    const json = JSON.stringify(rule, null, 2);
+    $('#jsonPreview').innerHTML = highlightJson(json);
+  }
+
+  function highlightJson(json) {
+    return escapeHtml(json)
+      .replace(/&quot;([^&]+?)&quot;:/g, '<span class="jk">"$1"</span>:')
+      .replace(/: &quot;([^&]*?)&quot;/g, ': <span class="js">"$1"</span>')
+      .replace(/: (true|false)/g, ': <span class="jb">$1</span>')
+      .replace(/: (-?\d+\.?\d*)/g, ': <span class="jn">$1</span>')
+      .replace(/: null/g, ': <span class="jc">null</span>');
+  }
+
+  function renderSaveSummary() {
+    const rule = buildRuleJson();
+    const summary = {
+      rule_id: rule.rule_id || '（自动生成）',
+      name: rule.name || '（未填写）',
+      level: rule.level,
+      scope: rule.scope,
+      check_expr: rule.check_expr.expr || '（未填写）',
+      error_template: rule.error_template || '（未填写）',
+      status: state.editingRuleId ? '（更新）' : 'draft',
+    };
+    $('#saveSummary').textContent = JSON.stringify(summary, null, 2);
+  }
+
+  function resetEditor() {
+    state.editingRuleId = null;
+    state.editorStep = 1;
+    state.conditions = [{ field: '', op: '', compareType: 'const', compareValue: '', tolerance: '' }];
+    state.conditionCombiner = 'and';
+    state.chipsData = { docType: [], fieldReq: [], prof: [], subdivision: [], joinKey: [] };
+    $('#efName').value = '';
+    $('#efDescription').value = '';
+    $('#efCategory').value = '';
+    $('#efSeverity').value = 'Sanity Check';
+    $('#efErrorTemplate').value = '';
+    $('#efRemediation').value = '';
+    $('#efOwner').value = 'admin';
+    $('#efExprCode').value = '';
+    $('#efTolerance').value = '';
+    $('#alDocTypeA').value = '';
+    $('#alDocTypeB').value = '';
+    $('#alFieldA').value = '';
+    $('#alFieldB').value = '';
+    selectCardRadio('levelCards', '');
+    selectCardRadio('scopeCards', '');
+    renderAllChips();
+    renderConditions();
+    updateExprPreview();
+    updateAlignmentVisibility();
+    gotoStep(1);
+    updateJsonPreview();
+    toastInfo('编辑器已重置');
+  }
+
+  async function saveRule(andSubmitTest = false) {
+    // Validate all steps
+    for (let s = 1; s <= 4; s++) {
+      if (!validateStep(s)) { gotoStep(s); return; }
+    }
+    const rule = buildRuleJson();
+    const isEdit = !!state.editingRuleId;
+    let r;
+    if (isEdit) {
+      r = await api.updateRule(state.editingRuleId, { ...rule, change: andSubmitTest ? '编辑后提交测试' : '编辑更新' });
+    } else {
+      r = await api.createRule(rule);
+    }
+    if (r.code !== 0) {
+      toastErr(r.msg || '保存失败');
+      return;
+    }
+    const savedId = r.data.rule_id || state.editingRuleId;
+    toastOk(r.msg || '保存成功');
+    if (andSubmitTest && savedId) {
+      const tr = await api.transition(savedId, 'testing', '编辑器提交测试');
+      if (tr.code === 0) toastOk('已提交测试');
+      else toastWarn(tr.msg || '提交测试失败');
+    }
+    state.editingRuleId = savedId;
+    renderSaveSummary();
+    loadRules();
+  }
+
+  function setupEditorEvents() {
+    $('#btnAddCondition').addEventListener('click', () => {
+      state.conditions.push({ field: '', op: '', compareType: 'const', compareValue: '', tolerance: '' });
+      renderConditions();
+    });
+    $('#btnClearConditions').addEventListener('click', () => {
+      state.conditions = [{ field: '', op: '', compareType: 'const', compareValue: '', tolerance: '' }];
+      renderConditions();
+      updateExprPreview();
+      updateJsonPreview();
+    });
+    $('#btnSaveDraft').addEventListener('click', () => saveRule(false));
+    $('#btnSaveAndTest').addEventListener('click', () => saveRule(true));
+    $('#btnResetEditor').addEventListener('click', () => {
+      confirmDialog('重置编辑器', '确认清空所有已填写的内容？此操作不可撤销。', resetEditor, '重置', 'warning');
+    });
+    $('#btnBackToList').addEventListener('click', () => switchTab('list'));
+    $('#btnCopyJson').addEventListener('click', () => {
+      const json = $('#jsonPreview').textContent;
+      navigator.clipboard.writeText(json).then(() => toastOk('JSON 已复制到剪贴板')).catch(() => toastWarn('复制失败，请手动选择'));
+    });
+    // Bind all data-field inputs to update preview
+    $$('[data-field]').forEach(el => el.addEventListener('input', updateJsonPreview));
+    $$('[data-alignment]').forEach(el => el.addEventListener('change', updateJsonPreview));
+    $$('[data-alignment]').forEach(el => el.addEventListener('input', updateJsonPreview));
+    // Sandbox
+    $('#btnRunSandbox').addEventListener('click', runSandbox);
+    $('#btnLoadSample').addEventListener('click', () => {
+      const scope = getSelectedRadio('scopeCards');
+      if (scope === 'CROSS_UNIT') {
+        $('#sandboxData').value = JSON.stringify({
+          party_a_data: [{ pile_no: 'Z001', 混凝土灌入量: 12.5 }],
+          party_b_data: [{ pile_no: 'Z001', 灌入量: 13.2 }]
+        }, null, 2);
+      } else {
+        $('#sandboxData').value = JSON.stringify([
+          { pile_no: 'Z001', 实长: 12.5, 桩顶高程: 105.2, 桩底高程: 92.7 }
+        ], null, 2);
+      }
+    });
+  }
+
+  async function runSandbox() {
+    if (!state.editingRuleId) {
+      toastWarn('请先保存规则后再测试');
+      return;
+    }
+    const data = $('#sandboxData').value.trim();
+    let parsed;
+    try { parsed = JSON.parse(data); }
+    catch (e) { toastErr('JSON 解析失败: ' + e.message); return; }
+    const result = $('#sandboxResult');
+    result.style.display = 'block';
+    result.className = 'sandbox-result';
+    result.innerHTML = '<span class="loading-shimmer"></span> 测试中...';
+    const scope = getSelectedRadio('scopeCards');
+    const r = scope === 'CROSS_UNIT'
+      ? await api.testRule(state.editingRuleId, parsed.party_a_data || parsed, parsed)
+      : await api.testRule(state.editingRuleId, parsed);
+    if (r.code !== 0) {
+      result.className = 'sandbox-result fail';
+      result.textContent = '测试失败: ' + (r.msg || '未知错误');
+      return;
+    }
+    const violations = r.data.violations || [];
+    if (r.data.passed) {
+      result.className = 'sandbox-result pass';
+      result.innerHTML = '✓ 测试通过，无违规';
+    } else {
+      result.className = 'sandbox-result fail';
+      result.innerHTML = `✕ 命中 ${violations.length} 条违规` + violations.map(v =>
+        `<div class="violation-item">${escapeHtml(JSON.stringify(v, null, 2))}</div>`
+      ).join('');
+    }
+  }
+
+  // ========== Tab 3: Stats Dashboard ==========
+  async function loadStatsDashboard() {
+    const statsR = await api.getOverallStats();
+    if (statsR.code !== 0) { toastErr('加载统计失败'); return; }
+    const stats = statsR.data;
+    $('#kpiTotal').textContent = stats.total_rules || 0;
+    $('#kpiActive').textContent = (stats.by_status && stats.by_status.active) || 0;
+    const draftCount = ((stats.by_status && stats.by_status.draft) || 0) + ((stats.by_status && stats.by_status.testing) || 0);
+    $('#kpiDraft').textContent = draftCount;
+
+    // Load all rules for hit rate stats and Top 10 tables
+    const rulesR = await api.getRules();
+    let avgHit = 0;
+    let topRules = [];
+    if (rulesR.code === 0) {
+      topRules = rulesR.data.rules || [];
+      const hitRates = topRules.map(r => r.hit_rate || 0).filter(v => v != null);
+      avgHit = hitRates.length ? (hitRates.reduce((a, b) => a + b, 0) / hitRates.length) * 100 : 0;
+    }
+    $('#kpiHitRate').textContent = avgHit.toFixed(1) + '%';
+    $('#kpiTotalTrend').textContent = `L1: ${(stats.by_level && stats.by_level['L1-IRON']) || 0} · L2: ${(stats.by_level && stats.by_level['L2-LOGIC']) || 0} · L3: ${(stats.by_level && stats.by_level['L3-BUSINESS']) || 0}`;
+    $('#kpiActiveTrend').textContent = `占总量 ${stats.total_rules ? (((stats.by_status && stats.by_status.active) || 0) / stats.total_rules * 100).toFixed(1) : 0}%`;
+    $('#kpiDraftTrend').textContent = `draft: ${(stats.by_status && stats.by_status.draft) || 0} · testing: ${(stats.by_status && stats.by_status.testing) || 0}`;
+    $('#kpiHitRateTrend').textContent = `基于 ${topRules.length} 条规则统计`;
+
+    // Render pie chart (by level)
+    const levelData = [
+      { label: 'L1 铁律', value: (stats.by_level && stats.by_level['L1-IRON']) || 0, color: '#dc2626' },
+      { label: 'L2 逻辑一致性', value: (stats.by_level && stats.by_level['L2-LOGIC']) || 0, color: '#d97706' },
+      { label: 'L3 业务合理性', value: (stats.by_level && stats.by_level['L3-BUSINESS']) || 0, color: '#2563eb' },
+    ];
+    renderPieChart(levelData);
+
+    // Render bar chart (by status)
+    const statusLabels = { active: 'active', draft: 'draft', testing: 'testing', incubating: 'incubating', deprecated: 'deprecated', pending_confirmation: 'pending' };
+    const statusColors = { active: '#0d9488', draft: '#94a3b8', testing: '#d97706', incubating: '#7c3aed', deprecated: '#dc2626', pending_confirmation: '#ea580c' };
+    const statusData = Object.entries(stats.by_status || {}).map(([k, v]) => ({
+      label: statusLabels[k] || k,
+      value: v,
+      color: statusColors[k] || '#64748b',
+    }));
+    renderBarChart(statusData);
+
+    // Render Top 10 tables
+    const sortedByHit = topRules.slice().sort((a, b) => (a.hit_rate || 0) - (b.hit_rate || 0));
+    const lowHit = sortedByHit.slice(0, 10);
+    renderTopTable($('#lowHitTable tbody'), lowHit, 'hit_rate');
+
+    // High false positive rate - since list API doesn't return FPR, fetch stats for top rules
+    renderTopTable($('#highFprTable tbody'), topRules.slice(0, 10), 'hit_rate');
+  }
+
+  function renderTopTable(tbody, rules, field) {
+    if (!rules || rules.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--color-text-tertiary);padding:20px">暂无数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rules.map(r => {
+      const val = r[field] != null ? ((r[field] || 0) * 100).toFixed(1) + '%' : '—';
+      return `<tr>
+        <td class="rule-id-cell"><span class="id-tag ${idPrefixClass(r.rule_id)}">${escapeHtml(r.rule_id.split('-')[0])}</span>${escapeHtml(r.rule_id)}</td>
+        <td>${escapeHtml(r.name || '—')}</td>
+        <td><span class="level-badge ${levelClass(r.level)}">${levelShort(r.level)}</span></td>
+        <td class="text-mono">${val}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderPieChart(data) {
+    const svg = $('#pieChartSvg');
+    const legend = $('#pieLegend');
+    const total = data.reduce((s, d) => s + d.value, 0);
+    const cx = 110, cy = 110, r = 80, rInner = 50;
+    if (total === 0) {
+      svg.innerHTML = '<text x="160" y="110" text-anchor="middle" fill="#94a3b8" font-size="12">暂无数据</text>';
+      legend.innerHTML = '';
+      return;
+    }
+    let cumAngle = -Math.PI / 2;
+    const paths = data.map(d => {
+      const angle = (d.value / total) * 2 * Math.PI;
+      const x1 = cx + r * Math.cos(cumAngle);
+      const y1 = cy + r * Math.sin(cumAngle);
+      const x2 = cx + r * Math.cos(cumAngle + angle);
+      const y2 = cy + r * Math.sin(cumAngle + angle);
+      const xi1 = cx + rInner * Math.cos(cumAngle);
+      const yi1 = cy + rInner * Math.sin(cumAngle);
+      const xi2 = cx + rInner * Math.cos(cumAngle + angle);
+      const yi2 = cy + rInner * Math.sin(cumAngle + angle);
+      const largeArc = angle > Math.PI ? 1 : 0;
+      const dPath = `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${xi1} ${yi1} Z`;
+      cumAngle += angle;
+      return `<path d="${dPath}" fill="${d.color}" stroke="#fff" stroke-width="2"><title>${escapeHtml(d.label)}: ${d.value} (${(d.value/total*100).toFixed(1)}%)</title></path>`;
+    }).join('');
+    svg.innerHTML = paths + `<text x="${cx}" y="${cy-4}" text-anchor="middle" fill="#1e293b" font-size="22" font-weight="700">${total}</text><text x="${cx}" y="${cy+14}" text-anchor="middle" fill="#64748b" font-size="11">规则总数</text>`;
+    legend.innerHTML = data.map(d =>
+      `<div class="flex items-center gap-8" style="font-size:12px"><span style="width:10px;height:10px;background:${d.color};border-radius:2px;display:inline-block"></span>${escapeHtml(d.label)} <strong>${d.value}</strong></div>`
+    ).join('');
+  }
+
+  function renderBarChart(data) {
+    const svg = $('#barChartSvg');
+    if (!data || data.length === 0) {
+      svg.innerHTML = '<text x="160" y="110" text-anchor="middle" fill="#94a3b8" font-size="12">暂无数据</text>';
+      return;
+    }
+    const maxVal = Math.max(...data.map(d => d.value), 1);
+    const barH = 20, gap = 8, padX = 100, padY = 10;
+    let y = padY;
+    const bars = data.map(d => {
+      const w = (d.value / maxVal) * (320 - padX - 30);
+      const bar = `<rect x="${padX}" y="${y}" width="${Math.max(w, 1)}" height="${barH}" fill="${d.color}" rx="2"><title>${escapeHtml(d.label)}: ${d.value}</title></rect>
+        <text x="${padX - 6}" y="${y + barH - 4}" text-anchor="end" fill="#64748b" font-size="11">${escapeHtml(d.label)}</text>
+        <text x="${padX + w + 6}" y="${y + barH - 4}" fill="#1e293b" font-size="11" font-weight="600">${d.value}</text>`;
+      y += barH + gap;
+      return bar;
+    }).join('');
+    svg.innerHTML = bars;
+  }
+
+  // ================================================================
+  // Tab 4: Reflections (D-4 反思报告 + 候选规则审核)
+  // ================================================================
+  // 缓存反思报告列表（供搜索使用）
+  let _reflectionsCache = [];
+
+  async function loadReflections() {
+    const listEl = $('#reflectionsList');
+    listEl.innerHTML = '<div style="padding:20px;text-align:center"><span class="loading-shimmer"></span> <span class="text-secondary">加载中...</span></div>';
+    const r = await api.getReflections();
+    if (r.code !== 0) {
+      listEl.innerHTML = `<div style="padding:20px;color:var(--color-danger);text-align:center">${escapeHtml(r.msg || '加载失败')}</div>`;
+      return;
+    }
+    const reports = (r.data && r.data.reports) || [];
+    _reflectionsCache = reports;
+    renderReflectionsList(reports);
+    // 同步加载孵化区候选规则
+    loadIncubator();
+  }
+
+  function renderReflectionsList(reports) {
+    const listEl = $('#reflectionsList');
+    if (!reports || reports.length === 0) {
+      listEl.innerHTML = `
+        <div class="empty-state" style="padding:40px 12px">
+          <div class="empty-icon">📝</div>
+          <div class="empty-title">暂无反思报告</div>
+          <div class="empty-desc">点击右上角"⚡ 立即反思"触发一次反思</div>
+        </div>`;
+      return;
+    }
+    listEl.innerHTML = reports.map(rep => `
+      <div class="reflection-card" data-date="${escapeHtml(rep.date)}">
+        <div class="rc-date">${escapeHtml(rep.date)}</div>
+        <div class="rc-title">${escapeHtml(rep.title || '（无标题）')}</div>
+        <div class="rc-meta">
+          <span>${formatFileSize(rep.size)}</span>
+          <span>·</span>
+          <span>${escapeHtml(formatDateTime(rep.mtime))}</span>
+        </div>
+      </div>
+    `).join('');
+    // 绑定卡片点击事件
+    $$('#reflectionsList .reflection-card').forEach(card => {
+      card.addEventListener('click', () => viewReflection(card.dataset.date));
+    });
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes == null) return '—';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  async function viewReflection(date) {
+    // 标记选中态
+    $$('#reflectionsList .reflection-card').forEach(c => {
+      c.classList.toggle('selected', c.dataset.date === date);
+    });
+    const contentEl = $('#reflectionContent');
+    contentEl.innerHTML = '<div style="padding:20px;text-align:center"><span class="loading-shimmer"></span> <span class="text-secondary">加载报告内容...</span></div>';
+    const r = await api.getReflection(date);
+    if (r.code !== 0) {
+      contentEl.innerHTML = `<div style="padding:20px;color:var(--color-danger)">${escapeHtml(r.msg || '加载失败')}</div>`;
+      return;
+    }
+    renderReflectionContent(r.data.content || '');
+  }
+
+  function renderReflectionContent(content) {
+    const contentEl = $('#reflectionContent');
+    // 简单转义后用 pre 显示（保留换行和缩进）
+    // 若需要 Markdown 渲染，可在此处调用 marked.js（CDN）；当前用 pre 保证零依赖
+    contentEl.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+  }
+
+  async function loadIncubator() {
+    const section = $('#incubatorSection');
+    const listEl = $('#incubatorList');
+    const countEl = $('#incubatorCount');
+    const r = await api.getIncubator();
+    if (r.code !== 0) {
+      // 容错降级：API 失败不阻塞面板，隐藏孵化区
+      section.classList.add('hidden');
+      return;
+    }
+    const candidates = (r.data && r.data.candidates) || [];
+    // 仅展示 incubating 状态的候选规则（已 promote/reject 的不展示）
+    const active = candidates.filter(c => c.status === 'incubating');
+    if (active.length === 0) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+    countEl.textContent = active.length + ' 条';
+    renderIncubatorList(active);
+  }
+
+  function renderIncubatorList(candidates) {
+    const listEl = $('#incubatorList');
+    listEl.innerHTML = candidates.map(c => {
+      const meta = c.incubation_meta || {};
+      const sugType = meta.suggestion_type || 'new_rule';
+      const sugTypeLabel = {
+        new_rule: '新增规则',
+        modify: '修改规则',
+        disable: '停用规则',
+        level_adjust: '层级调整',
+      }[sugType] || sugType;
+      const sourceFbs = meta.source_feedbacks || [];
+      const lc = levelClass(c.level);
+      const ls = levelShort(c.level);
+      return `
+        <div class="incubator-item" data-rule-id="${escapeHtml(c.rule_id)}">
+          <div class="ii-header">
+            <span class="ii-rule-id">${escapeHtml(c.rule_id)}</span>
+            <span class="ii-name">${escapeHtml(c.name || '—')}</span>
+            <span class="level-badge ${lc}">${ls}</span>
+            <span class="suggestion-type-badge ${sugType}">${escapeHtml(sugTypeLabel)}</span>
+          </div>
+          <div class="ii-desc">${escapeHtml(c.description || '—')}</div>
+          <div class="ii-meta">
+            ${sourceFbs.length > 0 ? `<span>来源反馈: ${sourceFbs.length} 条</span><span>·</span>` : ''}
+            <span>创建: ${escapeHtml(formatDateTime(c.created_at))}</span>
+            ${meta.reason ? `<span>·</span><span title="${escapeHtml(meta.reason)}">${escapeHtml(truncateText(meta.reason, 40))}</span>` : ''}
+          </div>
+          <div class="ii-actions">
+            <button class="small success" data-act="promote">✓ 提升为 active</button>
+            <button class="small danger" data-act="reject">✗ 驳回</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    // 绑定按钮事件（事件委托方式）
+    $$('#incubatorList .incubator-item button[data-act]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const item = btn.closest('.incubator-item');
+        const ruleId = item && item.dataset.ruleId;
+        if (!ruleId) return;
+        if (btn.dataset.act === 'promote') promoteIncubatorRule(ruleId);
+        else if (btn.dataset.act === 'reject') rejectIncubatorRule(ruleId);
+      });
+    });
+  }
+
+  function truncateText(s, max) {
+    if (!s) return '';
+    s = String(s);
+    return s.length > max ? s.slice(0, max) + '…' : s;
+  }
+
+  function promoteIncubatorRule(ruleId) {
+    // 弹出理由输入框
+    promptDialog(
+      `提升候选规则 · ${ruleId}`,
+      '提升原因（reason）',
+      '如：规则覆盖场景充分，建议激活',
+      async (reason) => {
+        if (!reason) { toastWarn('请填写提升原因'); return; }
+        const r = await api.promoteIncubator(ruleId, reason);
+        if (r.code === 0) {
+          toastOk(r.msg || '候选规则已提升为 active');
+          loadIncubator();
+        } else {
+          toastErr(r.msg || '提升失败');
+        }
+      },
+      { confirmText: '确认提升', confirmClass: 'success' }
+    );
+  }
+
+  function rejectIncubatorRule(ruleId) {
+    promptDialog(
+      `驳回候选规则 · ${ruleId}`,
+      '驳回原因（reason）',
+      '如：规则覆盖场景过窄，建议补充',
+      async (reason) => {
+        if (!reason) { toastWarn('请填写驳回原因'); return; }
+        const r = await api.rejectIncubator(ruleId, reason);
+        if (r.code === 0) {
+          toastOk(r.msg || '候选规则已驳回');
+          loadIncubator();
+        } else {
+          toastErr(r.msg || '驳回失败');
+        }
+      },
+      { confirmText: '确认驳回', confirmClass: 'danger' }
+    );
+  }
+
+  function triggerReflection() {
+    // 弹出确认对话框（天数 + dry_run 选项）
+    const bodyHtml = `
+      <div class="form-row">
+        <label class="field-label">反思周期（days）<span class="required-mark">*</span></label>
+        <input type="number" id="trDays" value="7" min="1" max="365" style="width:120px">
+        <span class="text-secondary text-xs" style="margin-left:8px">汇总最近 N 天的审核事件与反馈</span>
+      </div>
+      <div class="form-row">
+        <label class="field-label">运行模式</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal;text-transform:none;letter-spacing:0;color:var(--color-text-primary);font-size:var(--font-size-sm);margin-bottom:0">
+          <input type="checkbox" id="trDryRun"> dry-run（仅生成报告，不写候选规则）
+        </label>
+      </div>
+      <div class="form-row" style="background:var(--color-warning-light);border:1px solid var(--color-warning-border);border-radius:var(--radius-sm);padding:8px 12px">
+        <div style="font-size:var(--font-size-xs);color:var(--color-warning);line-height:1.5">
+          ⚠ 触发反思将汇总审核数据并调用 LLM（不可用时降级到模板分析）。完成后将刷新报告列表。
+        </div>
+      </div>`;
+    const footerHtml = `<button id="modalCancel">取消</button><button class="primary" id="modalConfirm">⚡ 立即反思</button>`;
+    showModal({
+      title: '触发反思',
+      bodyHtml,
+      footerHtml,
+      onMount: (body, footer) => {
+        footer.querySelector('#modalCancel').addEventListener('click', closeModal);
+        footer.querySelector('#modalConfirm').addEventListener('click', async () => {
+          const days = parseInt(body.querySelector('#trDays').value, 10);
+          const dryRun = body.querySelector('#trDryRun').checked;
+          if (!days || days < 1 || days > 365) { toastWarn('days 必须为 1~365 之间的整数'); return; }
+          closeModal();
+          toastInfo('反思进行中，请稍候...');
+          const r = await api.triggerReflection(days, dryRun);
+          if (r.code === 0) {
+            const data = r.data || {};
+            toastOk(`反思完成：报告已生成，候选规则 ${data.candidates_written || 0} 条`);
+            // 刷新报告列表与孵化区
+            loadReflections();
+          } else {
+            toastErr(r.msg || '反思失败');
+          }
+        });
+      }
+    });
+  }
+
+  // ========== Init ==========
+  function init() {
+    // Top bar tabs
+    $$('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+    // Connection
+    $('#btnRefreshConn').addEventListener('click', async () => {
+      const ok = await checkConnection();
+      if (ok) { toastOk('连接成功'); loadRules(); }
+      else toastErr('连接失败，请检查 API 服务是否启动');
+    });
+    $('#apiBaseUrl').addEventListener('change', checkConnection);
+    // Filters
+    ['filterLevel', 'filterScope', 'filterStatus', 'filterSource', 'filterProfessional'].forEach(id => {
+      $('#' + id).addEventListener('change', loadRules);
+    });
+    let searchTimer;
+    $('#filterQ').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadRules, 300);
+    });
+    $('#btnResetFilter').addEventListener('click', () => {
+      ['filterLevel', 'filterScope', 'filterStatus', 'filterSource', 'filterProfessional', 'filterQ'].forEach(id => $('#' + id).value = '');
+      loadRules();
+    });
+    $('#btnViewPending').addEventListener('click', () => {
+      $('#filterStatus').value = 'pending_confirmation';
+      loadRules();
+    });
+    // Drawer
+    $('#drawerClose').addEventListener('click', closeDetail);
+    $('#drawerOverlay').addEventListener('click', closeDetail);
+    // Modal
+    $('#modalClose').addEventListener('click', closeModal);
+    $('#modalOverlay').addEventListener('click', e => { if (e.target.id === 'modalOverlay') closeModal(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeModal(); closeDetail(); closeActionMenu(); }
+    });
+    // Editor
+    setupCardRadios();
+    setupStepper();
+    setupEditorModeTabs();
+    setupProfSuggestions();
+    setupEditorEvents();
+    renderAllChips();
+    renderConditions();
+    updateAlignmentVisibility();
+    // D-4: Reflections tab events
+    $('#btnTriggerReflection').addEventListener('click', triggerReflection);
+    let reflectionSearchTimer;
+    $('#reflectionSearch').addEventListener('input', () => {
+      clearTimeout(reflectionSearchTimer);
+      reflectionSearchTimer = setTimeout(() => {
+        const q = $('#reflectionSearch').value.trim().toLowerCase();
+        if (!q) { renderReflectionsList(_reflectionsCache); return; }
+        const filtered = _reflectionsCache.filter(r =>
+          (r.date || '').toLowerCase().includes(q) || (r.title || '').toLowerCase().includes(q)
+        );
+        renderReflectionsList(filtered);
+      }, 200);
+    });
+    // Initial load
+    checkConnection().then(ok => {
+      if (ok) loadRules();
+      else {
+        $('#rulesTableBody').innerHTML = `<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--color-danger)">⚠ 无法连接 API 服务器（${escapeHtml(api.baseUrl)}），请确认 scripts/rule_admin.py 已启动</td></tr>`;
+      }
+    });
+  }
+
+  // Boot
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+  </script>
+</body>
+</html>

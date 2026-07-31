@@ -108,9 +108,21 @@ class DataQualityChecker:
             })
         return w
 
-    # ========== 2. 桩号连续性 ==========
-    def check_pile_continuity(self, col_name: str = "pile_no") -> list[dict]:
-        """检查桩号是否连续递减"""
+    # ========== 2. 桩号总数校验（v2.0：不强制连号） ==========
+    def check_pile_continuity(
+        self,
+        col_name: str = "pile_no",
+        expected_total: Optional[int] = None,
+    ) -> list[dict]:
+        """
+        检查桩号总数和重复号（v2.0 改版）。
+
+        桩号顺序按现场施工顺序拟定，不强制连号。只检查：
+        1. 总数是否与设计总桩数一致（如提供 expected_total）
+        2. 是否有重复桩号
+
+        旧版检查"连续递减"已废弃——现场施工顺序不等于桩号顺序。
+        """
         w = []
         pile_nos = self.columns.get(col_name, [])
         if not pile_nos:
@@ -120,29 +132,43 @@ class DataQualityChecker:
         parsed = []
         for pn in pile_nos:
             try:
-                # 去掉前缀字母，取数字部分
                 num = int("".join(c for c in str(pn) if c.isdigit()))
-                parsed.append((pn, num))
+                parsed.append((str(pn).strip(), num))
             except ValueError:
                 w.append({
                     "code": "DQ-SELF-PILE-01",
                     "severity": "warning",
                     "message": f"桩号格式无法解析：{pn}",
-                    "detail": "无法验证桩号连续性",
+                    "detail": "无法验证桩号总数",
                 })
                 return w
 
-        # 检查是否连续递减
-        for i in range(1, len(parsed)):
-            prev_pn, prev_num = parsed[i - 1]
-            curr_pn, curr_num = parsed[i]
-            if prev_num - curr_num != 1:
+        # 检查重复桩号
+        seen = {}
+        for pn_str, num in parsed:
+            if pn_str in seen:
                 w.append({
                     "code": "DQ-SELF-PILE-02",
                     "severity": "warning",
-                    "message": f"桩号不连续：{prev_pn} → {curr_pn}（差值 {prev_num - curr_num}，预期 1）",
-                    "detail": "可能缺号或跳号，需核实",
+                    "message": f"桩号重复：{pn_str} 出现多次",
+                    "detail": "可能为重复记录或 OCR 误读，需核实",
                 })
+            else:
+                seen[pn_str] = True
+
+        # 检查总数（如提供期望值）
+        if expected_total is not None:
+            actual_total = len(parsed)
+            if actual_total != expected_total:
+                w.append({
+                    "code": "DQ-SELF-PILE-03",
+                    "severity": "error" if abs(actual_total - expected_total) > 5 else "warning",
+                    "message": f"桩号总数不匹配：识别到 {actual_total} 根，设计 {expected_total} 根",
+                    "detail": f"差值 {actual_total - expected_total} 根，需核实是否有缺桩或漏录",
+                    "actual": actual_total,
+                    "expected": expected_total,
+                })
+
         return w
 
     # ========== 3. 桩长自洽 ==========
@@ -319,9 +345,13 @@ class DataQualityChecker:
                 return True
         return False
 
-    # ========== 6. 突变检测 ==========
-    def check_jump(self) -> list[dict]:
+    # ========== 6. 突变检测（v2.0：含致岩豁免） ==========
+    def check_jump(self, remark_col: str = "remark") -> list[dict]:
         """检测数值列的突变
+
+        v2.0 新增：
+        - 致岩/入岩豁免：备注列含"致岩""入岩"等关键词时，桩长突变不报
+        - 设计变更豁免：备注列含"变更"关键词时，不报
 
         注意：已被 DQ-REPEAT-01（交替模式）标记的列，不再重复报告突变——
         交替模式本身已经解释了数据波动，逐行突变告警是冗余的。
@@ -333,11 +363,17 @@ class DataQualityChecker:
             if w["code"] == "DQ-REPEAT-01" and w.get("pattern") == "alternating"
         }
 
+        # 获取备注列数据
+        remarks = self.columns.get(remark_col, [])
+
+        # 致岩/入岩/变更关键词
+        exempt_keywords = ["致岩", "入岩", "已入岩", "岩层", "变更", "设计变更", "签证"]
+
         w = []
         for col_name, values in self.columns.items():
             if self._is_exempt(col_name):
                 continue
-            if col_name in ("pile_no",):
+            if col_name in ("pile_no", remark_col):
                 continue
 
             # 跳过已被交替模式标记的列
@@ -357,6 +393,14 @@ class DataQualityChecker:
                     continue
                 change_rate = abs(curr - prev) / abs(prev)
                 if change_rate >= threshold:
+                    # 检查备注列是否有致岩/入岩/变更等豁免关键词
+                    remark = str(remarks[i]) if i < len(remarks) and remarks[i] else ""
+                    is_exempt = any(kw in remark for kw in exempt_keywords)
+
+                    if is_exempt:
+                        # 致岩桩或设计变更，桩长可以不同于设计值，不报突变
+                        continue
+
                     direction = "下降" if curr < prev else "上升"
                     w.append({
                         "code": "DQ-JUMP-01",
@@ -367,6 +411,7 @@ class DataQualityChecker:
                         ),
                         "detail": (
                             "需说明原因：地层变化？设备故障？停工？变更？"
+                            f"（备注列无致岩/变更说明）"
                         ),
                         "column": col_name,
                         "from_row": i,
@@ -411,8 +456,17 @@ class DataQualityChecker:
         return w
 
     # ========== 主入口 ==========
-    def run_all(self, expected_rows: Optional[int] = None) -> dict:
-        """运行全部检测，返回结果"""
+    def run_all(
+        self,
+        expected_rows: Optional[int] = None,
+        expected_pile_total: Optional[int] = None,
+    ) -> dict:
+        """运行全部检测，返回结果
+
+        Args:
+            expected_rows: 期望的数据行数（用于行数自检）
+            expected_pile_total: 设计总桩数（用于桩号总数校验，v2.0新增）
+        """
         self.warnings = []
 
         # 1. 硬门槛：行数自检
@@ -424,8 +478,8 @@ class DataQualityChecker:
         if has_row_error:
             return self._build_result()
 
-        # 2. 桩号连续性
-        self.warnings.extend(self.check_pile_continuity())
+        # 2. 桩号总数校验（v2.0：不强制连号，只查总数和重复号）
+        self.warnings.extend(self.check_pile_continuity(expected_total=expected_pile_total))
 
         # 3. 数据自洽
         self.warnings.extend(self.check_length_consistency())
@@ -435,7 +489,7 @@ class DataQualityChecker:
         # 4. 重复值模式
         self.warnings.extend(self.check_repeat_pattern())
 
-        # 5. 突变检测
+        # 5. 突变检测（v2.0：含致岩豁免）
         self.warnings.extend(self.check_jump())
 
         return self._build_result()
@@ -461,10 +515,14 @@ class DataQualityChecker:
         }
 
 
-def check(data: dict, expected_rows: Optional[int] = None) -> dict:
+def check(
+    data: dict,
+    expected_rows: Optional[int] = None,
+    expected_pile_total: Optional[int] = None,
+) -> dict:
     """便捷函数：一步完成检测"""
     checker = DataQualityChecker(data)
-    return checker.run_all(expected_rows)
+    return checker.run_all(expected_rows, expected_pile_total)
 
 
 # ========== CLI ==========
@@ -502,7 +560,11 @@ def main():
         help="期望行数（用于行数自检）",
     )
     parser.add_argument(
-        "--pretty", "-p", action="store_true",
+        "--expected-pile-total", "-p", type=int, default=None,
+        help="设计总桩数（用于桩号总数校验，v2.0新增）",
+    )
+    parser.add_argument(
+        "--pretty", action="store_true",
         help="美化输出（带缩进）",
     )
     args = parser.parse_args()
@@ -516,7 +578,7 @@ def main():
     data = json.loads(raw)
 
     # 运行检测
-    result = check(data, args.expected_rows)
+    result = check(data, args.expected_rows, args.expected_pile_total)
 
     # 输出
     indent = 2 if args.pretty else None

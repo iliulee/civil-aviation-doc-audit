@@ -1,0 +1,52 @@
+{
+  "rule_id": "IR-007",
+  "name": "留痕",
+  "level": "L1-IRON",
+  "scope": "SINGLE_DOC",
+  "category": "合规底线",
+  "description": "每次审核生成可追溯的日志：审核时间、依据规范版本、OCR 置信度、人工复核标记、审核结论、审核人。日志保存为 audit_output/logs/AU-{日期}-{序号}_审核日志.json。",
+  "trigger_when": {
+    "doc_type": [
+      "*"
+    ],
+    "field_required": []
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "审核过程未留痕或日志不完整：{issue}",
+  "severity_on_violation": "Fatal",
+  "remediation": "生成完整的审核日志 JSON，含审核时间、依据规范版本、OCR 置信度、人工复核标记、审核结论、审核人",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-07 迁移"
+    }
+  ]
+}

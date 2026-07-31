@@ -5,6 +5,7 @@ __pycache__/
 
 # 第三方二进制工具（用户自行下载）
 tools/poppler/
+tools/poppler.zip
 
 # 测试中间文件
 _scanned.*
@@ -14,6 +15,10 @@ test/sample_*.txt
 # 审核输出（每次运行生成，不纳入版本管理）
 # 如需保留典型案例，手动复制到 examples/ 目录
 audit_output/
+
+# OCR 复核中间产物（verify_fields.py 生成）
+verify_output/
+crops/
 
 # 操作系统
 Thumbs.db

@@ -1,0 +1,48 @@
+{
+  "rule_id": "BZ-003",
+  "name": "涂改痕迹检测",
+  "level": "L3-BUSINESS",
+  "scope": "SINGLE_DOC",
+  "category": "数据质量-涂改",
+  "description": "检测表格中是否存在手写修改痕迹——原打印值被划掉/覆盖改写。检测方法：①视觉检测（AI 视觉模型）：同一单元格内手写笔迹与打印字体不一致，或存在划痕/涂改液痕迹；②逻辑检测（数值推演）：手写值 ≠ 按公式推算值（如充盈系数 ≠ 灌入量/理论体积）。判定：视觉+逻辑均不一致=涂改（高）；视觉一致但逻辑不一致=疑似涂改/笔误更正（中）；视觉未检测但逻辑不一致=数据异常（中）。注意：涂改检测高度依赖视觉模型，OCR 本身无法识别涂改，建议配合≥300 DPI 高分辨率扫描图",
+  "trigger_when": {
+    "doc_type": ["碎石桩施工记录", "PHC管桩施工记录", "DDC桩施工记录", "混凝土浇筑记录", "施工记录", "检验批", "检测报告"],
+    "field_required": []
+  },
+  "alignment": null,
+  "check_expr": {
+    "type": "aggregation",
+    "expr": "not (visual_detected_alteration and logical_inconsistent) where logical_check = (handwritten_value != formula_derived_value)",
+    "language": "python_eval"
+  },
+  "error_template": "单元格 {cell_location} 疑似涂改：视觉检测={visual_detected_alteration}，逻辑检测：手写值 {handwritten_value} ≠ 计算值 {formula_derived_value}（差异 {deviation}）",
+  "severity_on_violation": "Best Practice",
+  "remediation": "确认改前原值，追查修改原因。视觉+逻辑均不一致时数据可能被篡改，建议调取原始施工底稿或现场取芯验证",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 data-quality-patterns.md 规则3（DQ-ALTER）迁移"
+    }
+  ]
+}

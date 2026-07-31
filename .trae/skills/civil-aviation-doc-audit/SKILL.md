@@ -3,9 +3,9 @@ name: "civil-aviation-doc-audit"
 description: "民航建设施工资料合规审核大师。审核资料是否符合MH/T 5078等民航行业规范、验证结构运算是否符合运算规范、支持OCR识别扫描件、多Agent并行批量审核、三级输出格式（Fatal/Sanity Check/Best Practice）、知识分区红线防幻觉、可自动生成审核报告和整改通知。专门针对民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业的施工资料合规性审核场景。当用户要求审核民航施工资料、检查资料合规性、验证运算规范、识别扫描件资料、生成审核报告或整改通知时触发。"
 ---
 
-# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v5.0-api
+# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v6.0
 
-> 面向民航运输机场专业工程建设项目，基于 MH/T 5078.1~5078.6-2024 资料管理规程体系，提供资料合规性审核、结构运算规范审核、OCR扫描件识别、跨资料逻辑一致性检查、多Agent并行批量审核、文档生成等能力。五大专业全覆盖，每条审核意见有据可查。
+> 面向民航运输机场专业工程建设项目，基于 MH/T 5078.1~5078.6-2024 资料管理规程体系，提供"建数据底座 → 人工核对 → 正式审核 → 生成报告"四阶段流水线审核能力，集成 OCR 扫描件识别、跨资料逻辑一致性检查、多 Agent 并行审核（按专业/分部/分项三级粒度拆分）、Web 数据编辑器、项目总览仪表盘等能力。五大专业全覆盖，每条审核意见有据可查。
 
 ## 技能定位
 
@@ -13,11 +13,13 @@ description: "民航建设施工资料合规审核大师。审核资料是否符
 |------|------|
 | 英文名 | `civil-aviation-doc-audit` |
 | 中文名 | 民航建设施工资料合规审核大师 |
-| 版本 | v5.0-api（API-First 分支） |
+| 版本 | v6.0（四阶段流水线 + 数据底座 + Web 编辑器） |
 | 适用领域 | 民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业全覆盖 |
 | 核心规范 | MH/T 5078.1~5078.6-2024 系列 + 各专业技术规范（MH 5004/5007/5012/5034/4006 等） |
-| 知识库 | 主引擎：`references/` 专项审核文件（13 个，已固化条款+参数阈值）；增强源：Obsidian（`H:\Obsidian notes\溜哥笔记\wiki\sources\`），按需查询原文，非硬依赖 |
-| 处理能力 | 电子文档/PDF/扫描件（OCR）/图片/批量/精准定位 |
+| 知识库 | 主引擎：`references/` 专项审核文件（16 个，已固化条款+参数阈值）；增强源：Obsidian（`H:\Obsidian notes\溜哥笔记\wiki\sources\`），按需查询原文，非硬依赖 |
+| 处理能力 | 电子文档/PDF/扫描件（OCR）/图片/批量/精准定位/项目维度数据底座/人工核对/多Agent并行 |
+| 数据底座 | JSON（机器读写）+ MD（人工只读预览）双格式，纯文件系统存储，零数据库依赖，支持跨机器迁移和 git 版本追踪 |
+| 多Agent拆分粒度 | professional（专业级）/ sub（分部级）/ item（分项级），与人工分部分项划分一致 |
 
 ---
 
@@ -141,7 +143,389 @@ pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 
 ---
 
+## 四阶段流水线（v6.0 核心工作流）
+
+> **设计意图**：v5.0 之前是"一份资料走一遍 9 步"的线性流程，遇到大项目（几万页资料、多专业）会上下文溢出、人工核对无处落地、重复 OCR 浪费时间。v6.0 重构为四阶段流水线，每阶段有明确输入、输出和硬闸门，阶段间通过 `index.json` 的 `stage` 字段衔接。**默认走四阶段流水线**；单份资料快速审核仍可走"v5.0 单文件审核模式"（见后文）。
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ 阶段 1：建数据底座（全自动）                                    │
+│   输入：项目文件夹路径 + 5 项前置信息                           │
+│   处理：文件扫描分类 → OCR 提取 → 结构化 JSON+MD → 质量检测 →   │
+│         混淆检测 → 断档检测 → index.json 总索引 → 复制 Web 模板 │
+│   输出：数据底座/（JSON + MD + index.json + 质量告警 + 混淆     │
+│         检测 + 断档清单）+ 项目总览.html + data-editor.html     │
+│   闸门：index.json 中所有文件 ocr_status = "completed"          │
+│   铁律执行：R-10（数据质量先于规范合规）、R-11（全列提取）、     │
+│             R-16（提取-验证-重试）                              │
+│                                                                │
+│   ↓ 人机闸门：数据未经人工确认，不进审核（铁律 R-02/R-20）      │
+│                                                                │
+│ 阶段 2：人工核对（人机交互，零对话 token）                      │
+│   输入：数据底座/ + Web 数据编辑器（data-editor.html）          │
+│   处理：左图右表对照 → 逐条确认告警 → 修正 OCR 误读 →           │
+│         双视图编辑（结构化视图 + 原始文本视图均可编辑）→        │
+│         点击"保存"导出 corrected_data.json →                    │
+│         点击"确认完成"生成 corrections.json 并更新 human_verified │
+│   输出：修正记录/corrections.json + 各文件 corrected_data.json  │
+│   闸门：用户在 Web 编辑器中点击"确认完成"并导出修正数据         │
+│   铁律执行：R-02（OCR 人工复核）、R-20（OCR 存疑项核实）        │
+│                                                                │
+│   ↓ 确认完成后，AI 读取修正后数据                              │
+│                                                                │
+│ 阶段 3：正式审核（全自动，支持多 Agent 并行）                   │
+│   输入：修正后的 corrected_data.json + 前置信息                 │
+│   处理：审核前置检查（human_verified 闸门）→                    │
+│         任务拆分（专业/分部/分项三级粒度）→                     │
+│         规范逐条对账 + 逻辑一致性检查（10 子项）+               │
+│         运算规范审核（按需）→ 生成审核日志 JSON                 │
+│   输出：审核日志/AU-{日期}-{序号}_审核日志.json                 │
+│   铁律执行：R-01/R-03/R-04/R-05/R-06/R-09/R-15/R-17             │
+│                                                                │
+│   ↓                                                             │
+│                                                                │
+│ 阶段 4：生成报告（全自动）                                     │
+│   输入：审核日志                                                │
+│   处理：汇总发现 → 四级置信度标注 → 三级分类（Fatal/Sanity/     │
+│         Best Practice）→ 套用 HTML 模板 → 生成 SVG 图表         │
+│   输出：审核报告.html（统一交付物，9 章节强制）                 │
+│   铁律执行：R-07/R-08/R-18/R-19                                 │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### 阶段间硬闸门
+
+| 闸门 | 判定字段 | 通过条件 | 未通过的处理 |
+|:---:|:---|:---|:---|
+| 阶段 1 → 阶段 2 | `index.json` 中所有 `documents[].ocr_status` | 全部为 `"completed"` | 重新执行 build，或检查 OCR 引擎是否可用 |
+| 阶段 2 → 阶段 3 | `index.json` 中所有 `documents[].human_verified` | 全部为 `true` | 阻断审核，提示用户打开 data-editor.html 完成核对 |
+| 阶段 3 → 阶段 4 | `审核日志/` 目录下存在最新 `AU-*.json` | 审核日志完整生成 | 重新执行 review |
+
+> **铁律 R-02 落地机制**：阶段 2 是 OCR 数据人工核对的硬闸门，未完成核对前 `human_verified=false`，阶段 3 的 `review_audit.py` 会拒绝执行（除非加 `--force`，仅测试用）。
+
+### 阶段 1 CLI：建立数据底座
+
+```powershell
+# 基本用法
+python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹路径>"
+
+# 完整参数
+python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹路径>" \
+    --engine <auto|vision|paddle> \
+    --incremental \
+    --out "<数据底座目录名，默认'数据底座'>" \
+    --preconditions "<前置信息JSON文件路径>" \
+    --expected-rows "<预期行数JSON文件路径>"
+```
+
+**`--preconditions` JSON 文件格式**（5 项前置信息）：
+```json
+{
+  "stage": "分部分项验收",
+  "nature": "扫描件",
+  "scope": "全量审核",
+  "ocr_engine": "PaddleOCR",
+  "special_notes": "电子版与扫描件为同一份资料的不同版本",
+  "excluded_files": ["测试文档.pdf"],
+  "expected_rows": {"碎石桩施工记录": 33}
+}
+```
+
+**`--incremental` 增量模式**：基于文件 SHA256 哈希对比，仅处理新增或变更文件，已 OCR 过的文件不重复处理（NF-05）。
+
+**自动产物**（生成到 `<项目文件夹>/数据底座/`）：
+```
+数据底座/
+├── index.json                          ← 项目总索引（唯一真相源）
+├── 01_场道工程/
+│   └── 施工记录/
+│       ├── 碎石桩施工记录.json          ← 结构化数据（机器读写）
+│       ├── 碎石桩施工记录.md            ← 只读预览（人工查阅）
+│       ├── 碎石桩施工记录_ocr.json      ← OCR 原始输出（追溯用）
+│       ├── 碎石桩施工记录_quality.json  ← 质量检测结果
+│       └── 碎石桩施工记录_confusion.json ← 混淆检测结果
+├── 02_空管工程/
+├── 03_助航设施/
+├── 04_弱电系统/
+├── 05_供油工程/
+├── 通用资料/
+├── 修正记录/                            ← 阶段 2 生成
+└── 审核日志/                            ← 阶段 3 生成
+```
+
+同时复制 `templates/data-editor.html` 和 `templates/project-dashboard.html` 到项目文件夹根目录。
+
+### 阶段 2：人工核对（Web 数据编辑器）
+
+**零对话 token**：用户在浏览器中完成所有核对操作，不消耗 AI 对话 token（NF-01）。
+
+**打开方式**：用户双击项目文件夹根目录下的 `data-editor.html`，浏览器自动加载 `数据底座/index.json`。
+
+**编辑器核心功能**：
+1. **文件列表导航**：下拉选择项目中的不同文件，切换时自动保存当前文件修改
+2. **左图右表**：左侧 PDF.js 渲染原始扫描图（含放大镜），右侧可编辑表格
+3. **翻页同步**：切页时左侧图片和右侧表格同步切换
+4. **双视图模式**：结构化视图按字段分列展示；原始文本视图保留原始排版便于对比，**两种视图下均可直接编辑单元格**
+5. **字段编辑**：点击单元格直接修改，修改时记录原值和新值
+6. **质量告警逐条确认**：每条告警可"确认"（标记为已知问题）或"修正"（跳转到对应行）
+7. **OCR 存疑项高亮**：混淆检测的存疑字段黄色标记，点击可看 OCR 原始值和建议值
+8. **桩号导航**：输入桩号快速跳转
+9. **列宽拖拽**：表头可拖拽调整列宽，固定列（行号）宽度锁定，翻页后列宽持久化
+10. **保存**：点击"保存"生成 `corrected_data.json` 到对应文件目录
+11. **确认完成**：点击"确认完成"生成 `修正记录/corrections.json` 并更新 `index.json` 的 `human_verified` 字段为 `true`
+
+**MD 文件定位**：MD 是"工作台副本"——JSON 给机器读，MD 给人读，支持离线查看、Git diff、人工核改参考。**MD 不可编辑**，编辑走 Web 编辑器（避免双写冲突）。
+
+### 阶段 3 CLI：正式审核
+
+```powershell
+# 单 Agent 模式（默认按分部级拆分，但串行执行）
+python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹路径>"
+
+# 完整参数
+python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹路径>" \
+    --out "<数据底座目录名，默认'数据底座'>" \
+    --split-by <professional|sub|item> \
+    --task-id "<任务ID>" \
+    --tasks-file "<任务包JSON文件路径>" \
+    --dry-run \
+    --force
+```
+
+**`--split-by` 拆分粒度**（v6.0 新增，与人工分部分项划分一致）：
+| 粒度 | 说明 | 典型场景 |
+|:---:|:---|:---|
+| `professional` | 按专业拆分（5 大专业） | 跨专业项目快速并行 |
+| `sub`（默认） | 按分部工程拆分（48 个分部） | 常规项目，平衡并行度和任务开销 |
+| `item` | 按分项工程拆分（115 个分项） | 大型项目，最大化并行度 |
+
+**多 Agent 并行工作流**（v6.0 新增）：
+```powershell
+# 步骤 1：主 Agent 生成任务包（不执行审核）
+python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹路径>" --split-by item --dry-run
+# 产物：数据底座/审核日志/audit_tasks.json
+
+# 步骤 2：每个子 Agent 执行一个任务（可并行）
+python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹路径>" --task-id AU-20260730-001-001 --tasks-file "数据底座/审核日志/audit_tasks.json"
+python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹路径>" --task-id AU-20260730-001-002 --tasks-file "数据底座/审核日志/audit_tasks.json"
+# ... 每个 task-id 独立进程，可并行调度
+
+# 步骤 3：主 Agent 汇总（执行无 task-id 的 review，自动合并所有子任务结果）
+python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹路径>"
+```
+
+**`--force` 跳过闸门**：仅测试用，正式审核必须经过阶段 2 人工核对。
+
+### 阶段 4 CLI：生成审核报告
+
+```powershell
+python {SKILL_DIR}/scripts/run_audit.py report "<项目文件夹路径>" \
+    --out "<数据底座目录名，默认'数据底座'>"
+```
+
+**产物**：`<项目文件夹>/审核报告.html`（统一交付物，9 章节强制，含 SVG 环形图和水平条形图）。
+
+### index.json 项目总索引（唯一真相源）
+
+```json
+{
+  "schema_version": "1.0",
+  "project_name": "项目名称",
+  "project_path": "项目文件夹绝对路径",
+  "created_at": "2026-07-29T10:00:00",
+  "updated_at": "2026-07-30T15:30:00",
+  "stage": "foundation_built | human_verified | reviewed | reported",
+  "preconditions": {
+    "stage": "分部分项验收",
+    "nature": "扫描件",
+    "scope": "全量审核",
+    "ocr_engine": "PaddleOCR",
+    "special_notes": ""
+  },
+  "file_classification": {
+    "audited_files": ["扫描件.pdf"],
+    "reference_files": ["设计变更通知单.pdf"],
+    "excluded_files": ["测试文档.pdf"]
+  },
+  "documents": [
+    {
+      "id": "DOC-001",
+      "original_file": "扫描件.pdf",
+      "doc_type": "碎石桩施工记录",
+      "professional": "01_场道工程",
+      "subdivision_code": "01-03",
+      "subdivision_label": "场道工程 → 特殊土处理",
+      "subcategory": "施工记录",
+      "pages": 49,
+      "ocr_status": "completed",
+      "ocr_engine": "PaddleOCR",
+      "ocr_confidence": 0.833,
+      "content_hash": "sha256...",
+      "data_file": "01_场道工程/施工记录/碎石桩施工记录.json",
+      "data_md": "01_场道工程/施工记录/碎石桩施工记录.md",
+      "quality_file": "...",
+      "confusion_file": "...",
+      "quality_alerts": 3,
+      "confusion_suspects": 5,
+      "human_verified": false,
+      "corrected_file": null,
+      "audit_status": "pending",
+      "last_updated": "2026-07-29T10:15:00"
+    }
+  ],
+  "corrections": {"total": 0, "file": "修正记录/corrections.json"},
+  "gaps": [
+    {"type": "pile_no_gap", "professional": "01_场道工程", "description": "Z420→Z418 缺 Z419", "detected_at": "..."}
+  ],
+  "audit_logs": []
+}
+```
+
+**关键字段说明**：
+- `stage`：流水线阶段状态，阶段间闸门的依据
+- `documents[].ocr_status`：阶段 1 → 阶段 2 闸门
+- `documents[].human_verified`：阶段 2 → 阶段 3 闸门
+- `documents[].content_hash`：增量更新对比依据（SHA256）
+- `documents[].subdivision_code`：多 Agent 拆分依据（如 `01-03` = 场道工程-特殊土处理）
+- `gaps[]`：断档检测结果（桩号/日期/编号连续性问题）
+
+### 断档检测（v6.0 新增，铁律 R-16 扩展）
+
+阶段 1 建底座时自动执行，写入 `index.json` 的 `gaps[]` 数组：
+
+| 检测类型 | 说明 | 示例 |
+|:---|:---|:---|
+| `pile_no_gap` | 桩号不连续 | Z420→Z418 缺 Z419 |
+| `date_gap` | 日期不连续 | 4-15→4-17 缺 4-16 |
+| `sequence_no_gap` | 编号不连续 | 001→003 缺 002 |
+
+断档不阻塞阶段 1 完成，但在项目总览仪表盘中标红提示，并在阶段 3 审核时作为逻辑一致性检查的输入。
+
+---
+
+## 规则管理子系统（v6.0 新增）
+
+> 91 条规则三层分级、形式化存储、可视化管理、反馈闭环、LLM 自成长。规则不再散落在文档叙述中，而是以结构化 JSON 形式集中管理，支持全生命周期流转、效力自监控、定时反思优化。
+
+### 规则分级体系
+
+| 层级 | 代号 | 判定标准 | 违反后果 | 示例 |
+|:---:|:---:|:---|:---|:---|
+| L1 铁律 | L1-IRON | 不可商榷的合规底线 | 🔴 Fatal，直接判不合格，不可降级 | R-01 规范可追溯、R-06 拒为伪证背书 |
+| L2 逻辑一致性 | L2-LOGIC | 数学/几何/时序/引用自洽 | 🟡 Sanity Check，须人工复核 | 实长=桩顶高程-桩底高程（原 R-12，已修正层级错位） |
+| L3 业务合理性 | L3-BUSINESS | 阈值/经验/行业惯例 | 🔵 Best Practice，提示性警告 | 突变率≥30% 警告 |
+| 跨单位对照 | SCOPE-CROSS_UNIT | 监理-施工方跨单位对照 | 按 L1/L2/L3 分级 | 混凝土量偏差>5% |
+
+### 规则形式化存储
+
+91 条规则已从文档叙述迁移至 `rules/` 目录，以 JSON 文件形式按层级分子目录存储：
+
+```
+rules/
+├── L1-iron/                  # L1 铁律（17 条）
+├── L2-logic/                 # L2 逻辑一致性（71 条，含 IR-012/013/014 几何/合计/多参数联检）
+├── L3-business/              # L3 业务合理性（3 条）
+├── cross-unit/               # 跨单位对照（18 条）
+├── custom/
+│   ├── draft/                # 用户草稿
+│   └── incubator/            # 孵化区候选规则
+├── reflections/              # 反思报告
+├── schema/                   # JSON Schema
+└── registry.json             # 全量注册表（91 条）
+```
+
+每条规则包含字段：`rule_id`、`name`、`level`、`scope`、`trigger_when`、`check_expr`、`error_template`、`status`、`source`、`version`、`changelog`、`stats`、`alignment` 等。
+
+### 规则管理面板
+
+`templates/rule-manager.html` 提供可视化管理界面，含 4 个标签页：
+
+| 标签页 | 功能 |
+|--------|------|
+| 规则列表 | 多维度筛选（层级/状态/作用域）、查看详情、状态流转、协同确认 |
+| 新建规则 | 可视化规则编辑器，支持触发条件、检查表达式、错误模板的字段化编辑 |
+| 统计仪表盘 | 规则总数、各层级分布、命中率/误报率 Top 10、状态分布 |
+| 反思报告 | 历次 LLM 反思报告列表，含优化建议和候选规则 |
+
+### 规则生命周期
+
+```
+draft（草稿）→ testing（测试）→ incubating（孵化）→ active（生效）
+                            ↘ deprecated（停用）
+
+跨单位规则变更：pending_confirmation（待确认）→ active
+```
+
+| 状态 | 含义 | 生效范围 |
+|:---:|:---|:---|
+| draft | 用户草稿，未验证 | 不生效 |
+| testing | 沙箱测试中 | 仅测试用例 |
+| incubating | 孵化区候选，待审批 | 不生效 |
+| active | 正式生效 | 项目级/全局 |
+| deprecated | 停用 | 不生效 |
+
+### 反馈闭环
+
+`templates/feedback-collector.html` 嵌入审核报告，收集两类反馈：
+
+- **漏审反馈**：审核未发现但实际存在的问题 → 触发规则补全流程
+- **误报反馈**：规则误判 → 触发规则优化或降级流程
+
+反馈处理流程：反馈收集 → `feedback_analyzer.py` LLM 聚类分析 → 模式提取 → 候选规则生成 → 写入 `rules/custom/incubator/` → 管理员审批 → 提升为 active。
+
+### LLM 自成长
+
+| 组件 | 脚本 | 职责 |
+|------|------|------|
+| 反思调度器 | `rule_reflector.py` | 定时触发 LLM 生成优化建议报告，候选规则写入 incubator |
+| 规则效力监控 | `rule_monitor.py` | 统计命中率/误报率，低质量规则自动降级（L1 豁免） |
+| 反馈分析管道 | `feedback_analyzer.py` | LLM 聚类、模式提取、候选规则生成 |
+| 审核记忆流 | `audit_memory.py` | JSONL 事件日志，记录审核过程供反思使用 |
+
+### 跨单位对照
+
+`templates/alignment-view.html` 提供监理-施工方数据对齐视图：
+
+- 左右分栏对照监理方与施工方资料数据
+- 自动标注偏差项（如混凝土量偏差>5%）
+- 跨单位规则变更需协同确认（`pending_confirmation` → `active`）
+- 支持管理员强制确认（`force_confirm`）
+
+### 规则管理 API
+
+`scripts/rule_admin.py` 提供 20+ REST API 端点：
+
+| 类别 | 端点 |
+|------|------|
+| 规则管理 | GET/POST/PUT/DELETE `/api/rules`、`/api/rules/{id}/transition`、`/api/rules/{id}/confirm`、`/api/rules/{id}/force_confirm`、`/api/rules/{id}/stats`、`/api/rules/{id}/changelog`、`/api/rules/{id}/test` |
+| 反馈管理 | GET/POST `/api/feedbacks`、`/api/feedbacks/{id}`、`/api/feedbacks/stats`、`/api/feedbacks/analyze` |
+| 反思与自成长 | GET `/api/reflections`、`/api/reflections/{date}`、POST `/api/reflections/trigger`、GET `/api/incubator`、`/api/incubator/{id}`、POST `/api/incubator/{id}/promote`、`/api/incubator/{id}/reject` |
+
+启动 API 服务：
+
+```powershell
+python {SKILL_DIR}/scripts/rule_admin.py --port 8765
+```
+
+打开管理面板：浏览器访问 `templates/rule-manager.html`。
+
+---
+
 ## 触发语句
+
+### v6.0 四阶段流水线触发语句（默认走流水线）
+
+- "建数据底座" / "建立项目数据底座" / "建底座"
+- "审核这个项目的资料" / "审一下整个项目" / "审这批资料"
+- "人工核对" / "打开数据编辑器" / "对一下 OCR 结果"
+- "启动审核" / "正式审核" / "开始审核"
+- "生成审核报告" / "出报告"
+- "增量更新" / "补充资料" / "更新数据底座"
+- "看一下项目总览" / "项目进度" / "审核进度"
+- "并行审核" / "多 Agent 审核" / "拆分审核任务"
+- "按分部审核" / "按分项审核" / "按专业审核"
+
+### v5.0 单文件审核触发语句（保留兼容）
 
 - "审核这份施工资料"
 - "检查这份资料是否合规"
@@ -155,12 +539,82 @@ pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 - "审一下这批资料并出汇总报告"
 - "复查上次审过的项目"
 - "我之前审过哪些项目"
+
+### 安装与环境触发语句
+
 - "安装这个skill"
 - "安装skill"
 - "安装依赖"
 - "设置环境"
 - "部署环境"
 - "初始化"
+
+### 规则管理子系统触发语句（v6.0 新增）
+
+- "打开规则管理" / "管理规则" / "规则面板"
+- "新建规则" / "创建规则" / "添加规则"
+- "规则反馈" / "漏审反馈" / "误报反馈"
+- "启动反思" / "触发反思" / "规则反思"
+- "查看候选规则" / "孵化区" / "提升候选规则"
+- "跨单位对齐" / "对齐视图"
+
+---
+
+## v6.0 流水线执行规则（AI 必须遵守）
+
+> **关键规则**：v6.0 默认走四阶段流水线，**不要把单文件 9 步流程套到项目级审核上**。识别到"项目""这批""整个"等关键词时，自动进入流水线模式。
+
+### 触发判断
+
+| 用户输入特征 | 走哪条路径 |
+|:---|:---|
+| 提到"项目""这批""整个""建底座""人工核对" | **四阶段流水线** |
+| 只提单份资料（如"这份施工日志""这个检验批"） | **v5.0 单文件审核模式**（9 步流程） |
+| 模糊（如"审一下这些资料"） | 默认走**四阶段流水线**，并提示用户 |
+
+### 阶段 1 执行规则（建数据底座）
+
+1. **必须先收集 5 项前置信息**（铁律 v1.7+）：阶段、性质、审核范围、OCR 引擎、特殊说明
+2. **必须先做文件分类确认**：列出所有文件，分为被审核资料/依据文件/排除文件，请用户确认
+3. **前置信息和文件分类可合并为一次确认**（减少打断）
+4. 用户确认后，执行 `run_audit.py build` 命令
+5. **build 命令执行期间不要打断**：脚本会输出进度到 stderr，等待完成
+6. **build 完成后，主动打开项目总览 HTML**：用 OpenPreview 工具展示 `项目总览.html`
+7. **提示用户进入阶段 2**：明确告知"请在浏览器中打开 data-editor.html 完成人工核对，核对完成后告诉我"
+
+### 阶段 2 执行规则（人工核对）
+
+1. **AI 不参与编辑**：用户在浏览器中自行核对，AI 不读取数据、不修改 JSON
+2. **零 token 消耗**：阶段 2 全程不消耗 AI 对话 token
+3. **用户说"核对完成"后**：AI 必须先验证 `index.json` 中所有 `human_verified=true`，再进入阶段 3
+4. **如发现遗漏文件**：用户可补充文件后执行 `run_audit.py build --incremental`，增量更新不重复 OCR
+
+### 阶段 3 执行规则（正式审核）
+
+1. **前置检查**：执行 `run_audit.py review` 时脚本自动检查 `human_verified` 闸门
+2. **闸门未通过**：脚本会拒绝执行，AI 不要绕过（除非用户明确说"--force"，仅测试用）
+3. **多 Agent 并行**：资料量大（≥500 页或 ≥3 专业）时，主动建议用户走多 Agent 并行
+4. **拆分粒度推荐**：
+   - 默认 `--split-by sub`（48 个分部级）
+   - 大型项目用 `--split-by item`（115 个分项级）
+   - 小项目用 `--split-by professional`（5 个专业级）
+5. **审核期间不修改数据**：审核是只读操作，只生成审核日志 JSON
+
+### 阶段 4 执行规则（生成报告）
+
+1. **强制套用 HTML 模板**：基于 `references/html-report-template.html` 生成，9 章节强制
+2. **含 SVG 图表**：环形图（不符合项分布）+ 水平条形图（各专业问题数），零外部依赖
+3. **报告生成后主动打开**：用 OpenPreview 工具展示 `审核报告.html`
+4. **报告是终态产物**：如需更新，重新走阶段 3+4
+
+### 阶段间切换规则
+
+| 切换 | 触发条件 | AI 行为 |
+|:---:|:---|:---|
+| 阶段 1 → 阶段 2 | build 命令执行完成 | 提示用户打开 data-editor.html |
+| 阶段 2 → 阶段 3 | 用户说"核对完成" | 验证 `human_verified` 后执行 review |
+| 阶段 3 → 阶段 4 | review 命令执行完成 | 自动执行 report |
+| 跨阶段回退 | 用户说"重新 OCR"或"补充资料" | 增量模式重新 build，不丢失已核对数据 |
 
 ---
 
@@ -170,6 +624,12 @@ pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 
 | 场景 | 执行命令 | 说明 |
 |------|---------|------|
+| **【v6.0】建立数据底座** | `python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹>" --engine auto --preconditions "<前置.json>"` | 阶段 1：扫描分类 → OCR → JSON+MD → 质量检测 → 混淆检测 → 断档检测 → index.json |
+| **【v6.0】增量更新数据底座** | `python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹>" --incremental` | 阶段 1 增量：基于 SHA256 哈希对比，仅处理新增/变更文件 |
+| **【v6.0】生成审核任务包** | `python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹>" --split-by item --dry-run` | 阶段 3 准备：生成任务包，不执行审核 |
+| **【v6.0】执行单个审核任务** | `python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹>" --task-id <id> --tasks-file "<任务包.json>"` | 阶段 3 多 Agent：子 Agent 执行单个任务 |
+| **【v6.0】执行正式审核** | `python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹>" --split-by sub` | 阶段 3：规范对账 + 逻辑一致性检查 + 运算审核 |
+| **【v6.0】生成审核报告** | `python {SKILL_DIR}/scripts/run_audit.py report "<项目文件夹>"` | 阶段 4：套用 HTML 模板，生成 SVG 图表，输出 审核报告.html |
 | 识别资料类型 | `python {SKILL_DIR}/scripts/run_audit.py info "<文件路径>"` | 返回格式、页数、是否扫描件 |
 | 提取 PDF 文字 | `python {SKILL_DIR}/scripts/extract_pdf.py "<文件路径>" --out "<输出.txt>"` | 电子档 PDF 用 PyMuPDF 提取 |
 | OCR 扫描件（默认 PaddleOCR） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --out "<输出.txt>"` | 默认跑 PaddleOCR，官方参数优化 |
@@ -178,7 +638,7 @@ pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 | OCR 扫描件（增强预处理） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --preprocess binarize --out "<输出.txt>"` | 自适应二值化，适合褪色/模糊手写件 |
 | OCR 扫描件（视觉优先） | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --out "<输出.txt>"` | AI 视觉模型直接识别（需 API Key） |
 | OCR 复核指定页 | `python {SKILL_DIR}/scripts/ocr_image.py "<文件路径>" --engine vision --page 5 --out "<输出.txt>"` | 用 AI 视觉复核第 5 页 |
-| 一键审核 | `python {SKILL_DIR}/scripts/run_audit.py audit "<文件路径>" --data "<结构化JSON>" --out "<输出目录>"` | OCR + 混淆检测 + Vision复核，一步完成 |
+| 一键审核（v5.0 单文件） | `python {SKILL_DIR}/scripts/run_audit.py audit "<文件路径>" --data "<结构化JSON>" --out "<输出目录>"` | OCR + 混淆检测 + Vision复核，一步完成（单文件，不走流水线） |
 | 批量识别目录 | `python {SKILL_DIR}/scripts/run_audit.py batch "<目录路径>"` | 遍历目录所有文件 |
 | OCR 混淆检测 | `python {SKILL_DIR}/scripts/ocr_confusion_check.py "<JSON文件>" --pretty` | 检测 Z→2、4→0 等常见 OCR 误读，生成待核实清单 |
 | 存疑字段自动复核 | `python {SKILL_DIR}/scripts/verify_fields.py auto "<原始文件>" "<混淆检测JSON>" --data "<数据JSON>" --out "<输出目录>"` | 默认路径 B：裁剪图片+输出任务清单，AI 智能体自动读图验证 |
@@ -441,21 +901,26 @@ powershell -ExecutionPolicy Bypass -File "{SKILL_DIR}/install.ps1"
 | 1 | **资料所处阶段** | 施工过程 / 分部分项验收 / 预验收 / 正式竣工验收 / 移交归档 | 决定签字完整性、资料齐全性的判定标准 |
 | 2 | **资料性质** | 原始记录 / 誊抄件 / 电子版 / 扫描件 / 复印件 | 决定数据真实性审查的严格程度 |
 | 3 | **审核范围** | 全量审核 / 按规范 / 按条款 / 按分部分项 / 仅逻辑一致性 | 决定审核深度和范围 |
-| 4 | **特殊说明** | 用户已知的资料问题、电子版辅助说明、历史背景等 | 避免 AI 误判、提供上下文 |
+| 4 | **OCR 引擎** | Vision API / PaddleOCR 本地 | 决定 OCR 识别方式 |
+| 5 | **特殊说明** | 用户已知的资料问题、电子版辅助说明、历史背景等 | 避免 AI 误判、提供上下文 |
 
 **执行规则**：
-1. **必须收集**：第 1~2 项为必答，第 3~4 项为可选（有默认值）
-2. **默认值**：第 3 项默认"全量审核"，第 4 项默认"无"
+1. **必须全部展示**：5 项问题必须全部列出，每个选项必须完整呈现，`<font color=red>`严禁使用默认值跳过 `</font>`
+2. **用户必须逐项回复**：不能"全部默认"，必须对每一项给出明确选择
 3. **信息记录**：收集结果写入审核日志的"前置信息"字段
 4. **判定标准调整**：根据阶段和性质动态调整判定标准——
    - 过程资料：签字完整性不强制要求，重点审数据真实性
    - 分部分项验收：签字应基本齐全，允许少量补齐
    - 竣工验收/移交归档：签字必须齐全，缺一不可
-5. **输出**：`{被审资料列表, 依据文件列表, 排除文件列表, 阶段, 性质, 审核范围, 特殊说明}`
+5. **OCR 引擎选择说明**：
+   - Vision API：调用云端视觉模型（Doubao/通义千问/智谱等），需设置环境变量，按量付费，约 ¥0.02/页，中文手写识别最准
+   - PaddleOCR 本地：本地推理，零成本，离线可用，需安装 `paddleocr + paddlepaddle`，约 10 秒/页
+   - 如果用户未设置 API Key，则该项自动锁定为"PaddleOCR 本地"
+6. **输出**：`{被审资料列表, 依据文件列表, 排除文件列表, 阶段, 性质, 审核范围, OCR引擎, 特殊说明}`
 
 **典型场景**：
-- 用户说"审一下这份施工日志" → 先弹出文件分类确认框，再问阶段和性质
-- 用户提供的电子版和扫描件是同一份资料的不同版本 → 用户在第 4 项说明，避免被误判为"两份矛盾资料"
+- 用户说"审一下这份施工日志" → 先弹出文件分类确认框，再问 5 项前置信息（全部列出，不跳过）
+- 用户提供的电子版和扫描件是同一份资料的不同版本 → 用户在第 5 项说明，避免被误判为"两份矛盾资料"
 
 ---
 
@@ -652,9 +1117,9 @@ d:\2026年7月22日 民航资料skill\audit_output\
 
 ---
 
-## 多Agent并行审核（v1.9 新增）
+## 多Agent并行审核（v6.0 三级粒度拆分）
 
-> **设计意图**：大项目可能有几万页资料，单 Agent 串行审核耗时太长。多 Agent 并行方案把资料按专业/分部分项拆成独立任务，多个 Agent 同时审核，最后汇总结果。适用于资料量 ≥ 500 页或涉及 ≥ 3 个专业的场景。
+> **设计意图**：大项目可能有几万页资料，单 Agent 串行审核耗时太长。v1.9 仅支持按专业拆分（最多 6 个 Agent），v6.0 扩展为**专业/分部/分项三级粒度拆分**，与人工分部分项划分完全一致，最多可拆分 115 个独立任务。适用于资料量 ≥ 500 页或涉及 ≥ 3 个专业的场景。
 
 ### 触发条件
 
@@ -662,80 +1127,157 @@ d:\2026年7月22日 民航资料skill\audit_output\
 |:---|:---|:---|
 | 资料总页数 | ≥ 500 页 | 是 |
 | 涉及专业数 | ≥ 3 个专业 | 是 |
-| 用户明确要求 | "批量审核""并行审核""多agent" | 是 |
+| 涉及分部分项数 | ≥ 10 个分部 | 建议走 `--split-by sub` |
+| 涉及分部分项数 | ≥ 30 个分项 | 建议走 `--split-by item` |
+| 用户明确要求 | "批量审核""并行审核""多agent""拆分审核" | 是 |
 | 用户手动拆分 | 指定了分专业/分部分项审核范围 | 是 |
+
+### 三级拆分粒度（v6.0 新增）
+
+| 粒度 | `--split-by` 值 | 最大任务数 | 典型场景 | 任务开销 |
+|:---:|:---:|:---:|:---|:---:|
+| 专业级 | `professional` | 6 | 跨专业项目快速并行 | 低 |
+| 分部级（默认） | `sub` | 48 | 常规项目，平衡并行度和任务开销 | 中 |
+| 分项级 | `item` | 115 | 大型项目，最大化并行度 | 高 |
+
+> **拆分依据**：`scripts/audit_config.py` 中的 `SUBDIVISION_HIERARCHY`，源自 `references/` 下 5 个规范文件，覆盖 5 大专业、48 分部、115 分项，每个分部分项都有唯一 code（如 `01-03` = 场道工程-特殊土处理）。
 
 ### 拆分策略
 
-```
-审核资料 → 按专业分流（Step 1 识别工程类别）
-  ├─ 场道工程资料 → Agent A（加载 airfield-engineering-audit.md）
-  ├─ 空管工程资料 → Agent B（加载 atc-engineering-audit.md）
-  ├─ 目视助航资料 → Agent C（加载 visual-aids-audit.md）
-  ├─ 弱电系统资料 → Agent D（加载 weak-electricity-audit.md）
-  ├─ 供油工程资料 → Agent E（加载 fuel-supply-audit.md）
-  └─ 跨专业通用资料（施工日志/监理文件等）→ Agent F（加载 audit-checklists.md）
-```
-
-### 执行流程
+#### professional 级（5 大专业 + 通用）
 
 ```
-Step 0 前置信息收集（主 Agent 完成）
-  └─ 生成项目审核范围清单（使用 templates/audit-scope-template.html）
+审核资料 → 按专业分流（基于 index.json 的 professional 字段）
+  ├─ 01_场道工程 → Agent A（加载 airfield-engineering-audit.md）
+  ├─ 02_空管工程 → Agent B（加载 atc-engineering-audit.md）
+  ├─ 03_助航设施 → Agent C（加载 visual-aids-audit.md）
+  ├─ 04_弱电系统 → Agent D（加载 weak-electricity-audit.md）
+  ├─ 05_供油工程 → Agent E（加载 fuel-supply-audit.md）
+  └─ 通用资料 → Agent F（加载 audit-checklists.md）
+```
+
+#### sub 级（48 个分部，默认推荐）
+
+```
+审核资料 → 按 subdivision_code 分流
+  ├─ 01-01 场道工程-土方工程 → Agent 01-01
+  ├─ 01-02 场道工程-基层 → Agent 01-02
+  ├─ 01-03 场道工程-特殊土处理 → Agent 01-03
+  ├─ 02-01 空管工程-导航系统 → Agent 02-01
+  ├─ ...（共 48 个分部）
+  └─ 通用-施工日志 → Agent GEN-01
+```
+
+#### item 级（115 个分项，大型项目）
+
+```
+审核资料 → 按 subdivision_code + item_code 分流
+  ├─ 01-03-01 场道工程-特殊土处理-碎石桩 → Agent 01-03-01
+  ├─ 01-03-02 场道工程-特殊土处理-换填 → Agent 01-03-02
+  ├─ ...（共 115 个分项）
+  └─ 单个分项下资料数 ≤ 5 份时，自动合并到上级分部
+```
+
+### 执行流程（v6.0 集成到四阶段流水线）
+
+```
+阶段 1 build（主 Agent 完成）
+  └─ 扫描分类 → OCR → index.json（含 subdivision_code）
       ↓
-Step 1 格式识别+专业分流（主 Agent 完成）
-  └─ 将资料按专业拆分为 N 个独立任务包
+阶段 2 人工核对（用户完成）
+  └─ data-editor.html → corrected_data.json → human_verified=true
       ↓
-并行执行（N 个子 Agent 同时启动）：
-  ┌──────────────────────────────────────────────────────────┐
-  │ Agent A ──→ Step 2~7（场道）──→ 输出场道审核结果          │
-  │ Agent B ──→ Step 2~7（空管）──→ 输出空管审核结果          │
-  │ Agent C ──→ Step 2~7（助航）──→ 输出助航审核结果          │
-  │ Agent D ──→ Step 2~7（弱电）──→ 输出弱电审核结果          │
-  │ Agent E ──→ Step 2~7（供油）──→ 输出供油审核结果          │
-  │ Agent F ──→ Step 2~7（通用）──→ 输出通用资料审核结果      │
-  └──────────────────────────────────────────────────────────┘
-      ↓ 全部子 Agent 完成后
-Step 8 汇总（主 Agent 完成）：
-  ├─ 合并各子 Agent 审核结果
-  ├─ 执行跨专业逻辑一致性检查（子 Agent 之间的交叉验证）
-  ├─ 统一套用 HTML 报告模板生成总报告
-  └─ 更新项目审核范围清单的审核状态
+阶段 3 review（主 Agent + N 个子 Agent 并行）
+  ├─ 主 Agent：run_audit.py review --split-by item --dry-run
+  │   └─ 生成 audit_tasks.json（含 N 个任务包）
+  ├─ 子 Agent 1：run_audit.py review --task-id AU-...-001 --tasks-file audit_tasks.json
+  ├─ 子 Agent 2：run_audit.py review --task-id AU-...-002 --tasks-file audit_tasks.json
+  ├─ ...（N 个子 Agent 同时执行，每个独立进程）
+  └─ 主 Agent：run_audit.py review（汇总所有子任务结果 + 跨任务逻辑一致性检查）
+      ↓
+阶段 4 report（主 Agent 完成）
+  └─ run_audit.py report → 审核报告.html
 ```
 
-### 子 Agent 任务包格式
+### 子 Agent 任务包格式（v6.0）
 
-每个子 Agent 收到的任务包必须包含以下信息：
+`audit_tasks.json` 中每个任务包包含以下字段：
 
 ```json
 {
-  "task_id": "AU-20260725-001-A",
-  "professional": "场道工程",
-  "materials": ["碎石桩施工记录.pdf", "土方检验批.xlsx"],
-  "reference_files": ["airfield-engineering-audit.md", "audit-checklists.md"],
-  "design_params": {"设计桩长": "20m", "设计桩径": "0.5m", "充盈系数": "≥1.05"},
-  "stage": "分部分项验收",
-  "nature": "扫描件",
-  "special_notes": "电子版与扫描件为同一份资料的不同版本"
+  "task_id": "AU-20260730-001-001",
+  "professional": "01_场道工程",
+  "subdivision_code": "01-03",
+  "sub_label": "场道工程 → 特殊土处理",
+  "item_label": "碎石桩",
+  "split_by": "item",
+  "doc_count": 3,
+  "documents": [
+    {
+      "id": "DOC-001",
+      "original_file": "碎石桩施工记录.pdf",
+      "doc_type": "碎石桩施工记录",
+      "data_file": "01_场道工程/施工记录/碎石桩施工记录.json",
+      "corrected_file": "01_场道工程/施工记录/碎石桩施工记录_corrected.json",
+      "human_verified": true
+    }
+  ],
+  "checklist_source": "airfield-engineering-audit.md",
+  "preconditions": {
+    "stage": "分部分项验收",
+    "nature": "扫描件",
+    "scope": "全量审核",
+    "special_notes": ""
+  }
 }
 ```
 
-### 汇总规则
+### 汇总规则（v6.0）
 
 1. **同类项合并**：各子 Agent 输出的不符合项按三级分类（🔴Fatal/🟡Sanity Check/🔵Best Practice）汇总
-2. **跨专业交叉验证**：主 Agent 检查各子 Agent 结果中涉及跨专业接口的部分（如场道与助航的电缆预埋、供油与弱电的管线交叉）
+2. **跨任务逻辑一致性检查**：主 Agent 在汇总阶段执行 10 子项逻辑检查，覆盖跨分部分项的交叉验证（如场道与助航的电缆预埋、供油与弱电的管线交叉）
 3. **置信度统一标注**：各子 Agent 的置信度标注按统一标准复核
-4. **汇总报告**：一份总报告，按专业分章节，末尾附跨专业综合结论
+4. **断档整合**：阶段 1 检测到的 `gaps[]` 与阶段 3 各子 Agent 的 findings 合并，避免重复告警
+5. **汇总报告**：一份总报告，按专业/分部分项分章节，末尾附跨专业综合结论
 
 ### 性能预估
 
-| 资料规模 | 串行耗时 | 并行耗时 | 加速比 |
-|:---|:---|:---|:---|
-| 500 页 / 2 个专业 | ~10 min | ~6 min | 1.7x |
-| 2000 页 / 3 个专业 | ~40 min | ~15 min | 2.7x |
-| 10000 页 / 5 个专业 | ~3 h | ~40 min | 4.5x |
+| 资料规模 | 拆分粒度 | 任务数 | 串行耗时 | 并行耗时 | 加速比 |
+|:---|:---:|:---:|:---|:---|:---:|
+| 500 页 / 2 专业 | professional | 3 | ~10 min | ~6 min | 1.7x |
+| 2000 页 / 3 专业 | sub | 12 | ~40 min | ~8 min | 5.0x |
+| 10000 页 / 5 专业 | item | 48 | ~3 h | ~25 min | 7.2x |
+| 50000 页 / 5 专业 | item | 115 | ~15 h | ~90 min | 10.0x |
 
-> **注意**：并行加速比受 OCR 瓶颈限制——如果大部分资料是扫描件，OCR 时间是固定的，并行主要加速的是规范比对和逻辑一致性检查阶段。
+> **注意**：v6.0 流水线下，OCR 在阶段 1 已统一完成，阶段 3 多 Agent 并行主要加速规范比对和逻辑一致性检查，加速比比 v1.9 显著提升（OCR 不再是并行瓶颈）。
+
+### 多 Agent 调度示例
+
+**场景**：某机场扩建项目，5 专业全覆盖，2000 页资料，48 个分部分项。
+
+```powershell
+# 步骤 1：阶段 1 建数据底座（主 Agent，串行）
+python {SKILL_DIR}/scripts/run_audit.py build "D:\机场扩建项目" --engine auto
+
+# 步骤 2：阶段 2 人工核对（用户在浏览器中完成，AI 不参与）
+
+# 步骤 3：阶段 3 生成任务包（主 Agent）
+python {SKILL_DIR}/scripts/run_audit.py review "D:\机场扩建项目" --split-by sub --dry-run
+# 产物：D:\机场扩建项目\数据底座\审核日志\audit_tasks.json（12 个任务）
+
+# 步骤 4：并行执行 12 个子 Agent（每个独立进程，可分布到多台机器）
+for $i in 1..12 {
+    python {SKILL_DIR}/scripts/run_audit.py review "D:\机场扩建项目" `
+        --task-id "AU-20260730-001-$($i.ToString('000'))" `
+        --tasks-file "D:\机场扩建项目\数据底座\审核日志\audit_tasks.json"
+}
+
+# 步骤 5：主 Agent 汇总（执行无 task-id 的 review）
+python {SKILL_DIR}/scripts/run_audit.py review "D:\机场扩建项目"
+
+# 步骤 6：阶段 4 生成报告
+python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
+```
 
 ---
 
@@ -770,6 +1312,26 @@ Step 8 汇总（主 Agent 完成）：
 5. 用户随时打开该 HTML 文件，能看到整个项目的审核进度
 
 ---
+
+## 规则三层分级体系（v6.0 新增）
+
+> v6.0 前，20 条铁律以扁平编号（R-01~R-20）形式散落在文档叙述中，层级边界模糊（如原 R-12 高程自洽实为 L2 逻辑一致性，却被列为"铁律"）。v6.0 将全部规则重构为三层分级 + 跨单位特殊作用域，共 91 条规则迁移至 `rules/` 目录以结构化 JSON 存储。
+
+| 层级 | 代号 | 判定标准 | 违反后果 | 不可降级 | 典型规则 |
+|:---:|:---:|:---|:---|:---:|:---|
+| L1 铁律 | L1-IRON | 不可商榷的合规底线 | 🔴 Fatal，直接判不合格 | 是 | R-01 规范可追溯、R-06 拒为伪证背书、R-07 审核留痕 |
+| L2 逻辑一致性 | L2-LOGIC | 数学/几何/时序/引用自洽 | 🟡 Sanity Check，须人工复核 | 否 | 实长=桩顶高程-桩底高程（原 R-12，已修正层级错位）、合计值反向验证（原 R-17） |
+| L3 业务合理性 | L3-BUSINESS | 阈值/经验/行业惯例 | 🔵 Best Practice，提示性警告 | 否 | 突变率≥30% 警告、签字完整性阈值 |
+| 跨单位对照 | SCOPE-CROSS_UNIT | 监理-施工方跨单位对照 | 按 L1/L2/L3 分级 | 视内容 | 混凝土量偏差>5%、监理-施工方日期对照（原 9.10） |
+
+**层级说明**：
+
+- **L1 铁律（17 条）**：合规底线，不可商榷，违反即判 Fatal，不可降级。规则效力监控（`rule_monitor.py`）对 L1 规则豁免自动降级
+- **L2 逻辑一致性（71 条）**：数学、几何、时序、引用关系的自洽性检查。违反标记为 Sanity Check，须人工复核。原铁律 12（高程自洽）曾存在层级错位，v6.0 已修正归入此层；原铁律 13（缺合计行判定）、14（多参数联检）也属 L2 几何/数学自洽范畴，已一并迁入
+- **L3 业务合理性（3 条）**：基于阈值、经验、行业惯例的合理性判断。违反为提示性警告，不阻塞归档
+- **跨单位对照（18 条，SCOPE-CROSS_UNIT）**：监理-施工方跨单位规则的特殊作用域，需双方协同确认，按 L1/L2/L3 分级
+
+> 91 条规则的形式化存储、生命周期管理、反馈闭环、LLM 自成长机制详见前文「规则管理子系统」章节。以下保留 20 条核心铁律的详述，作为 L1 铁律的历史沉淀和执行细则参考。
 
 ## 核心铁律（20 条，精华）
 
@@ -1147,4 +1709,45 @@ Step 8 汇总（主 Agent 完成）：
 | v1.5 | 五专业审核全覆盖 + Obsidian 知识库集成 | 用户要求专业审查全面有章可循 |
 | v1.7 | 前置信息收集 + OCR 存疑核实 + 统一 HTML 交付 | 用户反馈 OCR 年份误读 + 过程资料误判 |
 | v1.8 | 三层工作流重组 | 对标参考 skill 后的架构优化 |
-| **v1.9** | **知识分区红线 + 三级输出格式 + 多Agent并行 + 标准模板** | **对标分析后的框架级全面提升** |
+| v1.9 | 知识分区红线 + 三级输出格式 + 多Agent并行 + 标准模板 | 对标分析后的框架级全面提升 |
+| v4.1 | PaddleOCR 单层主引擎 + Vision API 兜底 | OCR 性能优化 |
+| v5.0 | API-First 策略 + 7 家 Vision API | 成本与准确性平衡 |
+| **v6.0** | **四阶段流水线 + 数据底座 + Web 编辑器 + 三级粒度多Agent并行** | **上下文管理 + 人工核对 + 增量更新** |
+
+---
+
+## v6.0 升级详情（2026-07-30）
+
+**触发需求**：v5.0 单文件 9 步流程在大项目场景下出现上下文溢出、人工核对无处落地、重复 OCR 浪费时间等问题。
+
+**升级内容**：
+
+| 编号 | 升级项 | 说明 |
+|:---:|:---|:---|
+| 1 | **四阶段流水线** | 建数据底座 → 人工核对 → 正式审核 → 生成报告，阶段间硬闸门，通过 `index.json` 的 `stage` 字段衔接 |
+| 2 | **数据底座（build_foundation.py）** | 按项目维度建立结构化中间数据，JSON + MD 双格式，纯文件系统存储，零数据库依赖 |
+| 3 | **Web 数据编辑器（data-editor.html）** | 纯 HTML 文件，左图右表对照，双视图编辑（结构化 + 原始文本），零对话 token |
+| 4 | **项目总览仪表盘（project-dashboard.html）** | 从 index.json 读取状态，展示文件清单、OCR 进度、质量告警数、审核进度、断档检测 |
+| 5 | **增量更新（N-08）** | 基于 SHA256 哈希对比，仅处理新增或变更文件，已 OCR 过的文件不重复处理 |
+| 6 | **断档检测（N-09）** | 同一专业的桩号、日期、编号连续性检查，自动标记缺漏，写入 `index.json` 的 `gaps[]` |
+| 7 | **三级粒度多 Agent 并行** | `--split-by professional|sub|item`，与人工分部分项划分一致，最多 115 个独立任务 |
+| 8 | **多 Agent 任务包机制** | `--dry-run` 生成任务包，`--task-id` 执行单个任务，`--tasks-file` 加载任务包 |
+| 9 | **run_audit.py 新增 build/review/report 子命令** | 统一入口，支持流水线全流程 |
+| 10 | **SVG 图表生成** | 审核报告含环形图（不符合项分布）+ 水平条形图（各专业问题数），零外部依赖 |
+| 11 | **审核前置检查闸门** | `review_audit.py` 自动检查 `human_verified`，未完成核对拒绝执行（铁律 R-02 落地） |
+| 12 | **分部分项层级树** | 5 专业 / 48 分部 / 115 分项，源自 references 下 5 个规范文件，每个分部分项有唯一 code |
+
+**新增脚本/文件**：
+- `scripts/build_foundation.py` — 数据底座建立脚本
+- `scripts/review_audit.py` — 正式审核流水线脚本
+- `scripts/audit_config.py` — 分部分项配置（115 个 code 的层级结构）
+- `templates/data-editor.html` — Web 数据编辑器
+- `templates/project-dashboard.html` — 项目总览仪表盘
+- `templates/pdf.min.js` — PDF.js 离线预下载（支持离线场景）
+
+**保留的 v5.0 能力**：
+- 单文件审核模式（`run_audit.py audit`）保留，用于快速审核单份资料
+- 9 步流程保留，作为单文件审核的执行细则
+- 所有 OCR 引擎、数据质量检测、混淆检测、字段复核脚本不变
+
+**与 v5.0 的关系**：v6.0 不替代 v5.0，而是在其上层包装。v5.0 的 OCR、数据质量检测、规范对账能力作为 v6.0 流水线各阶段的底层能力被调用。

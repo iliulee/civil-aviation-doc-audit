@@ -1,0 +1,48 @@
+{
+  "rule_id": "LG-106",
+  "name": "施工日志日期与检验批/隐蔽/监理日志日期一致",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "时间轴一致性",
+  "description": "同一工序在不同资料中的日期应一致。矛盾表现：施工日志说\"今日浇筑混凝土\"，但当天检验批无记录，或监理日志无对应工序记录。",
+  "trigger_when": {
+    "doc_type": ["施工日志", "检验批", "隐蔽工程验收记录", "监理日志"],
+    "field_required": ["日期", "工序名称"]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "exists(检验批记录 where 工序==施工日志工序 and 日期==施工日志日期) and exists(监理日志记录 where 工序==施工日志工序 and 日期==施工日志日期)",
+    "language": "python_eval"
+  },
+  "error_template": "时间轴矛盾：施工日志 {施工日志日期} 记录工序 {工序名称}，但检验批或监理日志无对应日期记录",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查是否漏做检验批或漏记监理日志，或日期填错",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": ["*"],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.1.6 迁移"
+    }
+  ]
+}
