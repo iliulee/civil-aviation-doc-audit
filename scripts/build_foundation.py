@@ -40,6 +40,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from run_audit import sniff_document  # noqa: E402
 from audit_config import assign_subdivision_to_document, get_subdivision_info  # noqa: E402
 
+try:
+    import fitz  # PyMuPDF
+    HAS_PYMUPDF = True
+except ImportError:
+    HAS_PYMUPDF = False
+
 
 # ========== 路径常量 ==========
 OCR_IMAGE_PY = SCRIPT_DIR / "ocr_image.py"
@@ -119,6 +125,7 @@ def generate_default_preconditions(project_path: Path) -> Dict[str, Any]:
         "nature": "扫描件",
         "scope": "全量审核",
         "ocr_engine": "auto",
+        "check_signatures": False,
         "special_notes": "由 build_foundation.py 自动生成默认前置信息，未经过人工确认",
         "excluded_files": [],
         "expected_rows": {},
@@ -431,6 +438,35 @@ def call_extract_text(file_path: Path, text_out: Path) -> Dict[str, Any]:
         "confidence": 1.0,
         "items": [],
     }
+
+
+def build_page_map(file_path: Path, is_scanned: bool, ocr_text: str, method: str) -> List[Dict[str, Any]]:
+    """Build per-page text + image reference map."""
+    page_map = []
+    if method == "pymupdf" and HAS_PYMUPDF:
+        try:
+            import fitz
+            doc = fitz.open(str(file_path))
+            for i in range(len(doc)):
+                page_text = doc[i].get_text("text").strip()
+                images = doc[i].get_images()
+                image_ref = None
+                if images:
+                    # Save page screenshot for PDFs with images
+                    img_dir = file_path.parent / "_images"
+                    img_dir.mkdir(exist_ok=True)
+                    img_path = img_dir / f"{file_path.stem}_p{i+1}.png"
+                    if not img_path.exists():
+                        pix = doc[i].get_pixmap(dpi=150)
+                        pix.save(str(img_path))
+                    image_ref = str(img_path.name)
+                page_map.append({"page": i + 1, "text": page_text, "image_ref": image_ref})
+            doc.close()
+        except Exception as e:
+            page_map = [{"page": 1, "text": ocr_text, "image_ref": None}]
+    else:
+        page_map = [{"page": 1, "text": ocr_text, "image_ref": None}]
+    return page_map
 
 
 # ========== 结构化 rows 转换 ==========
@@ -1089,6 +1125,89 @@ def _ordinal_to_date_str(ordinal: int) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
+# ========== 文档关联图谱 ==========
+def build_link_graph(index: Dict[str, Any], out_base: Path) -> Dict[str, Any]:
+    """Build document link graph for cross-document audit task loading.
+
+    Creates edges between documents that share:
+    - same_pile: same pile number across docs
+    - same_date_log: same construction date
+    - signer_in_roster: signer appears in personnel roster
+    """
+    nodes = {}
+    edges = []
+    docs = index.get("documents", [])
+
+    for doc in docs:
+        doc_id = doc.get("id", "")
+        if not doc_id:
+            continue
+        data_file = doc.get("data_file")
+        nodes[doc_id] = {
+            "file": data_file,
+            "doc_type": doc.get("doc_type", ""),
+            "professional": doc.get("professional", ""),
+            "subdivision": doc.get("subdivision_code"),
+            "key_fields": {},
+        }
+        # Load structured data to extract key fields
+        if data_file:
+            data_path = out_base / data_file
+            if data_path.exists():
+                try:
+                    data = json.loads(data_path.read_text(encoding="utf-8"))
+                    rows = data.get("structured_rows") or data.get("rows", [])
+                    if rows:
+                        first_row = rows[0]
+                        nodes[doc_id]["key_fields"] = {
+                            k: str(v) for k, v in list(first_row.items())[:10]
+                        }
+                except Exception:
+                    pass
+
+    # Build edges by comparing key fields
+    doc_ids = list(nodes.keys())
+    for i, id_a in enumerate(doc_ids):
+        node_a = nodes[id_a]
+        keys_a = node_a.get("key_fields", {})
+        for id_b in doc_ids[i+1:]:
+            node_b = nodes[id_b]
+            keys_b = node_b.get("key_fields", {})
+
+            # Check same pile number
+            pile_a = keys_a.get("pile_no", "")
+            pile_b = keys_b.get("pile_no", "")
+            if pile_a and pile_b and pile_a == pile_b:
+                edges.append({
+                    "from": id_a, "to": id_b,
+                    "type": "same_pile",
+                    "strength": 1.0,
+                    "join_key": {"pile_no": pile_a},
+                    "rule_hint": "施工记录实长↔检验批验收长度"
+                })
+
+            # Check same date
+            date_a = keys_a.get("施工日期", "") or keys_a.get("date", "")
+            date_b = keys_b.get("施工日期", "") or keys_b.get("date", "")
+            if date_a and date_b and date_a == date_b:
+                edges.append({
+                    "from": id_a, "to": id_b,
+                    "type": "same_date_log",
+                    "strength": 0.8,
+                    "join_key": {"date": date_a},
+                    "rule_hint": "施工记录↔施工日志每日合计对照"
+                })
+
+    return {
+        "schema_version": "1.0",
+        "built_at": now_iso(),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
 # ========== 主流程 ==========
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -1397,6 +1516,38 @@ def main() -> int:
             })
             print(f"  [!] {reason}", file=sys.stderr)
 
+        if method == "excel":
+            # Excel: only record metadata in index, don't create data files
+            doc = {
+                "id": next_doc_id(index),
+                "original_file": str(rel),
+                "file_type": "XLSX",
+                "is_scanned": False,
+                "doc_type": doc_type,
+                "professional": professional,
+                "subcategory": subcategory,
+                "subdivision_code": None,
+                "pages": len(wb.sheetnames) if 'wb' in dir() else 1,
+                "ocr_status": "completed",
+                "ocr_engine": "openpyxl",
+                "ocr_confidence": 1.0,
+                "data_file": None,
+                "data_md": None,
+                "data_format": "excel_raw",
+                "metadata": {
+                    "sheets": wb.sheetnames if 'wb' in dir() else [],
+                    "total_rows": len(sheet_rows) if 'sheet_rows' in dir() else 0,
+                },
+                "human_verified": True,
+                "audit_status": "pending",
+                "last_updated": now_iso(),
+                "size_bytes": sniff.get("size_bytes"),
+                "content_hash": content_hash,
+            }
+            update_index_for_doc(index, doc)
+            print(f"  ✓ Excel元数据已记录: {rel.name}", file=sys.stderr)
+            continue  # Skip the rest of the loop for Excel files
+
         # ===== 生成结构化 rows =====
         rows: List[Dict[str, Any]] = []
         if ocr_status != "unsupported":
@@ -1405,6 +1556,9 @@ def main() -> int:
             if not rows:
                 ocr_status = "needs_review"
                 print(f"  [!] 未识别到任何数据行", file=sys.stderr)
+
+        # 构建 page_map（三层结构之 Layer 3）
+        page_map = build_page_map(abs_path, is_scanned, ocr_text, method)
 
         structured = {
             "schema_version": "1.0",
@@ -1416,7 +1570,11 @@ def main() -> int:
             "ocr_engine": ocr_engine,
             "ocr_confidence": ocr_confidence,
             "ocr_completed_at": now_iso(),
-            "rows": rows,
+            "structured_rows": rows,                                  # Layer 1: for rule engine
+            "full_text": ocr_text,                                    # Layer 2: complete text for LLM
+            "page_map": page_map,                                     # Layer 3: per-page text + image refs
+            "fields_detected": list(rows[0].keys()) if rows else [],
+            "rows": rows,                                             # backward-compat alias
             "quality_result": {},
             "confusion_result": {},
             "corrections_applied": [],
@@ -1440,18 +1598,6 @@ def main() -> int:
             structured["sub_division"] = ""
             print(f"  [!] 未能匹配分部分项", file=sys.stderr)
         save_json(data_file, structured)
-
-        # ===== MD 预览 =====
-        md_meta = {
-            "doc_type": doc_type,
-            "original_file": str(rel),
-            "ocr_engine": ocr_engine,
-            "ocr_confidence": ocr_confidence,
-            "pages": pages,
-            "ocr_completed_at": structured["ocr_completed_at"],
-            "ocr_status": ocr_status,
-        }
-        write_md_preview(data_file, md_file, md_meta)
 
         # ===== 数据质量检测 & 混淆检测 =====
         quality_alerts = 0
@@ -1485,13 +1631,13 @@ def main() -> int:
             "ocr_confidence": ocr_confidence,
             "ocr_completed_at": structured["ocr_completed_at"],
             "data_file": str(data_file.relative_to(out_base)).replace("\\", "/"),
-            "data_md": str(md_file.relative_to(out_base)).replace("\\", "/"),
+            "data_md": None,
             "ocr_raw_file": str(ocr_raw_file.relative_to(out_base)).replace("\\", "/"),
             "quality_file": str(quality_file.relative_to(out_base)).replace("\\", "/"),
             "confusion_file": str(confusion_file.relative_to(out_base)).replace("\\", "/"),
             "quality_alerts": quality_alerts,
             "confusion_suspects": confusion_suspects,
-            "human_verified": False,
+            "human_verified": not (is_scanned or file_type == "IMAGE"),
             "corrected_file": None,
             "audit_status": "pending",
             "last_updated": now_iso(),
@@ -1500,7 +1646,7 @@ def main() -> int:
             "retry_log": retry_log,
         }
         update_index_for_doc(index, doc)
-        print(f"  ✓ 已生成: {data_file.name}, {md_file.name}, 告警 {quality_alerts}, 存疑 {confusion_suspects}", file=sys.stderr)
+        print(f"  ✓ 已生成: {data_file.name}, 告警 {quality_alerts}, 存疑 {confusion_suspects}", file=sys.stderr)
       except Exception as e:
         print(f"  ❌ 处理失败，跳过此文件: {e}", file=sys.stderr)
         import traceback
@@ -1513,6 +1659,11 @@ def main() -> int:
     # 断档检测（N-09）：桩号/日期/编号连续性
     print(f"\n🔍 开始断档检测...", file=sys.stderr)
     detect_gaps(index, out_base)
+
+    # ========== Build link graph ==========
+    print(f"\n🔗 构建文档关联图谱...", file=sys.stderr)
+    link_graph = build_link_graph(index, out_base)
+    save_json(out_base / "link_graph.json", link_graph)
 
     # 更新 index 元信息
     index["updated_at"] = now_iso()
@@ -1527,7 +1678,15 @@ def main() -> int:
     print(f"   被审核文件: {len(file_classification['audited_files'])}", file=sys.stderr)
     print(f"   依据文件: {len(file_classification['reference_files'])}", file=sys.stderr)
     print(f"   排除文件: {len(file_classification['excluded_files'])}", file=sys.stderr)
-    print(f"\n⛔ Phase 1 结束。请打开项目文件夹中的 data-editor.html 进行人工核对。", file=sys.stderr)
+    # Check if any documents need manual verification
+    unverified = [d for d in index.get("documents", []) if not d.get("human_verified", False)]
+    if unverified:
+        print(f"\n⛔ Phase 1 结束。{len(unverified)} 份扫描件需要人工核对。", file=sys.stderr)
+        print(f"   请打开项目文件夹中的 data-editor.html 完成人工核对后再继续审核。", file=sys.stderr)
+        for d in unverified:
+            print(f"   - {d.get('original_file', d.get('id', '?'))}", file=sys.stderr)
+    else:
+        print(f"\n✅ Phase 1 结束。所有文档已自动通过，可直接进入审核阶段。", file=sys.stderr)
     return 0
 
 

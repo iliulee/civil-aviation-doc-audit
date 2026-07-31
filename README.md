@@ -110,6 +110,19 @@ civil-aviation-doc-audit/
 
 ---
 
+## 功能特性
+
+### v6.0 新增
+- 📊 **三层 JSON 数据底座**：structured_rows（规则引擎）+ full_text（LLM 审核）+ page_map（人工定位）
+- 🔗 **文档关联图谱**：自动构建 link_graph.json，审核时精准加载关联文档
+- 🖋️ **签字一致性检测**：pHash + SSIM 双指标，检测代签/笔迹异常（可选）
+- 📋 **data-editor 升级**：三栏式界面，表格编辑 + 原文预览 + 图纸截图
+- ⚡ **差异化提取**：非扫描 PDF 直接文本提取（秒级），Excel 仅记元数据
+- 🚪 **human_verified 分层闸门**：非扫描件自动通过，扫描件强制人工核对
+- 🖼️ **图纸截图**：含图 PDF 自动截图存 `_images/`，data-editor 可预览
+
+---
+
 ## 规则管理子系统（v6.0 新增）
 
 93 条规则三层分级（L1铁律/L2逻辑一致性/L3业务合理性）+ 跨单位对照特殊作用域，形式化 JSON 存储，支持可视化管理、反馈闭环、LLM 自成长。
@@ -215,6 +228,42 @@ v5.0 单文件触发语句：
 
 安装触发语句：
 - "安装这个skill" / "安装依赖" / "初始化"
+
+### 签字一致性检测（可选）
+
+```bash
+# 审核时启用签字检测
+python scripts/run_audit.py review "D:\项目文件夹" --check-signatures
+
+# 或在四阶段流水线中
+python scripts/review_audit.py "D:\项目文件夹" --check-signatures
+```
+
+需要额外依赖：
+```bash
+pip install imagehash scikit-image
+```
+
+### 规则管理
+
+```bash
+# 双击启动规则管理面板
+rule-manager.bat
+
+# 或手动启动
+python scripts/rule_admin.py --port 8765
+# 浏览器打开 http://127.0.0.1:8765/
+```
+
+规则文件位于 `rules/` 目录：
+- `L1-iron/`：铁律（不可违反的强制性条款）
+- `L2-logic/`：逻辑规则（跨文档/跨资料一致性）
+- `L3-business/`：业务规则（分部分项专项要求）
+
+规则编辑方式：
+1. Web 面板：双击 `rule-manager.bat`，可视化编辑（推荐小白使用）
+2. 离线编辑：浏览器打开 `templates/rule-editor.html`，选择 `rules/` 文件夹
+3. 直接改 JSON：编辑 `rules/` 下对应文件
 
 ---
 

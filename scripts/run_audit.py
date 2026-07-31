@@ -292,6 +292,22 @@ def cmd_build(args):
     print(f"数据底座已建立：{out_dir}")
     print('请打开 "项目总览.html" 或 "data-editor.html" 进行人工核对。')
 
+    # Check human_verified gate
+    index_path = project_path / args.out / "index.json"
+    if index_path.exists():
+        import json as _json
+        index = _json.loads(index_path.read_text(encoding="utf-8"))
+        unverified = [d for d in index.get("documents", [])
+                       if not d.get("human_verified", False)]
+        if unverified:
+            print(f"\n⛔ 数据底座建立完成，但 {len(unverified)} 份扫描件需要人工核对:", file=sys.stderr)
+            for d in unverified:
+                print(f"   - {d.get('original_file', d.get('id', '?'))}", file=sys.stderr)
+            print(f"\n请打开项目文件夹中的 data-editor.html 完成人工核对后再继续审核。", file=sys.stderr)
+            print(f"路径: {project_path / 'data-editor.html'}", file=sys.stderr)
+        else:
+            print(f"\n✅ 所有文档已自动通过，可直接进入审核阶段。", file=sys.stderr)
+
 
 # ========== 5. 一键审核（v3.1 新增） ==========
 def _parse_rows_from_text(text: str) -> list:
@@ -496,6 +512,8 @@ def cmd_review(args):
         cmd.append("--dry-run")
     if args.force:
         cmd.append("--force")
+    if hasattr(args, 'check_signatures') and args.check_signatures:
+        cmd.append("--check-signatures")
 
     result = subprocess.run(
         cmd,
@@ -824,7 +842,8 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     tasks = audit_log.get("tasks", [])
     force_info = audit_log.get("force_info") or {}
     force_bypass = bool(force_info.get("force_bypass_gate"))
-    
+    signature_anomalies = audit_log.get("signature_anomalies", [])
+
     # 构建 doc_id → 文件名 映射
     doc_id_to_file: dict = {}
     for task in tasks:
@@ -935,6 +954,46 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
           <td>{f.get('spec', '')}</td>
         </tr>"""
 
+    # ===== 签字异常核查专区 =====
+    signature_section = ""
+    if signature_anomalies:
+        sig_cards = []
+        for sa in signature_anomalies:
+            status = sa.get("status", "")
+            severity_class = "sig-severity-high" if status == "likely_forgery" else "sig-severity-medium"
+            status_label = "疑似代签" if status == "likely_forgery" else "存疑"
+            status_badge = "sig-badge-high" if status == "likely_forgery" else "sig-badge-medium"
+            compare_b64 = sa.get("compare_image_base64", "")
+            img_html = f'<img src="data:image/png;base64,{compare_b64}" alt="签字对比图">' if compare_b64 else '<p class="sig-no-img">（对比图不可用）</p>'
+
+            sig_cards.append(f'''
+            <div class="signature-card {severity_class}">
+              <div class="sig-header">
+                <span class="{status_badge}">{status_label}</span>
+                <span class="sig-person">签字人：{sa.get('signer', '未知')}</span>
+                <span class="sim-score">相似度：{sa.get('similarity', 0):.1%}</span>
+              </div>
+              <div class="sig-compare">
+                {img_html}
+              </div>
+              <div class="sig-evidence">
+                <p>📄 源文件：{sa.get('doc_file', '')}</p>
+                <p>📍 位置：第{sa.get('page', '?')}页</p>
+                <p>🔍 规则：{sa.get('rule', '')}</p>
+                <p>💡 建议：{sa.get('suggestion', '')}</p>
+              </div>
+            </div>
+            ''')
+
+        signature_section = f'''
+  <!-- 签字异常核查专区 -->
+  <div class="section">
+    <h2>⚠️ 签字异常核查清单（需人工复核）</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:12px;">共 {len(signature_anomalies)} 个签字异常，请逐项核查</p>
+    {"".join(sig_cards)}
+  </div>
+'''
+
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -988,6 +1047,53 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
   @media print {{ body {{ background: #fff; }} .section {{ box-shadow: none; border: 1px solid #ddd; }} }}
   .force-watermark {{ background: #fce8e6; border: 2px dashed #d93025; color: #d93025; padding: 14px 18px; border-radius: 6px; margin-bottom: 16px; font-weight: bold; text-align: center; }}
   .force-watermark .sub {{ font-weight: normal; font-size: 13px; color: #b31412; margin-top: 4px; }}
+    /* 签字异常专区 */
+    .signature-card {{
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      background: #fff;
+    }}
+    .signature-card.sig-severity-high {{
+      border-color: #dc2626;
+      border-left: 4px solid #dc2626;
+      background: #fef2f2;
+    }}
+    .signature-card.sig-severity-medium {{
+      border-color: #f59e0b;
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+    }}
+    .sig-header {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }}
+    .sig-badge-high {{
+      background: #dc2626;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }}
+    .sig-badge-medium {{
+      background: #f59e0b;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }}
+    .sig-person {{ font-weight: 600; }}
+    .sim-score {{ color: #666; font-size: 13px; }}
+    .sig-compare {{ margin: 12px 0; text-align: center; }}
+    .sig-compare img {{ max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }}
+    .sig-evidence {{ font-size: 13px; color: #444; line-height: 1.8; }}
+    .sig-evidence p {{ margin: 2px 0; }}
+    .sig-no-img {{ color: #999; font-style: italic; }}
 </style>
 </head>
 <body>
@@ -1000,7 +1106,7 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     <div class="meta">
       <p>项目：{audit_log.get('project_name', '')}</p>
       <p>审核编号：{audit_log.get('audit_id', '')} | 审核时间：{audit_log.get('audit_completed_at', '')}</p>
-      <p>前置条件：阶段={audit_log.get('preconditions', {}).get('stage', '')} | 资料性质={audit_log.get('preconditions', {}).get('nature', '')} | 范围={audit_log.get('preconditions', {}).get('scope', '')}</p>
+      <p>前置条件：阶段={audit_log.get('preconditions', {}).get('stage', '')} | 资料性质={audit_log.get('preconditions', {}).get('nature', '')} | 范围={audit_log.get('preconditions', {}).get('scope', '')} | 签字检查={'是' if audit_log.get('signature_anomalies') is not None else '否'}</p>
     </div>
   </div>
 
@@ -1102,6 +1208,8 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     <p>审核编号：{audit_log.get('audit_id', '')} | 生成时间：{datetime.now().isoformat(timespec='seconds')}</p>
     <p>铁律 R-08：未发现问题的项目不代表"全部合格"，仅表示"未发现不符合项"</p>
   </div>
+
+  {signature_section}
 
 </div>
 </body>
@@ -1213,6 +1321,10 @@ def main() -> None:
     p_review.add_argument(
         "--force", action="store_true",
         help="跳过 human_verified 闸门（仅测试用）"
+    )
+    p_review.add_argument(
+        "--check-signatures", action="store_true",
+        help="启用签字一致性检测"
     )
     p_review.set_defaults(func=cmd_review)
 

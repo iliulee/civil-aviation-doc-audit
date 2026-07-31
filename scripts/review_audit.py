@@ -89,6 +89,13 @@ except ImportError:  # pragma: no cover - 容错降级
     AuditMemory = None  # type: ignore[assignment]
     _HAS_AUDIT_MEMORY = False
 
+try:
+    from signature_check import SignatureChecker
+    _HAS_SIG_CHECK = True
+except ImportError:
+    SignatureChecker = None
+    _HAS_SIG_CHECK = False
+
 
 # ========== 工具函数 ==========
 def now_iso() -> str:
@@ -122,6 +129,38 @@ def check_human_verified(index: Dict[str, Any]) -> Tuple[bool, List[str]]:
         if not doc.get("human_verified", False):
             unverified.append(doc.get("original_file", doc.get("id", "?")))
     return len(unverified) == 0, unverified
+
+
+def load_link_graph(out_base: Path) -> Dict[str, Any]:
+    """加载文档关联图谱，用于精准加载关联文档。"""
+    graph_path = out_base / "link_graph.json"
+    if not graph_path.exists():
+        return {"nodes": {}, "edges": []}
+    return json.loads(graph_path.read_text(encoding="utf-8"))
+
+
+def get_related_docs(doc_id: str, link_graph: Dict[str, Any], max_depth: int = 1) -> List[str]:
+    """获取与指定文档关联的文档ID列表（广度优先，限制深度）。"""
+    if not link_graph.get("edges"):
+        return []
+
+    visited = {doc_id}
+    current_level = {doc_id}
+
+    for _ in range(max_depth):
+        next_level = set()
+        for edge in link_graph["edges"]:
+            if edge["from"] in current_level and edge["to"] not in visited:
+                next_level.add(edge["to"])
+                visited.add(edge["to"])
+            elif edge["to"] in current_level and edge["from"] not in visited:
+                next_level.add(edge["from"])
+                visited.add(edge["from"])
+        if not next_level:
+            break
+        current_level = next_level
+
+    return list(visited - {doc_id})
 
 
 # ========== 规范对账 ==========
@@ -617,6 +656,7 @@ def generate_audit_log(
     out_dir: Path,
     audit_id: Optional[str] = None,
     force_info: Optional[Dict[str, Any]] = None,
+    signature_anomalies: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     生成审核日志 JSON。
@@ -696,6 +736,9 @@ def generate_audit_log(
             "recommendations": _generate_recommendations(all_findings + logic_findings),
         },
     }
+
+    if signature_anomalies:
+        audit_log["signature_anomalies"] = signature_anomalies
 
     # 保存
     audit_log_file = out_dir / f"{audit_log['audit_id']}.json"
@@ -901,6 +944,7 @@ def run_review(
     tasks_file: Optional[Path] = None,
     dry_run: bool = False,
     force: bool = False,
+    check_signatures: bool = False,
 ) -> int:
     """
     执行正式审核。
@@ -913,6 +957,7 @@ def run_review(
         tasks_file: 任务包文件路径
         dry_run: 仅生成任务包
         force: 跳过 human_verified 闸门
+        check_signatures: 启用签字一致性检测（需要 imagehash/scikit-image 依赖）
     """
     out_base = project_path / out_name
     index_path = out_base / "index.json"
@@ -962,6 +1007,26 @@ def run_review(
             "bypassed_at": now_iso(),
             "notice": "本审核日志通过 --force 生成，跳过人工核对闸门，非正式审核结果",
         }
+
+    # ===== 签字一致性检测（可选） =====
+    signature_anomalies: List[Dict[str, Any]] = []
+    if check_signatures and _HAS_SIG_CHECK:
+        print("\n🖋️  开始签字一致性检测...", file=sys.stderr)
+        checker = SignatureChecker(out_base)
+        signature_anomalies = checker.check_all_signatures(
+            index.get("documents", []),
+            project_path,
+        )
+        # Save signature results
+        sig_results_file = out_base / "审核日志" / "signature_anomalies.json"
+        sig_results_file.parent.mkdir(parents=True, exist_ok=True)
+        sig_results_file.write_text(
+            json.dumps(signature_anomalies, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"   签字异常: {len(signature_anomalies)} 个", file=sys.stderr)
+    elif check_signatures and not _HAS_SIG_CHECK:
+        print("\n[!] 签字检测模块未安装（缺少 imagehash/scikit-image 依赖），跳过", file=sys.stderr)
 
     # ===== 步骤 2：加载文档数据 =====
     docs: List[Dict[str, Any]] = []
@@ -1058,6 +1123,11 @@ def run_review(
     else:
         tasks_to_run = tasks
 
+    # Load link graph for smart document loading
+    link_graph = load_link_graph(out_base)
+    if link_graph.get("edges"):
+        print(f"📋 文档关联图谱: {len(link_graph['nodes'])} 节点, {len(link_graph['edges'])} 边", file=sys.stderr)
+
     for task in tasks_to_run:
         print(f"🔍 审核 {task['task_id']}: {task.get('sub_label', '')} {task.get('item_label', '') or ''}", file=sys.stderr)
 
@@ -1116,6 +1186,7 @@ def run_review(
         rule_engine_findings, rule_engine_summary, audit_log_dir,
         audit_id=audit_id_preview,
         force_info=force_info,
+        signature_anomalies=signature_anomalies,
     )
 
     # 保存更新后的 index.json
@@ -1184,6 +1255,10 @@ def main() -> int:
         "--force", action="store_true",
         help="跳过 human_verified 闸门（仅测试用）"
     )
+    parser.add_argument(
+        "--check-signatures", action="store_true",
+        help="启用签字一致性检测（需要 imagehash/scikit-image 依赖）"
+    )
     args = parser.parse_args()
 
     project_path = Path(args.project_path).resolve()
@@ -1201,6 +1276,7 @@ def main() -> int:
         tasks_file=tasks_file,
         dry_run=args.dry_run,
         force=args.force,
+        check_signatures=args.check_signatures,
     )
 
 
