@@ -1,41 +1,44 @@
 {
-  "rule_id": "CU-003",
-  "name": "复工令日期 ≥ 复工报审表日期 ≥ 暂停令签发日期",
+  "rule_id": "CU-010",
+  "name": "旁站通知提前量：施工日期 - 通知日期 ≥ 12小时",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
-  "description": "复工流程闭环：暂停令（A.11）签发日期 ≤ 施工单位《复工报审表》（B.26）申请日期 ≤ 监理签发《复工令》（A.15）日期。跨单位核心校验为复工令日期 ≥ 复工报审表日期",
+  "description": "施工方书面通知监理的日期应不晚于施工日期，且提前量 ≥ 12 小时。通知日期与施工日期同日（未提前12小时），或通知日期晚于施工日期（先施工后通知）均为矛盾",
   "trigger_when": {
-    "doc_type_a": "复工令",
-    "doc_type_b": "复工报审表",
+    "doc_type_a": "旁站记录",
+    "doc_type_b": "旁站通知",
     "require_both": true
   },
   "alignment": {
     "party_a": {
       "role": "supervisor",
       "label": "监理方",
-      "doc_type": "复工令"
+      "doc_type": "旁站记录"
     },
     "party_b": {
       "role": "contractor",
       "label": "施工方",
-      "doc_type": "复工报审表"
+      "doc_type": "旁站通知"
     },
-    "join_key": ["项目编号"],
-    "field_a": "复工令日期",
-    "field_b": "报审表日期",
+    "join_key": [
+      "项目编号",
+      "工序名称"
+    ],
+    "field_a": "施工日期",
+    "field_b": "通知日期",
     "aggregation": "none"
   },
   "check_expr": {
     "type": "cross_compare",
-    "expr": "field_a >= field_b",
+    "expr": "hours_between(field_a, field_b) >= 12",
     "language": "python_eval"
   },
-  "error_template": "复工令日期 {field_a} 早于复工报审表日期 {field_b}，流程倒签（未申请就批准）或复工报审早于暂停令（没停就申请复工）",
+  "error_template": "旁站通知提前量不足：施工日期 {field_a}，通知日期 {field_b}，提前量不足 12 小时或通知晚于施工",
   "severity_on_violation": "Sanity Check",
   "confirmation_required": true,
   "confirmation_scope": "both_parties_or_admin",
-  "remediation": "核查暂停令、复工报审、复工令三者日期顺序是否正确",
+  "remediation": "核查施工方书面通知日期与施工日期的提前量是否达到 12 小时",
   "status": "active",
   "source": "system",
   "version": "1.0.0",
@@ -43,7 +46,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -60,7 +65,7 @@
       "version": "1.0.0",
       "date": "2026-07-30",
       "author": "system",
-      "change": "从 logic-conflict-patterns.md 9.10.2 迁移"
+      "change": "从 logic-conflict-patterns.md 9.10.9 迁移"
     }
   ]
 }

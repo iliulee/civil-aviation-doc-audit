@@ -2,16 +2,14 @@
   "rule_id": "CU-001",
   "name": "监理-施工方混凝土量偏差校验",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位数量对照",
   "description": "同一桩号下，监理旁站记录的混凝土灌入量与施工方施工记录的灌入量偏差不得超过 5%",
-
   "trigger_when": {
     "doc_type_a": "监理旁站记录",
     "doc_type_b": "碎石桩施工记录",
     "require_both": true
   },
-
   "alignment": {
     "party_a": {
       "role": "supervisor",
@@ -23,33 +21,29 @@
       "label": "施工方",
       "doc_type": "碎石桩施工记录"
     },
-    "join_key": ["pile_no"],
+    "join_key": [
+      "pile_no"
+    ],
     "field_a": "混凝土灌入量",
     "field_b": "灌入量",
     "aggregation": "none"
   },
-
   "check_expr": {
     "type": "cross_compare",
     "expr": "abs(field_a - field_b) / max(field_a, field_b) <= 0.05",
     "language": "jinja-expr"
   },
-
   "error_template": "桩号 {pile_no} 监理记录混凝土量 {field_a}m³，施工方记录 {field_b}m³，偏差 {deviation}% 超过 5% 阈值",
-
   "severity_on_violation": "Sanity Check",
   "remediation": "核查双方记录原始数据，确认是否存在抄写错误或计量口径不一致",
-
   "confirmation_required": true,
   "confirmation_scope": "both_parties_or_admin",
-
   "status": "active",
   "source": "system",
   "version": "1.0.0",
   "created_at": "2026-07-30T10:00:00",
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
-
   "stats": {
     "total_hits": 0,
     "total_reviews": 0,
@@ -59,7 +53,6 @@
     "last_hit_at": null,
     "last_review_at": null
   },
-
   "changelog": [
     {
       "version": "1.0.0",

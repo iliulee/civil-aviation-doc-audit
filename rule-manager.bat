@@ -1,31 +1,30 @@
 @echo off
-chcp 65001 >nul
-title 规则管理面板 — 民航施工资料审核
+title Civil Aviation Doc Audit - Rule Manager
 
 echo ========================================
-echo   民航施工资料审核 — 规则管理面板
+echo   Civil Aviation Doc Audit - Rule Manager
 echo ========================================
 echo.
-echo 正在启动规则管理 API 服务...
+echo Starting rule management API service...
 echo.
 
-:: 启动 Python 服务（后台运行，不弹窗）
+:: Start Python service in background
 start /B "" python "%~dp0scripts\rule_admin.py" --port 8765
 
-:: 等待服务启动
-echo 等待服务就绪...
+:: Wait for service to start
+echo Waiting for service to be ready...
 timeout /t 3 /nobreak >nul
 
-:: 打开浏览器
-echo 正在打开规则管理面板...
+:: Open browser
+echo Opening rule manager panel...
 start "" http://127.0.0.1:8765/
 
 echo.
 echo ========================================
-echo   规则管理面板已启动！
-echo   浏览器地址：http://127.0.0.1:8765/
+echo   Rule Manager is now running!
+echo   URL: http://127.0.0.1:8765/
 echo.
-echo   关闭此窗口即可停止服务。
+echo   Close this window to stop the service.
 echo ========================================
 echo.
 

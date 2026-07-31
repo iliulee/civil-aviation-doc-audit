@@ -2,7 +2,7 @@
   "rule_id": "CU-012",
   "name": "工序/检验批验收：施工自检日期 ≤ 监理验收日期",
   "level": "L1-IRON",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
   "description": "工序/检验批验收流程倒签检测：施工单位自检合格日期 ≤ 监理组织验收日期。监理验收日期早于施工自检日期（先验收后自检），或同日但时间倒置均为流程倒签，属铁律级违规",
   "trigger_when": {
@@ -21,7 +21,11 @@
       "label": "施工方",
       "doc_type": "施工自检记录"
     },
-    "join_key": ["项目编号", "工序名称", "检验批编号"],
+    "join_key": [
+      "项目编号",
+      "工序名称",
+      "检验批编号"
+    ],
     "field_a": "监理验收日期",
     "field_b": "施工自检日期",
     "aggregation": "none"
@@ -43,7 +47,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {

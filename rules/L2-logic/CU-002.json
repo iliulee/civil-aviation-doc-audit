@@ -1,41 +1,43 @@
 {
-  "rule_id": "CU-010",
-  "name": "旁站通知提前量：施工日期 - 通知日期 ≥ 12小时",
+  "rule_id": "CU-002",
+  "name": "开工令日期 ≥ 开工报审表日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
-  "description": "施工方书面通知监理的日期应不晚于施工日期，且提前量 ≥ 12 小时。通知日期与施工日期同日（未提前12小时），或通知日期晚于施工日期（先施工后通知）均为矛盾",
+  "description": "开工令日期应不早于开工报审表日期，流程顺序：报审→批复→开工令。施工单位《工程开工报审表》（B.10）申请开工日期 ≤ 监理签发《开工令》（A.6）日期",
   "trigger_when": {
-    "doc_type_a": "旁站记录",
-    "doc_type_b": "旁站通知",
+    "doc_type_a": "开工令",
+    "doc_type_b": "开工报审表",
     "require_both": true
   },
   "alignment": {
     "party_a": {
       "role": "supervisor",
       "label": "监理方",
-      "doc_type": "旁站记录"
+      "doc_type": "开工令"
     },
     "party_b": {
       "role": "contractor",
       "label": "施工方",
-      "doc_type": "旁站通知"
+      "doc_type": "开工报审表"
     },
-    "join_key": ["项目编号", "工序名称"],
-    "field_a": "施工日期",
-    "field_b": "通知日期",
+    "join_key": [
+      "项目编号"
+    ],
+    "field_a": "开工令日期",
+    "field_b": "报审表日期",
     "aggregation": "none"
   },
   "check_expr": {
     "type": "cross_compare",
-    "expr": "hours_between(field_a, field_b) >= 12",
+    "expr": "field_a >= field_b",
     "language": "python_eval"
   },
-  "error_template": "旁站通知提前量不足：施工日期 {field_a}，通知日期 {field_b}，提前量不足 12 小时或通知晚于施工",
+  "error_template": "开工令日期 {field_a} 早于开工报审表日期 {field_b}，流程倒签（先批后报）",
   "severity_on_violation": "Sanity Check",
   "confirmation_required": true,
   "confirmation_scope": "both_parties_or_admin",
-  "remediation": "核查施工方书面通知日期与施工日期的提前量是否达到 12 小时",
+  "remediation": "核查日期是否填错，或流程是否倒签",
   "status": "active",
   "source": "system",
   "version": "1.0.0",
@@ -43,7 +45,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -60,7 +64,7 @@
       "version": "1.0.0",
       "date": "2026-07-30",
       "author": "system",
-      "change": "从 logic-conflict-patterns.md 9.10.9 迁移"
+      "change": "从 logic-conflict-patterns.md 9.10.1 迁移"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "rule_id": "CU-014",
   "name": "危大工程：方案审查 → 专家论证 → 验收",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
   "description": "危大工程流程：专项施工方案内部编制日期 ≤ 监理审查日期 ≤ 专家论证日期（如需）≤ 实施日期 ≤ 验收日期。实施日期早于审查/论证日期（未批先干），或验收日期早于实施日期均为矛盾。跨单位核心校验为监理审查日期 ≥ 施工编制日期",
   "trigger_when": {
@@ -21,7 +21,10 @@
       "label": "施工方",
       "doc_type": "专项施工方案"
     },
-    "join_key": ["项目编号", "方案编号"],
+    "join_key": [
+      "项目编号",
+      "方案编号"
+    ],
     "field_a": "监理审查日期",
     "field_b": "编制日期",
     "aggregation": "none"
@@ -43,7 +46,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {

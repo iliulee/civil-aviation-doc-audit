@@ -1,12 +1,12 @@
 {
-  "rule_id": "CU-011",
-  "name": "巡视记录日期连续性 vs 施工日志",
+  "rule_id": "CU-009",
+  "name": "旁站记录日期 = 施工日志对应工序日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
-  "description": "《巡视记录》（A.9）应覆盖施工日志中有施工活动的日期。施工日志有施工记录但当天无巡视记录，或巡视记录日期无对应施工活动均为矛盾",
+  "description": "《旁站记录》（A.8）记录的日期应与施工日志中对应工序的施工日期一致。旁站开始时间、结束时间应在施工日志记录的作业时段内",
   "trigger_when": {
-    "doc_type_a": "巡视记录",
+    "doc_type_a": "旁站记录",
     "doc_type_b": "施工日志",
     "require_both": true
   },
@@ -14,28 +14,32 @@
     "party_a": {
       "role": "supervisor",
       "label": "监理方",
-      "doc_type": "巡视记录"
+      "doc_type": "旁站记录"
     },
     "party_b": {
       "role": "contractor",
       "label": "施工方",
       "doc_type": "施工日志"
     },
-    "join_key": ["项目编号", "日期"],
-    "field_a": "巡视日期",
+    "join_key": [
+      "项目编号",
+      "工序名称",
+      "日期"
+    ],
+    "field_a": "旁站日期",
     "field_b": "施工日期",
-    "aggregation": "set_contains"
+    "aggregation": "none"
   },
   "check_expr": {
     "type": "cross_compare",
-    "expr": "set(field_b_dates).issubset(set(field_a_dates))",
+    "expr": "field_a == field_b",
     "language": "python_eval"
   },
-  "error_template": "施工日志有施工活动日期 {field_b} 但当天无巡视记录，或巡视记录日期无对应施工活动",
+  "error_template": "旁站记录日期 {field_a} 与施工日志对应工序日期 {field_b} 不一致，或旁站时间不在施工日志作业时段内",
   "severity_on_violation": "Sanity Check",
   "confirmation_required": true,
   "confirmation_scope": "both_parties_or_admin",
-  "remediation": "核查巡视记录是否覆盖施工日志中所有有施工活动的日期",
+  "remediation": "核查旁站记录日期与施工日志对应工序日期是否一致，旁站起止时间是否在作业时段内",
   "status": "active",
   "source": "system",
   "version": "1.0.0",
@@ -43,7 +47,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -60,7 +66,7 @@
       "version": "1.0.0",
       "date": "2026-07-30",
       "author": "system",
-      "change": "从 logic-conflict-patterns.md 9.10.10 迁移"
+      "change": "从 logic-conflict-patterns.md 9.10.8 迁移"
     }
   ]
 }

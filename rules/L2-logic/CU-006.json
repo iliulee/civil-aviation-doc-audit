@@ -1,29 +1,31 @@
 {
-  "rule_id": "CU-002",
-  "name": "开工令日期 ≥ 开工报审表日期",
+  "rule_id": "CU-006",
+  "name": "施工进度计划报审：编制日期 → 审查日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
-  "description": "开工令日期应不早于开工报审表日期，流程顺序：报审→批复→开工令。施工单位《工程开工报审表》（B.10）申请开工日期 ≤ 监理签发《开工令》（A.6）日期",
+  "description": "施工进度计划报审流程：《施工进度计划报审表》（B.22）计划编制日期 ≤ 监理审查日期。计划中各节点的起止日期应在编制日期之后。跨单位核心校验为监理审查日期 ≥ 施工编制日期",
   "trigger_when": {
-    "doc_type_a": "开工令",
-    "doc_type_b": "开工报审表",
+    "doc_type_a": "施工进度计划报审表",
+    "doc_type_b": "施工进度计划报审表",
     "require_both": true
   },
   "alignment": {
     "party_a": {
       "role": "supervisor",
       "label": "监理方",
-      "doc_type": "开工令"
+      "doc_type": "施工进度计划报审表"
     },
     "party_b": {
       "role": "contractor",
       "label": "施工方",
-      "doc_type": "开工报审表"
+      "doc_type": "施工进度计划报审表"
     },
-    "join_key": ["项目编号"],
-    "field_a": "开工令日期",
-    "field_b": "报审表日期",
+    "join_key": [
+      "项目编号"
+    ],
+    "field_a": "审查日期",
+    "field_b": "编制日期",
     "aggregation": "none"
   },
   "check_expr": {
@@ -31,11 +33,11 @@
     "expr": "field_a >= field_b",
     "language": "python_eval"
   },
-  "error_template": "开工令日期 {field_a} 早于开工报审表日期 {field_b}，流程倒签（先批后报）",
+  "error_template": "施工进度计划审查日期 {field_a} 早于编制日期 {field_b}，或计划节点开始日期早于编制日期，流程倒签",
   "severity_on_violation": "Sanity Check",
   "confirmation_required": true,
   "confirmation_scope": "both_parties_or_admin",
-  "remediation": "核查日期是否填错，或流程是否倒签",
+  "remediation": "核查计划编制日期、监理审查日期顺序，及各节点起止日期是否在编制日期之后",
   "status": "active",
   "source": "system",
   "version": "1.0.0",
@@ -43,7 +45,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -60,7 +64,7 @@
       "version": "1.0.0",
       "date": "2026-07-30",
       "author": "system",
-      "change": "从 logic-conflict-patterns.md 9.10.1 迁移"
+      "change": "从 logic-conflict-patterns.md 9.10.5 迁移"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "rule_id": "CU-005",
   "name": "费用索赔报审：事件日期 → 申请日期 → 审核日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
   "description": "费用索赔报审流程：索赔事件发生日期 ≤ 《费用索赔报审表》（B.27）申请日期 ≤ 监理审核日期。索赔金额计算依据的日期应在事件发生之后。跨单位核心校验为监理审核日期 ≥ 施工申请日期",
   "trigger_when": {
@@ -21,7 +21,9 @@
       "label": "施工方",
       "doc_type": "费用索赔报审表"
     },
-    "join_key": ["项目编号"],
+    "join_key": [
+      "项目编号"
+    ],
     "field_a": "审核日期",
     "field_b": "申请日期",
     "aggregation": "none"
@@ -43,7 +45,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {

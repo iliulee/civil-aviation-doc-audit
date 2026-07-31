@@ -2,7 +2,7 @@
   "rule_id": "CU-015",
   "name": "施工检测报告：取样 ≤ 检测 ≤ 报告 ≤ 验收",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
   "description": "施工检测报告流程：见证取样日期 ≤ 检测日期 ≤ 报告出具日期 ≤ 对应检验批验收日期。报告日期早于取样日期，或验收日期早于报告日期（没出报告就验收）均为矛盾。跨单位核心校验为监理验收日期 ≥ 施工方报告出具日期",
   "trigger_when": {
@@ -21,7 +21,10 @@
       "label": "施工方",
       "doc_type": "施工检测报告"
     },
-    "join_key": ["项目编号", "检验批编号"],
+    "join_key": [
+      "项目编号",
+      "检验批编号"
+    ],
     "field_a": "验收日期",
     "field_b": "报告出具日期",
     "aggregation": "none"
@@ -43,7 +46,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {

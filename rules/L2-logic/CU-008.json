@@ -1,41 +1,43 @@
 {
-  "rule_id": "CU-007",
-  "name": "工程款支付报审：申请日期 → 审核日期 → 签发日期",
+  "rule_id": "CU-008",
+  "name": "竣工验收申请：预验收 → 整改 → 申请",
   "level": "L2-LOGIC",
-  "scope": "CROSS_UNIT",
+  "scope": "CROSS_DOC",
   "category": "跨单位日期对照",
-  "description": "工程款支付报审流程：《工程款支付报审表》（B.23）申请日期 ≤ 监理审核日期 ≤ 签发日期。支付周期内的工程量应与同期检验批/验收记录对应。跨单位核心校验为监理签发日期 ≥ 施工申请日期",
+  "description": "竣工验收申请流程：竣工预验收完成日期 ≤ 整改完成日期 ≤ 《竣工验收申请表》（B.21）申请日期。预验收提出的问题应全部闭环后才能申请竣工验收。跨单位核心校验为施工申请日期 ≥ 监理预验收完成日期",
   "trigger_when": {
-    "doc_type_a": "工程款支付报审表",
-    "doc_type_b": "工程款支付报审表",
+    "doc_type_a": "竣工预验收记录",
+    "doc_type_b": "竣工验收申请表",
     "require_both": true
   },
   "alignment": {
     "party_a": {
       "role": "supervisor",
       "label": "监理方",
-      "doc_type": "工程款支付报审表"
+      "doc_type": "竣工预验收记录"
     },
     "party_b": {
       "role": "contractor",
       "label": "施工方",
-      "doc_type": "工程款支付报审表"
+      "doc_type": "竣工验收申请表"
     },
-    "join_key": ["项目编号", "支付周期"],
-    "field_a": "签发日期",
+    "join_key": [
+      "项目编号"
+    ],
+    "field_a": "预验收完成日期",
     "field_b": "申请日期",
     "aggregation": "none"
   },
   "check_expr": {
     "type": "cross_compare",
-    "expr": "field_a >= field_b",
+    "expr": "field_b >= field_a",
     "language": "python_eval"
   },
-  "error_template": "工程款支付报审签发日期 {field_a} 早于申请日期 {field_b}，或支付工程量无对应验收记录",
+  "error_template": "竣工验收申请日期 {field_b} 早于预验收完成日期 {field_a}，或预验收问题未闭环就申请",
   "severity_on_violation": "Sanity Check",
   "confirmation_required": true,
   "confirmation_scope": "both_parties_or_admin",
-  "remediation": "核查申请日期、审核日期、签发日期顺序，及支付周期工程量是否与同期检验批对应",
+  "remediation": "核查预验收完成日期、整改完成日期、申请日期顺序，及预验收问题是否全部闭环",
   "status": "active",
   "source": "system",
   "version": "1.0.0",
@@ -43,7 +45,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -60,7 +64,7 @@
       "version": "1.0.0",
       "date": "2026-07-30",
       "author": "system",
-      "change": "从 logic-conflict-patterns.md 9.10.6 迁移"
+      "change": "从 logic-conflict-patterns.md 9.10.7 迁移"
     }
   ]
 }
