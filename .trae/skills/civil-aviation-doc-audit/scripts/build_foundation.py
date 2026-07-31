@@ -216,9 +216,26 @@ def scan_files(
     return sorted(files)
 
 
+def _has_formal_records(rel_files: List[Path]) -> bool:
+    """
+    判断文件列表中是否包含正式施工记录/检验批等应逐行审核的资料。
+    用于施工日志自动降级为依据文件。
+    """
+    formal_keywords = ["施工记录", "检验批", "隐蔽工程", "碎石桩", "CFG桩", "桩基"]
+    for rel in rel_files:
+        name = rel.name
+        # 施工日志自身不算
+        if "施工日志" in name:
+            continue
+        if any(kw in name for kw in formal_keywords):
+            return True
+    return False
+
+
 def classify_file(
     rel_path: Path,
     excluded_set: set,
+    has_formal_records: bool = False,
 ) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
     """
     对单个文件进行分类。
@@ -241,6 +258,9 @@ def classify_file(
     # 3. 通用资料
     for kw, (prof, sub, doc) in GENERIC_KEYWORDS.items():
         if kw in name:
+            # 施工日志：如果项目中同时存在正式施工记录/检验批，降级为依据文件
+            if kw == "施工日志" and has_formal_records:
+                return "reference_files", "依据文件", "施工日志", "施工日志"
             return "audited_files", prof, sub, doc
 
     # 4. 五大专业匹配
@@ -1161,11 +1181,16 @@ def main() -> int:
     file_classification["reference_files"] = []
     file_classification["excluded_files"] = []
 
+    # 预处理：判断是否存在正式施工记录/检验批，用于施工日志自动降级
+    has_formal_records = _has_formal_records(rel_files)
+    if has_formal_records:
+        print(f"  [i] 检测到正式施工记录/检验批，施工日志将自动归类为依据文件", file=sys.stderr)
+
     # 逐个处理
     for rel in rel_files:
       try:
         abs_path = project_path / rel
-        classification, professional, subcategory, doc_type = classify_file(rel, excluded_set)
+        classification, professional, subcategory, doc_type = classify_file(rel, excluded_set, has_formal_records)
 
         if classification == "excluded_files":
             file_classification["excluded_files"].append(str(rel))
@@ -1296,6 +1321,64 @@ def main() -> int:
                 "page_count": pages,
                 "source": "direct_read",
             })
+
+        elif method == "excel":
+            # Excel 文件：提取为结构化 rows
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(abs_path, data_only=True)
+                sheet_texts = []
+                for sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    sheet_rows = []
+                    for row in ws.iter_rows(values_only=True):
+                        # 跳过全空行
+                        if any(v is not None and str(v).strip() for v in row):
+                            sheet_rows.append([str(v) if v is not None else "" for v in row])
+                    if sheet_rows:
+                        sheet_texts.append(f"--- Sheet: {sheet_name} ---")
+                        for row in sheet_rows:
+                            sheet_texts.append("\t".join(row))
+                wb.close()
+                ocr_text = "\n".join(sheet_texts)
+                ocr_engine = "openpyxl"
+                ocr_confidence = 1.0
+                pages = len(wb.sheetnames)
+                save_json(ocr_raw_file, {
+                    "text": ocr_text,
+                    "engine": ocr_engine,
+                    "confidence": ocr_confidence,
+                    "items": [],
+                    "page_count": pages,
+                    "source": "openpyxl",
+                    "sheets": wb.sheetnames,
+                })
+            except ImportError as e:
+                ocr_status = "unsupported"
+                ocr_engine = "excel"
+                ocr_confidence = 0.0
+                reason = "openpyxl 未安装，无法读取 Excel"
+                save_json(ocr_raw_file, {
+                    "text": "",
+                    "engine": "excel",
+                    "confidence": 0.0,
+                    "items": [],
+                    "reason": reason,
+                })
+                print(f"  [!] {reason}", file=sys.stderr)
+            except Exception as e:
+                ocr_status = "needs_review"
+                ocr_engine = "excel"
+                ocr_confidence = 0.0
+                reason = f"Excel 读取异常: {e}"
+                save_json(ocr_raw_file, {
+                    "text": "",
+                    "engine": "excel",
+                    "confidence": 0.0,
+                    "items": [],
+                    "reason": reason,
+                })
+                print(f"  [!] {reason}", file=sys.stderr)
 
         else:
             # 暂不支持的类型

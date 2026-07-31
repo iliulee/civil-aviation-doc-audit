@@ -267,10 +267,16 @@ def _get_paddleocr_engine():
 
 
 def _get_poppler_path():
+    # 1. 先检查 skill 自带目录
     p = Path(__file__).parent.parent / "tools" / "poppler"
     if p.exists():
         for bin_dir in p.rglob("pdftoppm.exe"):
             return str(bin_dir.parent)
+    # 2. 再检查系统 PATH（pdf2image 传 None 时会自动调用系统 PATH）
+    import shutil
+    if shutil.which("pdftoppm"):
+        return None
+    # 3. 都没有才返回 None（表示真的没装）
     return None
 
 

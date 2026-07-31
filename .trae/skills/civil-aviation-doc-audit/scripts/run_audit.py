@@ -100,6 +100,17 @@ def sniff_document(file_path: str) -> dict:
     elif suffix in (".docx", ".doc"):
         info["extraction_method"] = "docx"
 
+    elif suffix in (".xlsx", ".xls"):
+        info["extraction_method"] = "excel"
+        info["is_scanned"] = False
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            info["page_count"] = len(wb.sheetnames)
+            wb.close()
+        except ImportError:
+            pass
+
     elif suffix in (".txt", ".md"):
         info["extraction_method"] = "text"
 
@@ -789,6 +800,8 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     findings = audit_log.get("findings", [])
     logic_findings = audit_log.get("logic_consistency_findings", [])
     tasks = audit_log.get("tasks", [])
+    force_info = audit_log.get("force_info") or {}
+    force_bypass = bool(force_info.get("force_bypass_gate"))
     
     # 构建 doc_id → 文件名 映射
     doc_id_to_file: dict = {}
@@ -951,6 +964,8 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
   .charts-row {{ display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }}
   .charts-row .chart-container {{ flex: 1; min-width: 300px; }}
   @media print {{ body {{ background: #fff; }} .section {{ box-shadow: none; border: 1px solid #ddd; }} }}
+  .force-watermark {{ background: #fce8e6; border: 2px dashed #d93025; color: #d93025; padding: 14px 18px; border-radius: 6px; margin-bottom: 16px; font-weight: bold; text-align: center; }}
+  .force-watermark .sub {{ font-weight: normal; font-size: 13px; color: #b31412; margin-top: 4px; }}
 </style>
 </head>
 <body>
@@ -958,6 +973,7 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
 
   <!-- 页眉 -->
   <div class="header">
+    {f'<div class="force-watermark">⚠️ 跳过人工核对闸门生成，非正式审核结果<div class="sub">跳过时间：{force_info.get("bypassed_at", "")} | 未核对文件数：{len(force_info.get("unverified_files", []))}</div></div>' if force_bypass else ''}
     <h1>民航施工资料合规审核报告</h1>
     <div class="meta">
       <p>项目：{audit_log.get('project_name', '')}</p>

@@ -616,6 +616,7 @@ def generate_audit_log(
     rule_engine_summary: Dict[str, Any],
     out_dir: Path,
     audit_id: Optional[str] = None,
+    force_info: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     生成审核日志 JSON。
@@ -627,6 +628,9 @@ def generate_audit_log(
 
     B-4.2：新增可选 audit_id 参数，允许调用方预先指定 audit_id（与
     run_rule_engine 共享同一个 audit_id，确保生命周期跟踪记录可关联到审核日志）。
+
+    新增 force_info 参数：记录 --force 跳过 human_verified 闸门的情况，
+    包含 force_bypass_gate / unverified_files / bypassed_at 等字段。
     """
     # 统计（统一从 all_findings + logic_findings 统计，保证总数一致）
     all_results = all_findings + logic_findings
@@ -684,6 +688,7 @@ def generate_audit_log(
         "logic_consistency_findings": logic_findings,
         "rule_engine_findings": rule_engine_findings,
         "rule_engine_summary": rule_engine_summary,
+        "force_info": force_info,
         "subdivision_tree": get_full_subdivision_tree(),
         "conclusion": {
             "overall": _derive_overall_conclusion(all_findings + logic_findings),
@@ -934,18 +939,29 @@ def run_review(
         return 1
 
     # ===== 步骤 1：审核前置检查 =====
+    all_verified, unverified = check_human_verified(index)
+    force_info: Optional[Dict[str, Any]] = None
     if not force:
-        all_verified, unverified = check_human_verified(index)
         if not all_verified:
             print("⛔ 审核前置检查未通过 — 以下文件尚未完成人工核对：", file=sys.stderr)
             for f in unverified:
                 print(f"   - {f}", file=sys.stderr)
+            print("\n当前各文件 human_verified 状态：", file=sys.stderr)
+            for doc in index.get("documents", []):
+                flag = "✅ true" if doc.get("human_verified") else "❌ false"
+                print(f"   - {doc.get('original_file', doc.get('id', '?'))}: {flag}", file=sys.stderr)
             print("\n请先打开 data-editor.html 完成人工核对，再执行审核。", file=sys.stderr)
             print("如需跳过此检查（仅测试用），请使用 --force 参数。", file=sys.stderr)
             return 1
         print("✅ 审核前置检查通过 — 所有文件已完成人工核对\n", file=sys.stderr)
     else:
         print("⚠️  --force：跳过 human_verified 闸门\n", file=sys.stderr)
+        force_info = {
+            "force_bypass_gate": True,
+            "unverified_files": unverified,
+            "bypassed_at": now_iso(),
+            "notice": "本审核日志通过 --force 生成，跳过人工核对闸门，非正式审核结果",
+        }
 
     # ===== 步骤 2：加载文档数据 =====
     docs: List[Dict[str, Any]] = []
@@ -1099,6 +1115,7 @@ def run_review(
         index, tasks, all_findings, logic_findings,
         rule_engine_findings, rule_engine_summary, audit_log_dir,
         audit_id=audit_id_preview,
+        force_info=force_info,
     )
 
     # 保存更新后的 index.json
