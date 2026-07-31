@@ -560,6 +560,10 @@ python {SKILL_DIR}/scripts/rule_admin.py --port 8765
 
 打开管理面板：浏览器访问 `templates/rule-manager.html`。
 
+> **⚠️ 注意**：必须先启动 `rule_admin.py` API 服务，再打开 `rule-manager.html`，否则面板无法获取规则数据。
+> 规则文件存储在 **skill 目录** 的 `rules/` 下（跟着 skill 走，不跟着项目走），所有项目共用同一套规则。
+> 规则文件是 JSON 格式，也可以直接用文本编辑器修改 `rules/L1-iron/`、`rules/L2-logic/`、`rules/L3-business/` 下的文件。
+
 ---
 
 ## 触发语句

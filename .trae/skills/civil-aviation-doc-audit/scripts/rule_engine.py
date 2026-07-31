@@ -51,6 +51,44 @@ SEVERITY_SANITY = "Sanity Check"
 SEVERITY_BEST = "Best Practice"
 
 
+# ========== 字段别名映射 ==========
+# 规则文件用中文字段名（如 "实长"），数据底座用英文字段名（如 "actual_length"）。
+# 此映射在 SingleDocChecker 构造 context 时自动注入中文别名，确保规则能命中数据。
+FIELD_ALIAS_MAP: Dict[str, str] = {
+    "实长": "actual_length",
+    "实际桩长": "actual_length",
+    "实际长度": "actual_length",
+    "桩顶高程": "top_elev",
+    "顶高程": "top_elev",
+    "桩底高程": "bottom_elev",
+    "底高程": "bottom_elev",
+    "桩号": "pile_no",
+    "设计桩长": "design_length",
+    "设计长度": "design_length",
+    "桩径": "diameter",
+    "直径": "diameter",
+    "密实电流": "current",
+    "电流": "current",
+    "反插次数": "re_penetration",
+    "反插": "re_penetration",
+    "灌入量": "volume",
+    "灌入": "volume",
+    "充盈系数": "filling_coeff",
+    "竖直度": "verticality",
+    "垂直度": "verticality",
+    "开始时间": "start_time",
+    "开钻时间": "start_time",
+    "起始时间": "start_time",
+    "结束时间": "end_time",
+    "终钻时间": "end_time",
+    "终止时间": "end_time",
+    "沉管时间": "sink_time",
+    "拔管时间": "pull_time",
+    "备注": "remark",
+    "说明": "remark",
+}
+
+
 # ========== 数据结构 ==========
 @dataclass
 class Rule:
@@ -382,11 +420,18 @@ class SingleDocChecker:
         for idx, row in enumerate(rows):
             if not isinstance(row, dict):
                 continue
-            # 检查必需字段是否齐全
-            if field_required and not all(f in row for f in field_required):
-                continue
-            # 构造 context（行字段 + 派生字段）
+            # 构造 context（行字段 + 中文别名注入）
             context: Dict[str, Any] = dict(row)
+            # 注入中文字段别名：规则用中文字段名，数据用英文字段名
+            for cn_name, en_name in FIELD_ALIAS_MAP.items():
+                if en_name in row and cn_name not in context:
+                    context[cn_name] = row[en_name]
+            # 检查必需字段是否齐全（支持中英文双向匹配）
+            if field_required:
+                matched = all(f in context for f in field_required)
+                if not matched:
+                    continue
+            # 注入派生字段
             self._inject_derived_fields(context, rule)
             # 求值
             passed = self.evaluator.evaluate(expr, context)
@@ -409,11 +454,13 @@ class SingleDocChecker:
         """根据规则 ID 或字段语义，注入常用派生字段（computed / diff）。
 
         保留通用性：若所需源字段缺失或非数值，则跳过。
+        支持中英文字段名双向查找。
         """
         try:
-            实长 = context.get("实长")
-            桩顶 = context.get("桩顶高程")
-            桩底 = context.get("桩底高程")
+            # 高程自洽：实长 vs (桩顶高程 - 桩底高程)
+            实长 = context.get("实长", context.get("actual_length"))
+            桩顶 = context.get("桩顶高程", context.get("top_elev"))
+            桩底 = context.get("桩底高程", context.get("bottom_elev"))
             if (isinstance(实长, (int, float))
                     and isinstance(桩顶, (int, float))
                     and isinstance(桩底, (int, float))):
@@ -421,6 +468,26 @@ class SingleDocChecker:
                 diff = abs(实长 - computed)
                 context.setdefault("computed", round(computed, 4))
                 context.setdefault("diff", round(diff, 4))
+
+            # 充盈系数自洽：充盈系数 vs 灌入量 / (π × (桩径/2)² × 实长)
+            充盈 = context.get("充盈系数", context.get("filling_coeff"))
+            灌入量 = context.get("灌入量", context.get("volume"))
+            桩径 = context.get("桩径", context.get("diameter"))
+            if (isinstance(充盈, (int, float))
+                    and isinstance(灌入量, (int, float))
+                    and isinstance(桩径, (int, float))
+                    and isinstance(实长, (int, float)) and 实长 > 0):
+                import math
+                expected = 灌入量 / (math.pi * (桩径 / 2) ** 2 * 实长)
+                coeff_diff = abs(充盈 - expected)
+                context.setdefault("expected_coeff", round(expected, 4))
+                context.setdefault("coeff_diff", round(coeff_diff, 4))
+
+            # 沉管/拔管时间差
+            沉管 = context.get("沉管时间", context.get("sink_time"))
+            拔管 = context.get("拔管时间", context.get("pull_time"))
+            if 沉管 and 拔管:
+                context.setdefault("has_time_pair", True)
         except Exception:
             pass
 

@@ -532,6 +532,28 @@ def cmd_report(args):
         print("   请先执行 review 命令完成正式审核", file=sys.stderr)
         sys.exit(1)
 
+    # ===== human_verified 闸门检查 =====
+    index_path = out_base / "index.json"
+    if index_path.exists():
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        unverified = [doc.get("original_file", doc.get("id", "?"))
+                       for doc in index.get("documents", [])
+                       if not doc.get("human_verified", False)]
+        force_bypass = False
+        # 检查最新审核日志是否有 force_info
+        log_files_check = sorted(audit_log_dir.glob("AU-*.json"),
+                                  key=lambda p: p.stat().st_mtime, reverse=True)
+        if log_files_check:
+            latest_log = json.loads(log_files_check[0].read_text(encoding="utf-8"))
+            force_bypass = bool((latest_log.get("force_info") or {}).get("force_bypass_gate"))
+
+        if unverified and not force_bypass:
+            print("⛔ 生成报告前检查发现以下文件尚未完成人工核对：", file=sys.stderr)
+            for f in unverified:
+                print(f"   - {f}", file=sys.stderr)
+            print("\n请先打开 data-editor.html 完成人工核对，再生成报告。", file=sys.stderr)
+            sys.exit(1)
+
     # 找到最新的审核日志
     log_files = sorted(audit_log_dir.glob("AU-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not log_files:

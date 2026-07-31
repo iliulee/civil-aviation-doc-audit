@@ -5,7 +5,7 @@
 
 目的：
   1. 构造最小化测试数据（碎石桩施工记录，含合规行 + 违规行）
-  2. 调用规则引擎加载 91 条规则
+  2. 调用规则引擎加载 93 条规则
   3. 匹配 SINGLE_DOC 规则并执行审核
   4. 验证 LG-001（高程自洽）是否正确命中违规行
   5. 验证 ViolationReporter 输出格式
@@ -198,7 +198,7 @@ def main() -> int:
     print("端到端验证总结")
     print("=" * 70)
     checks = [
-        ("规则加载（91 条）", len(all_rules) == 91),
+        ("规则加载（93 条）", len(all_rules) == 93),
         ("active 规则加载", len(active_rules) > 0),
         ("测试数据构造（7 行）", len(doc_data["rows"]) == 7),
         ("规则匹配（SINGLE_DOC）", len(matched_single) > 0),

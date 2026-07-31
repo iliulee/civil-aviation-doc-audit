@@ -1,8 +1,8 @@
 # PROJECT_SPEC — 民航施工资料合规审核 Skill v6.1
 
-> 文档版本：v2.1 | 创建日期：2026-07-29 | 最后更新：2026-07-31 | 状态：v6.0 已实施 / v6.1 已实施
+> 文档版本：v2.2 | 创建日期：2026-07-29 | 最后更新：2026-07-31 | 状态：v6.0 已实施 / v6.1 已实施 / v6.1.1 已实施
 >
-> 本文档是项目的唯一权威规格说明，覆盖全部已有功能（v5.0）、v6.0 数据底座与四阶段流水线、v6.1 规则管理子系统。
+> 本文档是项目的唯一权威规格说明，覆盖全部已有功能（v5.0）、v6.0 数据底座与四阶段流水线、v6.1 规则管理子系统、v6.1.1 审核闸门与字段别名映射修复。
 
 ---
 
@@ -24,7 +24,8 @@
 | v4.1 | PaddleOCR 单层主引擎 + Vision API 兜底 | OCR 性能优化 |
 | v5.0 | API-First 策略 + 7 家 Vision API | 成本与准确性平衡 |
 | **v6.0** | **数据底座 + Web 编辑器 + 项目总览 + 四阶段流水线** | **上下文管理 + 人工核对 + 增量更新** |
-| **v6.1** | **规则管理子系统（91 条规则三层分级 + 反馈闭环 + LLM 自成长 + 跨单位对齐）** | **规则形式化存储 + 可视化管理 + 自成长机制** |
+| **v6.1** | **规则管理子系统（93 条规则三层分级 + 反馈闭环 + LLM 自成长 + 跨单位对齐）** | **规则形式化存储 + 可视化管理 + 自成长机制** |
+| **v6.1.1** | **审核闸门强化 + 字段别名映射 + 沉管/拔管时间规则** | **修复 OCR 后跳过人工核对、规则字段名不匹配、缺少时间计算三大问题** |
 
 ### 1.3 v6.0 核心变更
 
@@ -38,13 +39,31 @@ v6.0 不是对现有功能的推倒重来，而是在现有 OCR + 审核能力�
 
 v6.1 在 v6.0 基础上新增规则管理子系统，将原本散落在 markdown 文档中的 57+ 条规则重构为形式化、可管理、可自成长的子系统：
 
-1. **三层规则分级**：L1 铁律（17 条）/ L2 逻辑一致性（71 条）/ L3 业务合理性（3 条）+ 跨单位对照特殊作用域（18 条），共 91 条规则
+1. **三层规则分级**：L1 铁律（17 条）/ L2 逻辑一致性（73 条）/ L3 业务合理性（5 条）+ 跨单位对照特殊作用域（18 条），共 93 条规则
 2. **规则形式化存储**：每条规则以独立 JSON 文件存储，含完整元数据（trigger_when/check_expr/error_template/changelog/stats）
 3. **规则管理面板**：Web UI，多维度筛选、可视化规则编辑器、统计仪表盘、反思报告
 4. **规则生命周期**：draft → testing → incubating → active，支持项目级/全局生效
 5. **反馈闭环**：漏审/误报反馈 → LLM 聚类分析 → 候选规则 → 管理员审批
 6. **LLM 自成长**：定时反思调度器生成优化建议，规则效力自监控，低质量规则自动降级
 7. **跨单位对照增强**：监理-施工方数据对齐视图，哈希索引 + 分块处理（1000 桩位 join < 50ms）
+
+### 1.3.2 v6.1.1 核心变更（审核闸门与字段别名映射修复）
+
+v6.1.1 修复用户重新安装 skill 后测试发现的 3 个严重问题：
+
+1. **OCR 后人工核对闸门强化**（`run_audit.py` 的 `cmd_report` 函数）
+   - 问题：OCR 完成后可直接生成审核报告，跳过阶段 2 人工核对
+   - 修复：在 `report` 子命令中增加 `human_verified` 闸门检查，未全部为 `true` 且非 `--force` 时拒绝生成报告
+   - 铁律落地：R-02（OCR 必复核）、R-20（OCR 存疑核实）
+
+2. **规则字段别名映射**（`rule_engine.py` 的 `FIELD_ALIAS_MAP`）
+   - 问题：规则文件用中文字段名（如"实长"），数据底座用英文字段名（如"actual_length"），导致规则无法命中数据，桩长计算缺失
+   - 修复：新增 `FIELD_ALIAS_MAP` 映射表（28 组中英文对照），在 `SingleDocChecker.check_single_doc` 构造 context 时自动注入中文别名
+   - 影响规则：LG-001（高程自洽）、IR-012（高程自洽）、LG-1002（充盈系数自洽）等涉及桩长/高程计算的规则
+
+3. **沉管/拔管时间规则**（`LG-006.json` + `LG-007.json` + `build_foundation.py`）
+   - 问题：审核结果缺少沉管时间、拔管时间的完整性检查
+   - 修复：新增 LG-006（沉管时间完整性校验）和 LG-007（拔管时间完整性校验）两条 L2 规则；在 `build_foundation.py` 的 `PILE_HEADER_KEYWORDS` 和 `PILE_FIELDS` 中增加 `sink_time`/`pull_time` 字段映射
 
 > 详细设计见 [第十一章 规则管理子系统 v6.1](#十一规则管理子系统-v61)
 
@@ -1041,7 +1060,10 @@ Phase 7（T-47~T-52）：SKILL.md + 集成
     ↓ 验证：全链路测试通过（V-26~V-32）
 
 Phase 8（T-53~T-72）：规则管理子系统 v6.1（详见第十一章）
-    ↓ 验证：91 条规则全部通过 Schema 校验 + 子系统 7/7 集成测试通过（V-33~V-45）
+    ↓ 验证：93 条规则全部通过 Schema 校验 + 子系统 7/7 集成测试通过（V-33~V-45）
+
+Phase 9（v6.1.1）：审核闸门强化 + 字段别名映射 + 沉管/拔管时间规则
+    ↓ 验证：端到端测试 8/8 通过（规则加载 93 条 + LG-001 桩长自洽命中 3 条违规）
 ```
 
 ---
@@ -1051,7 +1073,7 @@ Phase 8（T-53~T-72）：规则管理子系统 v6.1（详见第十一章）
 > **Change-ID**: `design-rule-management-subsystem`
 > **状态**: 已实施（2026-07-31）
 > **详细设计文档**: `.trae/specs/design-rule-management-subsystem/spec.md`
-> **测试覆盖**: 规则引擎 6/6 + 跨单位性能 4/4 + Schema 91/91 + 子系统集成 7/7
+> **测试覆盖**: 规则引擎 6/6 + 跨单位性能 4/4 + Schema 93/93 + 子系统集成 7/7 + 端到端 8/8
 
 ### 11.1 子系统定位
 
@@ -1061,7 +1083,7 @@ Phase 8（T-53~T-72）：规则管理子系统 v6.1（详见第十一章）
 
 | 能力 | 说明 |
 |------|------|
-| **三层规则分级** | L1 铁律(17)/L2 逻辑一致性(71)/L3 业务合理性(3)/跨单位对照(18)，共 91 条 |
+| **三层规则分级** | L1 铁律(17)/L2 逻辑一致性(73)/L3 业务合理性(5)/跨单位对照(18)，共 93 条 |
 | **规则形式化存储** | 每条规则独立 JSON 文件，含 trigger_when/check_expr/error_template/changelog/stats |
 | **规则管理面板** | Web UI（`rule-manager.html`），4 标签页：规则列表/新建规则/统计仪表盘/反思报告 |
 | **可视化规则编辑器** | 非技术用户友好的无代码规则创建，实时预览 JSON 结构 |
@@ -1174,8 +1196,8 @@ Phase 8（T-53~T-72）：规则管理子系统 v6.1（详见第十一章）
 │                              ↕                                      │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │  存储层（File System，零数据库依赖）                        │   │
-│  │  ├── rules/                 规则文件库（91 个 JSON）         │   │
-│  │  │   ├── L1-iron/ (17) / L2-logic/ (71) / L3-business/ (3)  │   │
+│  │  ├── rules/                 规则文件库（93 个 JSON）         │   │
+│  │  │   ├── L1-iron/ (17) / L2-logic/ (73) / L3-business/ (5)  │   │
 │  │  │   ├── cross-unit/ (18) / custom/draft/ / custom/incubator/│   │
 │  │  │   ├── reflections/ / schema/ / registry.json              │   │
 │  │  ├── feedbacks/             反馈存储（JSON）                 │   │
@@ -1314,7 +1336,7 @@ Phase 8（T-53~T-72）：规则管理子系统 v6.1（详见第十一章）
 - `templates/rule-manager.html` — 规则管理面板（4 标签页）
 - `templates/feedback-collector.html` — 反馈收集组件
 - `templates/alignment-view.html` — 跨单位数据对齐视图
-- `rules/` — 91 条规则 JSON 文件（L1-iron/L2-logic/L3-business/cross-unit）
+- `rules/` — 93 条规则 JSON 文件（L1-iron/L2-logic/L3-business/cross-unit）
 - `rules/registry.json` — 全量注册表
 - `feedbacks/schema/feedback-schema.json` — 反馈 Schema
 - `scripts/test_rule_engine.py` — 规则引擎测试（6/6 通过）
@@ -1325,8 +1347,8 @@ Phase 8（T-53~T-72）：规则管理子系统 v6.1（详见第十一章）
 
 | 编号 | 验收项 | 验收方法 | 状态 |
 |:---:|:---|:---|:---:|
-| V-33 | 规则 Schema 校验通过 | `python scripts/rule_schema_validator.py --rules-dir rules` 输出 91/91 PASS | ✅ |
-| V-34 | 规则注册表生成正确 | `python scripts/rule_registry_builder.py --validate` 输出 total_rules=91 | ✅ |
+| V-33 | 规则 Schema 校验通过 | `python scripts/rule_schema_validator.py --rules-dir rules` 输出 93/93 PASS | ✅ |
+| V-34 | 规则注册表生成正确 | `python scripts/rule_registry_builder.py --validate` 输出 total_rules=93 | ✅ |
 | V-35 | 规则引擎核心功能正常 | `python scripts/test_rule_engine.py` 6/6 通过 | ✅ |
 | V-36 | 跨单位性能达标 | `python scripts/test_cross_unit_perf.py` 1000 桩位 join < 1s | ✅ |
 | V-37 | 反馈存储 CRUD 正常 | 集成测试 test_feedback_store 通过（create/get/list_new/update_status/count） | ✅ |
@@ -1382,4 +1404,4 @@ RuleLifecycleManager.record_audit_result()  ← 更新 testing 规则的跟踪�
 
 ---
 
-*文档结束 — v6.0 已实施，v6.1 规则管理子系统已实施并通过全链路集成测试*
+*文档结束 — v6.0 已实施，v6.1 规则管理子系统已实施，v6.1.1 审核闸门与字段别名映射修复已实施，全部测试通过*

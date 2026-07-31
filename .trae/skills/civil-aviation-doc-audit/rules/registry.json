@@ -1,19 +1,19 @@
 {
   "schema_version": "1.0",
   "updated_at": "2026-07-31T09:30:00+08:00",
-  "total_rules": 91,
+  "total_rules": 93,
   "by_level": {
     "L1-IRON": 17,
-    "L2-LOGIC": 69,
+    "L2-LOGIC": 71,
     "L3-BUSINESS": 5
   },
   "by_scope": {
-    "SINGLE_DOC": 28,
+    "SINGLE_DOC": 30,
     "CROSS_DOC": 45,
     "CROSS_UNIT": 18
   },
   "by_status": {
-    "active": 90,
+    "active": 92,
     "draft": 0,
     "testing": 0,
     "incubating": 0,
@@ -470,6 +470,28 @@
       "version": "1.2.0",
       "file": "L2-logic/LG-001.json",
       "category": "数学自洽",
+      "source": "system"
+    },
+    {
+      "rule_id": "LG-006",
+      "name": "沉管时间完整性校验",
+      "level": "L2-LOGIC",
+      "scope": "SINGLE_DOC",
+      "status": "active",
+      "version": "1.0.0",
+      "file": "L2-logic/LG-006.json",
+      "category": "数据完整性",
+      "source": "system"
+    },
+    {
+      "rule_id": "LG-007",
+      "name": "拔管时间完整性校验",
+      "level": "L2-LOGIC",
+      "scope": "SINGLE_DOC",
+      "status": "active",
+      "version": "1.0.0",
+      "file": "L2-logic/LG-007.json",
+      "category": "数据完整性",
       "source": "system"
     },
     {

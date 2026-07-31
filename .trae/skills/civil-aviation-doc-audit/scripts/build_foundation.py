@@ -92,15 +92,17 @@ PILE_HEADER_KEYWORDS: Dict[str, List[str]] = {
     "volume": ["灌入量", "灌入"],
     "filling_coeff": ["充盈系数"],
     "verticality": ["竖直度", "垂直度"],
-    "start_time": ["开始时间", "开钻时间", "起始时间"],
-    "end_time": ["结束时间", "终钻时间", "终止时间"],
+    "start_time": ["开始时间", "开钻时间", "起始时间", "沉管开始"],
+    "end_time": ["结束时间", "终钻时间", "终止时间", "拔管结束"],
+    "sink_time": ["沉管时间", "沉管时长", "沉管开始时间"],
+    "pull_time": ["拔管时间", "拔管时长", "拔管结束时间"],
     "remark": ["备注", "说明"],
 }
 
 PILE_FIELDS = [
     "pile_no", "design_length", "diameter", "bottom_elev", "top_elev",
     "actual_length", "current", "re_penetration", "volume", "filling_coeff",
-    "verticality", "start_time", "end_time", "remark",
+    "verticality", "start_time", "end_time", "sink_time", "pull_time", "remark",
 ]
 
 
