@@ -18,7 +18,7 @@ description: "民航建设施工资料合规审核大师。审核资料是否符
 | 核心规范 | MH/T 5078.1~5078.6-2024 系列 + 各专业技术规范（MH 5004/5007/5012/5034/4006 等） |
 | 知识库 | 主引擎：`references/` 专项审核文件（16 个，已固化条款+参数阈值）；增强源：Obsidian（`H:\Obsidian notes\溜哥笔记\wiki\sources\`），按需查询原文，非硬依赖 |
 | 处理能力 | 电子文档/PDF/扫描件（OCR）/图片/批量/精准定位/项目维度数据底座/人工核对/多Agent并行 |
-| 数据底座 | JSON（机器读写）+ MD（人工只读预览）双格式，纯文件系统存储，零数据库依赖，支持跨机器迁移和 git 版本追踪 |
+| 数据底座 | 三层 JSON 结构（structured_rows + full_text + page_map），纯文件系统存储，零数据库依赖，支持跨机器迁移和 git 版本追踪 |
 | 多Agent拆分粒度 | professional（专业级）/ sub（分部级）/ item（分项级），与人工分部分项划分一致 |
 
 ---
@@ -40,7 +40,7 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 - 显示以下引导信息：
 
 ```
-⚠️ 未检测到 Obsidian 连接。不影响使用——本 Skill 的 13 个 references 文件已固化五大专业
+⚠️ 未检测到 Obsidian 连接。不影响使用——本 Skill 的 16 个 references 文件已固化五大专业
    100+ 条检查项和 200+ 个技术参数阈值，可以直接审核。
 
 📌 建议接上 Obsidian，好处是：
@@ -202,9 +202,9 @@ pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 ┌────────────────────────────────────────────────────────────────┐
 │ 阶段 1：建数据底座（全自动）                                    │
 │   输入：项目文件夹路径 + 5 项前置信息                           │
-│   处理：文件扫描分类 → OCR 提取 → 结构化 JSON+MD → 质量检测 →   │
+│   处理：文件扫描分类 → OCR 提取 → 三层结构化 JSON → 质量检测 →   │
 │         混淆检测 → 断档检测 → index.json 总索引 → 复制 Web 模板 │
-│   输出：数据底座/（JSON + MD + index.json + 质量告警 + 混淆     │
+│   输出：数据底座/（JSON 三层结构 + index.json + 质量告警 + 混淆  │
 │         检测 + 断档清单）+ 项目总览.html + data-editor.html     │
 │   闸门：index.json 中所有文件 ocr_status = "completed"          │
 │   铁律执行：R-10（数据质量先于规范合规）、R-11（全列提取）、     │
@@ -317,8 +317,7 @@ python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹路径>" \
 ├── index.json                          ← 项目总索引（唯一真相源）
 ├── 01_场道工程/
 │   └── 施工记录/
-│       ├── 碎石桩施工记录.json          ← 结构化数据（机器读写）
-│       ├── 碎石桩施工记录.md            ← 只读预览（人工查阅）
+│       ├── 碎石桩施工记录.json          ← 三层结构化数据（structured_rows + full_text + page_map）
 │       ├── 碎石桩施工记录_ocr.json      ← OCR 原始输出（追溯用）
 │       ├── 碎石桩施工记录_quality.json  ← 质量检测结果
 │       └── 碎石桩施工记录_confusion.json ← 混淆检测结果
@@ -352,7 +351,7 @@ python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹路径>" \
 10. **保存**：点击"保存"生成 `corrected_data.json` 到对应文件目录
 11. **确认完成**：点击"确认完成"生成 `修正记录/corrections.json` 并更新 `index.json` 的 `human_verified` 字段为 `true`
 
-**MD 文件定位**：MD 是"工作台副本"——JSON 给机器读，MD 给人读，支持离线查看、Git diff、人工核改参考。**MD 不可编辑**，编辑走 Web 编辑器（避免双写冲突）。
+**JSON 三层结构**：每份文档的 JSON 数据文件包含三层信息——structured_rows（规则引擎）、full_text（LLM 审核）、page_map（人工定位）。Web 编辑器是唯一编辑入口，用户通过三栏界面（文档树 + 表格/原文/图纸三 Tab）完成核对。
 
 ### 阶段 3 CLI：正式审核
 
@@ -440,7 +439,6 @@ python {SKILL_DIR}/scripts/run_audit.py report "<项目文件夹路径>" \
       "ocr_confidence": 0.833,
       "content_hash": "sha256...",
       "data_file": "01_场道工程/施工记录/碎石桩施工记录.json",
-      "data_md": "01_场道工程/施工记录/碎石桩施工记录.md",
       "quality_file": "...",
       "confusion_file": "...",
       "quality_alerts": 3,
@@ -481,7 +479,7 @@ python {SKILL_DIR}/scripts/run_audit.py report "<项目文件夹路径>" \
 
 ---
 
-## 数据底座架构（v6.0）
+## 数据底座架构（v7.0 三层 JSON 结构）
 
 ### 三层 JSON 结构
 
@@ -532,9 +530,9 @@ python {SKILL_DIR}/scripts/run_audit.py report "<项目文件夹路径>" \
 
 ---
 
-## 规则管理子系统（v6.0 新增）
+## 规则管理子系统（v6.1 新增）
 
-> 91 条规则三层分级、形式化存储、可视化管理、反馈闭环、LLM 自成长。规则不再散落在文档叙述中，而是以结构化 JSON 形式集中管理，支持全生命周期流转、效力自监控、定时反思优化。
+> 93 条规则三层分级（含 1 条 deprecated）、形式化存储、可视化管理、反馈闭环、LLM 自成长。规则不再散落在文档叙述中，而是以结构化 JSON 形式集中管理，支持全生命周期流转、效力自监控、定时反思优化。
 
 ### 规则分级体系
 
@@ -547,20 +545,19 @@ python {SKILL_DIR}/scripts/run_audit.py report "<项目文件夹路径>" \
 
 ### 规则形式化存储
 
-91 条规则已从文档叙述迁移至 `rules/` 目录，以 JSON 文件形式按层级分子目录存储：
+93 条规则已从文档叙述迁移至 `rules/` 目录，以 JSON 文件形式按层级分子目录存储：
 
 ```
 rules/
 ├── L1-iron/                  # L1 铁律（17 条）
-├── L2-logic/                 # L2 逻辑一致性（71 条，含 IR-012/013/014 几何/合计/多参数联检）
-├── L3-business/              # L3 业务合理性（3 条）
-├── cross-unit/               # 跨单位对照（18 条）
+├── L2-logic/                 # L2 逻辑一致性（72 个文件，71 条 active，含 IR-012/013/014、CU-001~018）
+├── L3-business/              # L3 业务合理性（5 条）
 ├── custom/
 │   ├── draft/                # 用户草稿
 │   └── incubator/            # 孵化区候选规则
 ├── reflections/              # 反思报告
 ├── schema/                   # JSON Schema
-└── registry.json             # 全量注册表（91 条）
+└── registry.json             # 全量注册表（93 条）
 ```
 
 每条规则包含字段：`rule_id`、`name`、`level`、`scope`、`trigger_when`、`check_expr`、`error_template`、`status`、`source`、`version`、`changelog`、`stats`、`alignment` 等。
@@ -668,7 +665,7 @@ python {SKILL_DIR}/scripts/rule_admin.py --port 8765
 - "并行审核" / "多 Agent 审核" / "拆分审核任务"
 - "按分部审核" / "按分项审核" / "按专业审核"
 
-### 规则管理子系统触发语句（v6.0 新增）
+### 规则管理子系统触发语句（v6.1 新增）
 
 - "打开规则管理" / "管理规则" / "规则面板"
 - "新建规则" / "创建规则" / "添加规则"
@@ -746,7 +743,7 @@ python {SKILL_DIR}/scripts/rule_admin.py --port 8765
 
 | 场景 | 执行命令 | 说明 |
 |------|---------|------|
-| **【v6.0】建立数据底座** | `python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹>" --engine auto --preconditions "<前置.json>"` | 阶段 1：扫描分类 → OCR → JSON+MD → 质量检测 → 混淆检测 → 断档检测 → index.json |
+| **【v6.0】建立数据底座** | `python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹>" --engine auto --preconditions "<前置.json>"` | 阶段 1：扫描分类 → OCR → JSON 三层结构 → 质量检测 → 混淆检测 → 断档检测 → index.json |
 | **【v6.0】增量更新数据底座** | `python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹>" --incremental` | 阶段 1 增量：基于 SHA256 哈希对比，仅处理新增/变更文件 |
 | **【v6.0】生成审核任务包** | `python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹>" --split-by item --dry-run` | 阶段 3 准备：生成任务包，不执行审核 |
 | **【v6.0】执行单个审核任务** | `python {SKILL_DIR}/scripts/run_audit.py review "<项目文件夹>" --task-id <id> --tasks-file "<任务包.json>"` | 阶段 3 多 Agent：子 Agent 执行单个任务 |
@@ -1139,9 +1136,9 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 
 ---
 
-## 规则三层分级体系（v6.0 新增）
+## 规则三层分级体系（v6.1 新增）
 
-> v6.0 前，20 条铁律以扁平编号（R-01~R-20）形式散落在文档叙述中，层级边界模糊（如原 R-12 高程自洽实为 L2 逻辑一致性，却被列为"铁律"）。v6.0 将全部规则重构为三层分级 + 跨单位特殊作用域，共 91 条规则迁移至 `rules/` 目录以结构化 JSON 存储。
+> v6.0 前，20 条铁律以扁平编号（R-01~R-20）形式散落在文档叙述中，层级边界模糊（如原 R-12 高程自洽实为 L2 逻辑一致性，却被列为"铁律"）。v6.1 将全部规则重构为三层分级 + 跨单位特殊作用域，共 93 条规则迁移至 `rules/` 目录以结构化 JSON 存储。
 
 | 层级 | 代号 | 判定标准 | 违反后果 | 不可降级 | 典型规则 |
 |:---:|:---:|:---|:---|:---:|:---|
@@ -1154,10 +1151,10 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 
 - **L1 铁律（17 条）**：合规底线，不可商榷，违反即判 Fatal，不可降级。规则效力监控（`rule_monitor.py`）对 L1 规则豁免自动降级
 - **L2 逻辑一致性（71 条）**：数学、几何、时序、引用关系的自洽性检查。违反标记为 Sanity Check，须人工复核。原铁律 12（高程自洽）曾存在层级错位，v6.0 已修正归入此层；原铁律 13（缺合计行判定）、14（多参数联检）也属 L2 几何/数学自洽范畴，已一并迁入
-- **L3 业务合理性（3 条）**：基于阈值、经验、行业惯例的合理性判断。违反为提示性警告，不阻塞归档
+- **L3 业务合理性（5 条）**：基于阈值、经验、行业惯例的合理性判断。违反为提示性警告，不阻塞归档
 - **跨单位对照（18 条，SCOPE-CROSS_UNIT）**：监理-施工方跨单位规则的特殊作用域，需双方协同确认，按 L1/L2/L3 分级
 
-> 91 条规则的形式化存储、生命周期管理、反馈闭环、LLM 自成长机制详见前文「规则管理子系统」章节。以下保留 20 条核心铁律的详述，作为 L1 铁律的历史沉淀和执行细则参考。
+> 93 条规则的形式化存储、生命周期管理、反馈闭环、LLM 自成长机制详见前文「规则管理子系统」章节。以下保留 20 条核心铁律的详述，作为 L1 铁律的历史沉淀和执行细则参考。
 
 ## 核心铁律（20 条，精华）
 
@@ -1187,7 +1184,7 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 
 ### 铁律 9：逻辑一致性专项检查（重头戏 - 精华）
 
-**9 个子项检查**（详见 `references/logic-conflict-patterns.md`）：
+**10 个子项检查**（详见 `references/logic-conflict-patterns.md`）：
 - 9.1 时间轴一致性
 - 9.2 数量累计一致性
 - 9.3 人员交叉一致性
@@ -1801,7 +1798,7 @@ d:\2026年7月22日 民航资料skill\audit_output\
 
 ---
 
-## 参考资料（15 个模块）
+## 参考资料（16 个参考文件）
 
 | 文件 | 用途 |
 |------|------|
@@ -1817,9 +1814,10 @@ d:\2026年7月22日 民航资料skill\audit_output\
 | `references/high-frequency-errors.md` | 高频错误模式库（含 5 个真实案例） |
 | `references/logic-conflict-patterns.md` | 逻辑矛盾识别模式库（铁律 9 配套） |
 | `references/data-quality-patterns.md` | 数据质量检测规则库（铁律 10 配套） |
+| `references/ocr-confusion-correction.md` | OCR 混淆修正规则（Z→2、4→0 等高频混淆对） |
+| `references/ocr-hybrid-architecture.md` | OCR 混合架构说明（PaddleOCR 单层主引擎 + Vision API 兜底） |
 | `references/specification-quick-reference.md` | 规范条款速查表（含 Obsidian 搜索关键词） |
 | `references/html-report-template.html` | **审核报告 HTML 标准模板**（v1.9 新增，强制套用） |
-| `templates/audit-scope-template.html` | **项目审核范围清单模板**（v1.9 新增，大项目自动生成） |
 
 ---
 
@@ -1878,7 +1876,7 @@ d:\2026年7月22日 民航资料skill\audit_output\
 | 编号 | 升级项 | 说明 |
 |:---:|:---|:---|
 | 1 | **四阶段流水线** | 建数据底座 → 人工核对 → 正式审核 → 生成报告，阶段间硬闸门，通过 `index.json` 的 `stage` 字段衔接 |
-| 2 | **数据底座（build_foundation.py）** | 按项目维度建立结构化中间数据，JSON + MD 双格式，纯文件系统存储，零数据库依赖 |
+| 2 | **数据底座（build_foundation.py）** | 按项目维度建立结构化中间数据，JSON 三层结构（structured_rows + full_text + page_map），纯文件系统存储，零数据库依赖 |
 | 3 | **Web 数据编辑器（data-editor.html）** | 纯 HTML 文件，左图右表对照，双视图编辑（结构化 + 原始文本），零对话 token |
 | 4 | **项目总览仪表盘（project-dashboard.html）** | 从 index.json 读取状态，展示文件清单、OCR 进度、质量告警数、审核进度、断档检测 |
 | 5 | **增量更新（N-08）** | 基于 SHA256 哈希对比，仅处理新增或变更文件，已 OCR 过的文件不重复处理 |

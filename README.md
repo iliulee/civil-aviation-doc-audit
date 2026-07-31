@@ -11,7 +11,7 @@
 
 ```
 civil-aviation-doc-audit/
-├── SKILL.md                          # 主 Skill 文件（必读，v6.0）
+├── SKILL.md                          # 主 Skill 文件（必读，v7.0）
 ├── README.md                         # 本文件
 ├── requirements.txt                  # Python 依赖
 ├── install.ps1                       # 一键安装脚本（Python+PaddleOCR+Poppler+Tesseract）
@@ -36,11 +36,12 @@ civil-aviation-doc-audit/
 │   ├── document-templates.md         # 审核报告/日志模板
 │   └── html-report-template.html     # HTML 报告标准模板
 │
-├── scripts/                          # 21 个脚本
+├── scripts/                          # 25 个脚本
 │   ├── run_audit.py                  # Skill 入口（含 build/review/report/audit 子命令）
 │   ├── build_foundation.py           # 【v6.0】数据底座建立脚本（阶段 1）
 │   ├── review_audit.py               # 【v6.0】正式审核流水线脚本（阶段 3，多 Agent 并行）
 │   ├── audit_config.py               # 【v6.0】分部分项配置（5 专业 / 48 分部 / 115 分项）
+│   ├── signature_check.py             # 【v7.0】签字一致性检测（pHash + SSIM 双指标）
 │   ├── extract_pdf.py                # PDF 文字提取（PyMuPDF）
 │   ├── ocr_image.py                  # 扫描件 OCR（API-First：Vision API → PaddleOCR → Tesseract）
 │   ├── postprocess.py                # 文本后处理（全角转半角、PUA 替换）
@@ -57,22 +58,26 @@ civil-aviation-doc-audit/
 │   ├── rule_schema_validator.py      # 【v6.0】规则 JSON Schema 校验工具
 │   ├── feedback_store.py             # 【v6.0】反馈存储管理
 │   ├── feedback_analyzer.py          # 【v6.0】LLM 反馈分析管道（聚类/模式提取/候选规则）
-│   └── audit_memory.py               # 【v6.0】审核记忆流（JSONL 事件日志）
+│   ├── audit_memory.py               # 【v6.0】审核记忆流（JSONL 事件日志）
+│   ├── test_rule_engine.py           # 【v6.0】规则引擎单元测试（6/6 通过）
+│   ├── test_cross_unit_perf.py       # 【v6.0】跨单位性能测试（4/4 通过）
+│   └── test_rule_subsystem_integration.py  # 【v6.0】子系统全链路集成测试（7/7 通过）
 │
 ├── templates/                        # HTML 模板层
 │   ├── audit-scope-template.html     # 审核范围清单模板（v1.9）
-│   ├── data-editor.html              # 【v6.0】Web 数据编辑器（双视图，左图右表）
+│   ├── data-editor.html              # 【v7.0】Web 数据编辑器（三栏式，文档树 + 表格/原文/图纸三Tab）
 │   ├── project-dashboard.html        # 【v6.0】项目总览仪表盘
-│   ├── pdf.min.js                    # 【v6.0】PDF.js 离线预下载
+│   ├── rule-editor.html              # 【v6.0】离线规则编辑器（小白友好）
 │   ├── rule-manager.html             # 【v6.0】规则管理面板（4 标签页，可视化编辑器）
 │   ├── feedback-collector.html       # 【v6.0】反馈收集组件（漏审/误报）
-│   └── alignment-view.html           # 【v6.0】跨单位数据对齐视图
+│   ├── alignment-view.html           # 【v6.0】跨单位数据对齐视图
+│   ├── pdf.min.js                    # 【v6.0】PDF.js 离线预下载
+│   └── pdf.worker.min.js             # 【v6.0】PDF.js worker
 │
 ├── rules/                            # 【v6.0】规则文件库（93 条）
 │   ├── L1-iron/                      # L1 铁律（17 条）
-│   ├── L2-logic/                     # L2 逻辑一致性（73 条，含 IR-012/013/014 三条迁移自原铁律的几何/合计/多参数联检规则，LG-006/007 沉管/拔管时间完整性校验）
+│   ├── L2-logic/                     # L2 逻辑一致性（72 个文件，71 条 active + 1 条 deprecated，含 IR-012/013/014、CU-001~018、LG-006/007）
 │   ├── L3-business/                  # L3 业务合理性（5 条）
-│   ├── cross-unit/                   # 跨单位对照（18 条）
 │   ├── custom/draft/                 # 用户草稿
 │   ├── custom/incubator/             # 孵化区候选规则
 │   ├── reflections/                  # 反思报告
@@ -106,7 +111,7 @@ civil-aviation-doc-audit/
 | OCR 识别扫描件 | API-First：Vision API（7 家）→ PaddleOCR → Tesseract |
 | 规范逐条对账 | 对着 MH/T 5078 系列逐条比对，每条引规范编号和条款号 |
 | 数据质量检测 | 自动识别造假、涂改、异常模式（DQ-REPEAT/JUMP/ALTER/SELF） |
-| 逻辑一致性检查 | 10 个子项 57+ 条规则，含监理-施工方跨单位日期对照（9.10，17 条规则） |
+| 逻辑一致性检查 | 10 个子项 71 条规则，含监理-施工方跨单位日期对照（9.10，18 条 CU 规则） |
 | 运算规范审核 | 只做规范性检查，不做数值复算 |
 | 自动生成审核报告 | 三级输出：🔴Fatal / 🟡Sanity Check / 🔵Best Practice，含 SVG 图表 |
 | 知识分区红线 | 三条红线防幻觉，推理边界决策树，输出前自检清单 |
@@ -126,15 +131,15 @@ civil-aviation-doc-audit/
 
 ---
 
-## 规则管理子系统（v6.0 新增）
+## 规则管理子系统（v6.1 新增）
 
-93 条规则三层分级（L1铁律/L2逻辑一致性/L3业务合理性）+ 跨单位对照特殊作用域，形式化 JSON 存储，支持可视化管理、反馈闭环、LLM 自成长。
+93 条规则三层分级（L1铁律/L2逻辑一致性/L3业务合理性），形式化 JSON 存储，支持可视化管理、反馈闭环、LLM 自成长。
 
 ### 核心能力
 
 | 能力 | 说明 |
 |------|------|
-| **三层规则分级**（v6.0） | L1铁律(17)/L2逻辑一致性(73)/L3业务合理性(5)/跨单位对照(18)，共 93 条 |
+| **三层规则分级**（v6.0） | L1铁律(17)/L2逻辑一致性(71 active + 1 deprecated)/L3业务合理性(5)，共 93 条 |
 | **规则管理面板**（v6.0） | Web UI，多维度筛选、可视化规则编辑器、统计仪表盘、反思报告 |
 | **规则生命周期**（v6.0） | draft→testing→incubating→active，项目级/全局生效 |
 | **反馈闭环**（v6.0） | 漏审/误报反馈→LLM聚类分析→候选规则→管理员审批 |
@@ -276,7 +281,7 @@ python scripts/rule_admin.py --port 8765
 ┌──────────────────────────────────────────────────────────┐
 │ 阶段 1：建数据底座（全自动）                              │
 │   输入：项目文件夹 + 5 项前置信息                         │
-│   处理：扫描分类 → OCR → JSON+MD → 质量检测 → 混淆检测 →  │
+│   处理：扫描分类 → OCR → 三层JSON → 质量检测 → 混淆检测 →  │
 │         断档检测 → index.json → 复制 Web 模板             │
 │   闸门：所有文件 ocr_status = "completed"                │
 │   铁律：R-10（数据质量前置）、R-11（全列提取）、R-16      │
@@ -348,7 +353,7 @@ python scripts/rule_admin.py --port 8765
 | 6 | 拒为伪证背书 | 资料有伪造嫌疑必须明确指出 |
 | 7 | 留痕 | 每次审核生成日志文件 |
 | 8 | 阴 ≠ 阳 | 没发现问题需写"未发现不符合项" |
-| 9 | **逻辑矛盾专项** | 10 个子项 57+ 条规则，含监理-施工方跨单位对照 |
+| 9 | **逻辑矛盾专项** | 10 个子项 71 条规则，含监理-施工方跨单位对照 |
 | 10 | **数据质量前置** | 规范对账前先做 4 类数据质量检测 |
 | 11 | **全列提取** | 结果列+计算列一起读 |
 | 12 | **高程自洽** | 实长 = 桩顶高程 − 桩底高程 |
@@ -417,22 +422,19 @@ git clone https://github.com/iliulee/civil-aviation-doc-audit.git
 | v4.1 | 2026-07-28 | PaddleOCR 单层主引擎 + Vision API 第三层兜底 |
 | v5.0 | 2026-07-29 | API-First 策略 + 7 家 Vision API，彻底移除 RapidOCR |
 | **v6.0** | **2026-07-30** | **四阶段流水线 + 数据底座 + Web 编辑器 + 三级粒度多 Agent 并行 + 增量更新 + 断档检测** |
-| **v7.0** | **2026-07-31** | **三层JSON数据底座 + 文档关联图谱 + 签字一致性检测 + data-editor三栏升级** |
 | **v6.1** | **2026-07-31** | **规则管理子系统：93 条规则三层分级 + 反馈闭环 + LLM 自成长 + 跨单位对齐** |
 | **v6.1.1** | **2026-07-31** | **审核闸门强化（report 子命令增加 human_verified 检查）+ 字段别名映射（FIELD_ALIAS_MAP 解决中英文字段名不匹配）+ 沉管/拔管时间规则（LG-006/LG-007）** |
+| **v7.0** | **2026-07-31** | **三层JSON数据底座 + 文档关联图谱 + 签字一致性检测 + data-editor三栏升级** |
 
 ### v7.0 核心变更
 
-1. **四阶段流水线**：建数据底座 → 人工核对 → 正式审核 → 生成报告，阶段间硬闸门
-2. **数据底座（build_foundation.py）**：JSON+MD 双格式，纯文件系统存储，零数据库依赖
-3. **Web 数据编辑器（data-editor.html）**：纯 HTML，左图右表，双视图编辑，零对话 token
-4. **项目总览仪表盘（project-dashboard.html）**：从 index.json 读取状态，可视化展示进度
-5. **三级粒度多 Agent 并行**：professional/sub/item，与人工分部分项划分一致
-6. **增量更新（N-08）**：基于 SHA256 哈希对比，仅处理新增/变更文件
-7. **断档检测（N-09）**：桩号/日期/编号连续性检查
-8. **run_audit.py 新增 build/review/report 子命令**：统一入口，支持流水线全流程
-9. **SVG 图表生成**：审核报告含环形图 + 水平条形图，零外部依赖
-10. **审核前置检查闸门**：review_audit.py 自动检查 human_verified，铁律 R-02 落地
+1. **三层JSON数据底座**：structured_rows + full_text + page_map 三层结构，取消 MD 生成
+2. **差异化提取**：非扫描 PDF 直接文本提取（秒级），Excel 仅记元数据
+3. **文档关联图谱**：link_graph.json 自动构建，审核时精准加载关联文档
+4. **签字一致性检测**：pHash + SSIM 双指标，可选前置条件，报告内嵌对比图
+5. **data-editor 三栏升级**：文档树 + 表格/原文/图纸三 Tab，快捷键确认
+6. **human_verified 分层闸门**：非扫描件自动通过，扫描件强制人工核对
+7. **图纸截图**：含图 PDF 自动截图存 `_images/`，data-editor 可预览
 
 ### v6.1.1 核心变更（审核闸门与字段别名映射修复）
 
