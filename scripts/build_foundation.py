@@ -987,8 +987,11 @@ def _infer_missing_slots_by_math_chain(
             if v is not None:
                 col_vals.setdefault(idx, []).append(v)
 
+    # 未映射列范围取「已映射最大列 + 1」与「数据行最大列数」的较大者，
+    # 否则当已映射列索引非连续（如仅映射列1/2）时，实长列（列3+）会被排除
+    max_col = max((len(r) for r in raw_rows), default=0)
     unmapped_cols = [
-        i for i in range(max(list(header_map.keys()) + [0]) + 1)
+        i for i in range(max(max(list(header_map.keys()) + [0]) + 1, max_col))
         if i not in header_map and len(col_vals.get(i, [])) >= 3
     ]
     if not unmapped_cols:
