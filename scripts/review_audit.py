@@ -118,6 +118,110 @@ def severity_label(level: str) -> str:
     return {"fatal": "严重", "high": "高", "medium": "中", "low": "低", "suspicious": "存疑"}.get(level, level)
 
 
+# ========== v7.2 C4：文档级置信度存疑降级 ==========
+# 触发阈值：ocr_confidence < 0.85 时，将该文档触发的所有规则结论 severity 降级为 "suspicious"
+# 设计意图：糊件不卡流程（照常审、照常出报告），但所有结论标"存疑"并写入 R-20 待核实清单
+# 向后兼容：ocr_confidence 字段缺失时默认 1.0（不降级）
+OCR_CONFIDENCE_THRESHOLD = 0.85
+
+
+def _apply_ocr_confidence_downgrade(finding: Dict[str, Any], doc_meta: Dict[str, Any]) -> bool:
+    """
+    v7.2 C4：文档级置信度存疑降级。
+
+    如果文档 ocr_confidence < OCR_CONFIDENCE_THRESHOLD，将该 finding 的 severity/result
+    降级为 "suspicious"，并标记 _ocr_downgraded=True 供后续 R-20 待核实清单收集。
+
+    降级规则：
+      - ocr_confidence 缺失/非数值 → 默认 1.0，不降级（向后兼容）
+      - ocr_confidence >= 阈值 → 不降级
+      - result == "not_applicable" → 不降级（不适用项与 OCR 质量无关）
+      - 其他情况 → severity="suspicious", result="suspicious"，保留原始值于 _original_*
+
+    Args:
+        finding: 单条 finding 字典（会被原地修改）
+        doc_meta: 文档元数据（含 ocr_confidence 字段）
+
+    Returns:
+        True 如果触发了降级，False 如果未降级
+    """
+    ocr_confidence = doc_meta.get("ocr_confidence", 1.0)
+    if not isinstance(ocr_confidence, (int, float)):
+        ocr_confidence = 1.0
+
+    if ocr_confidence >= OCR_CONFIDENCE_THRESHOLD:
+        return False
+
+    # 不适用项与 OCR 质量无关，不降级
+    if finding.get("result") == "not_applicable":
+        return False
+
+    # 补全文档信息（rule_engine findings 默认无 doc_id/doc_file 字段）
+    if not finding.get("doc_id"):
+        finding["doc_id"] = doc_meta.get("id", "")
+    if not finding.get("doc_file"):
+        finding["doc_file"] = doc_meta.get("original_file", "")
+
+    # 保留原始 severity/result 以便追溯
+    if "_original_severity" not in finding:
+        finding["_original_severity"] = finding.get("severity", "")
+    if "_original_result" not in finding:
+        finding["_original_result"] = finding.get("result", "")
+
+    # 降级
+    finding["severity"] = "suspicious"
+    finding["result"] = "suspicious"
+    finding["_ocr_downgraded"] = True
+    finding["_ocr_confidence"] = ocr_confidence
+    return True
+
+
+def _collect_ocr_review_list(
+    findings: List[Dict[str, Any]],
+    docs: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    v7.2 C4：收集 OCR 低置信度触发的 R-20 待核实清单。
+
+    从所有 findings 中筛选 _ocr_downgraded=True 的项，组装为 R-20 待核实清单条目。
+    用于审核日志 summary.ocr_review_list 字段。
+
+    Args:
+        findings: 全部 findings（含 audit_checklist + rule_engine）
+        docs: 文档元数据列表（用于反查 doc 信息）
+
+    Returns:
+        ocr_review_list 列表，每条含 doc_id / doc_file / ocr_confidence /
+        checklist_id / rule_id / original_severity / finding / verification_path 等
+    """
+    review_list: List[Dict[str, Any]] = []
+    doc_by_id = {d.get("id", ""): d for d in docs}
+
+    for f in findings:
+        if not f.get("_ocr_downgraded"):
+            continue
+        doc_id = f.get("doc_id", "")
+        doc_meta = doc_by_id.get(doc_id, {})
+        review_list.append({
+            "doc_id": doc_id,
+            "doc_file": f.get("doc_file", doc_meta.get("original_file", "")),
+            "ocr_confidence": f.get("_ocr_confidence", doc_meta.get("ocr_confidence", 1.0)),
+            "checklist_id": f.get("checklist_id", ""),
+            "rule_id": f.get("rule_id", ""),
+            "rule_name": f.get("rule_name", "") or f.get("check_item", ""),
+            "original_severity": f.get("_original_severity", ""),
+            "original_result": f.get("_original_result", ""),
+            "current_severity": "suspicious",
+            "current_result": "suspicious",
+            "finding": f.get("finding", ""),
+            "evidence": f.get("evidence", ""),
+            "spec": f.get("spec", ""),
+            "needs_verification": True,
+            "verification_path": "人工核实 OCR 原始识别结果，确认数据准确性后重新审核",
+        })
+    return review_list
+
+
 # ========== 审核前置检查 ==========
 def check_human_verified(index: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """
@@ -365,6 +469,10 @@ def audit_checklist_item(
         finding["finding"] = "此项需 AI 结合规范原文和资料内容进行深度审核"
         finding["severity"] = "medium"
 
+    # v7.2 C4：文档级置信度存疑降级（ocr_confidence < 0.85 时降级为 suspicious）
+    # 不卡流程——糊件照常审、照常出报告，但结论标"存疑"并写入 R-20 待核实清单
+    _apply_ocr_confidence_downgrade(finding, doc_meta)
+
     return finding
 
 
@@ -513,6 +621,9 @@ def run_rule_engine(
     reporter = ViolationReporter()
 
     all_violations: List[Any] = []
+    # v7.2 C4：parallel list，跟踪每个 violation 对应的 doc_meta（用于置信度降级）
+    # SINGLE_DOC violations 填充对应 doc；CROSS_DOC/CROSS_UNIT violations 填充空 dict（不降级）
+    all_violation_doc_meta: List[Dict[str, Any]] = []
     single_doc_hits = 0
     cross_doc_hits = 0
     cross_unit_hits = 0
@@ -535,6 +646,9 @@ def run_rule_engine(
         }
         for rule in matched_rules:
             violations = single_checker.check(rule, doc_data)
+            # v7.2 C4：记录每个 violation 的 doc_meta（parallel list）
+            for _ in violations:
+                all_violation_doc_meta.append(doc)
             all_violations.extend(violations)
             single_doc_hits += len(violations)
 
@@ -548,6 +662,9 @@ def run_rule_engine(
         ]
         for rule in cross_doc_rules:
             violations = cross_doc_checker.check(rule, docs_data_list)
+            # v7.2 C4：CROSS_DOC 无单一文档上下文，不应用降级（空 dict 占位）
+            for _ in violations:
+                all_violation_doc_meta.append({})
             all_violations.extend(violations)
             cross_doc_hits += len(violations)
 
@@ -587,11 +704,25 @@ def run_rule_engine(
                         "rows": b_data.get("rows", []) if isinstance(b_data, dict) else [],
                     }
                     violations = cross_unit_checker.check(rule, a_doc_data, b_doc_data)
+                    # v7.2 C4：CROSS_UNIT 无单一文档上下文，不应用降级（空 dict 占位）
+                    for _ in violations:
+                        all_violation_doc_meta.append({})
                     all_violations.extend(violations)
                     cross_unit_hits += len(violations)
 
     # 转换为 findings
     findings = reporter.to_audit_findings(all_violations)
+
+    # v7.2 C4：对 SINGLE_DOC findings 应用 OCR 置信度降级
+    # findings 与 all_violations 顺序一致，通过 parallel list all_violation_doc_meta 匹配
+    # CROSS_DOC/CROSS_UNIT 的 doc_meta 为空 dict，_apply_ocr_confidence_downgrade 会自动跳过
+    ocr_downgraded_in_rule_engine = 0
+    for i, finding in enumerate(findings):
+        if i < len(all_violation_doc_meta):
+            doc_meta_for_finding = all_violation_doc_meta[i]
+            if doc_meta_for_finding:  # 仅 SINGLE_DOC 有 doc 上下文
+                if _apply_ocr_confidence_downgrade(finding, doc_meta_for_finding):
+                    ocr_downgraded_in_rule_engine += 1
 
     # 构建汇总统计
     by_level: Dict[str, int] = {}
@@ -640,6 +771,8 @@ def run_rule_engine(
         "cross_doc_hits": cross_doc_hits,
         "cross_unit_hits": cross_unit_hits,
         "testing_rules_tracked": testing_rules_tracked,
+        # v7.2 C4：OCR 置信度降级统计
+        "ocr_downgraded": ocr_downgraded_in_rule_engine,
     }
 
     return findings, summary
@@ -698,6 +831,26 @@ def generate_audit_log(
                 by_subdivision[key]["total"] += 1
                 by_subdivision[key][f["result"]] = by_subdivision[key].get(f["result"], 0) + 1
 
+    # v7.2 C4：收集 OCR 低置信度触发的 R-20 待核实清单
+    # 来源：all_findings（audit_checklist_item 降级）+ rule_engine_findings（SINGLE_DOC 降级）
+    # logic_findings 是跨文档检查，不与单一文档 OCR 置信度挂钩，不纳入降级清单
+    docs_in_index = index.get("documents", [])
+    ocr_review_list = _collect_ocr_review_list(
+        all_findings + rule_engine_findings,
+        docs_in_index,
+    )
+    ocr_review_count = len(ocr_review_list)
+    # 涉及的低置信度文档清单（去重）
+    ocr_review_docs = sorted(set(item["doc_file"] for item in ocr_review_list if item.get("doc_file")))
+    # 报告摘要提示语：有降级项时输出"以下结论基于低置信识别，需人工重点核实"
+    ocr_review_notice = ""
+    if ocr_review_count > 0:
+        docs_label = "、".join(ocr_review_docs) if ocr_review_docs else "若干文档"
+        ocr_review_notice = (
+            f"以下结论基于低置信识别（OCR 置信度 < {OCR_CONFIDENCE_THRESHOLD}），"
+            f"需人工重点核实：{docs_label}（共 {ocr_review_count} 项结论已降级为存疑）"
+        )
+
     if audit_id is None:
         audit_id = f"AU-{datetime.now().strftime('%Y%m%d')}-{len(index.get('audit_logs', [])) + 1:03d}"
 
@@ -722,6 +875,10 @@ def generate_audit_log(
             "documents_audited": len(index.get("documents", [])),
             "tasks_count": len(tasks) if tasks else 0,
             "rule_engine_findings_count": len(rule_engine_findings),
+            # v7.2 C4：OCR 低置信度待核实清单（R-20）
+            "ocr_review_count": ocr_review_count,
+            "ocr_review_list": ocr_review_list,
+            "ocr_review_notice": ocr_review_notice,
         },
         "tasks": tasks,
         "findings": all_findings,
@@ -754,6 +911,8 @@ def generate_audit_log(
         "pass": pass_count,
         "fail": fail_count,
         "suspicious": suspicious_count,
+        # v7.2 C4：记录 OCR 低置信度降级项数量（便于仪表盘快速展示）
+        "ocr_review_count": ocr_review_count,
     })
     index["audit_status"] = "completed"
     index["updated_at"] = now_iso()
@@ -762,23 +921,41 @@ def generate_audit_log(
 
 
 def _derive_overall_conclusion(findings: List[Dict[str, Any]]) -> str:
-    """根据所有发现推导总体结论。"""
+    """根据所有发现推导总体结论。
+
+    v7.2 C4：考虑 OCR 低置信度降级产生的存疑项。
+    当存在 OCR 降级项时，在结论中提示需优先核实原件。
+    """
     fatal_count = sum(1 for f in findings if f.get("severity") == "fatal")
     fail_count = sum(1 for f in findings if f["result"] == "fail")
     suspicious_count = sum(1 for f in findings if f["result"] == "suspicious")
     needs_ai_count = sum(1 for f in findings if f["result"] == "needs_ai")
+    # v7.2 C4：统计 OCR 低置信度降级的存疑项
+    ocr_downgraded_count = sum(1 for f in findings if f.get("_ocr_downgraded"))
 
     if fatal_count > 0:
         return "不合格 — 存在严重问题，需立即整改"
     if fail_count > 5:
         return "不合格 — 多项检查不通过，需系统性整改"
     if suspicious_count > 10:
+        # v7.2 C4：大量存疑项中如果包含 OCR 降级项，提示优先核实原件
+        if ocr_downgraded_count > 0:
+            return (
+                f"存疑 — 大量存疑项需人工确认后重新判定"
+                f"（其中 {ocr_downgraded_count} 项因 OCR 低置信度降级，建议优先核实原件）"
+            )
         return "存疑 — 大量存疑项需人工确认后重新判定"
     if needs_ai_count > len(findings) * 0.5:
         return "待深度审核 — 超过半数检查项需 AI 深度审核，请执行多 Agent 并行审核"
     if fail_count > 0:
         return "基本合格 — 存在少量不符合项，需整改后复核"
     if suspicious_count > 0:
+        # v7.2 C4：少量存疑项中如果包含 OCR 降级项，提示人工核实
+        if ocr_downgraded_count > 0:
+            return (
+                f"基本合格 — 存在存疑项，建议人工确认"
+                f"（其中 {ocr_downgraded_count} 项因 OCR 低置信度降级）"
+            )
         return "基本合格 — 存在存疑项，建议人工确认"
     return "合格 — 未发现不符合项"
 
@@ -790,6 +967,8 @@ def _generate_recommendations(findings: List[Dict[str, Any]]) -> List[str]:
     fail_items = [f for f in findings if f["result"] == "fail"]
     suspicious_items = [f for f in findings if f["result"] == "suspicious"]
     needs_ai_items = [f for f in findings if f["result"] == "needs_ai"]
+    # v7.2 C4：OCR 低置信度降级项
+    ocr_downgraded_items = [f for f in findings if f.get("_ocr_downgraded")]
 
     if fail_items:
         recommendations.append(f"共 {len(fail_items)} 项检查不通过，需逐项整改并附整改报告")
@@ -797,6 +976,17 @@ def _generate_recommendations(findings: List[Dict[str, Any]]) -> List[str]:
         recommendations.append(f"共 {len(suspicious_items)} 项存疑，建议人工现场核实后补充证据")
     if needs_ai_items:
         recommendations.append(f"共 {len(needs_ai_items)} 项需 AI 深度审核，建议执行多 Agent 并行审核模式")
+    # v7.2 C4：OCR 低置信度降级专项建议
+    if ocr_downgraded_items:
+        # 列出涉及的低置信度文档（去重）
+        ocr_docs = sorted(set(
+            f.get("doc_file", "") for f in ocr_downgraded_items if f.get("doc_file")
+        ))
+        docs_label = "、".join(ocr_docs) if ocr_docs else "若干文档"
+        recommendations.append(
+            f"共 {len(ocr_downgraded_items)} 项结论因 OCR 置信度低于 {OCR_CONFIDENCE_THRESHOLD} 已降级为存疑，"
+            f"涉及文档：{docs_label}；建议优先人工核实原件或重新扫描后重新审核"
+        )
 
     # 分类别建议
     categories = set(f.get("category", "") for f in fail_items + suspicious_items)
@@ -1069,6 +1259,10 @@ def run_review(
             "sub_division": doc.get("sub_division", ""),
             "pages": doc.get("pages", 0),
             "human_verified": doc.get("human_verified", False),
+            # v7.2 C4：传递 ocr_confidence / extraction_mode 用于置信度存疑降级
+            # 向后兼容：字段缺失时 ocr_confidence 默认 1.0，extraction_mode 默认 "ocr"
+            "ocr_confidence": doc.get("ocr_confidence", 1.0),
+            "extraction_mode": doc.get("extraction_mode", "ocr"),
         })
 
     if not docs:
@@ -1216,6 +1410,11 @@ def run_review(
     print(f"   待AI深度审核: {summary['needs_ai']}", file=sys.stderr)
     print(f"   不适用: {summary['not_applicable']}", file=sys.stderr)
     print(f"   规则引擎发现: {summary['rule_engine_findings_count']} 项", file=sys.stderr)
+    # v7.2 C4：输出 OCR 低置信度降级统计
+    ocr_review_count = summary.get("ocr_review_count", 0)
+    if ocr_review_count > 0:
+        print(f"   ⚠️  OCR 低置信度降级: {ocr_review_count} 项（已写入 R-20 待核实清单）", file=sys.stderr)
+        print(f"       {summary.get('ocr_review_notice', '')}", file=sys.stderr)
     print(f"\n   总体结论: {audit_log['conclusion']['overall']}", file=sys.stderr)
     print(f"   审核日志: {audit_log_dir / f'{audit_log['audit_id']}.json'}", file=sys.stderr)
 

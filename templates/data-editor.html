@@ -2284,7 +2284,7 @@ function renderTableTab() {
   }
 
   const rows = getRows(data);
-  const confBadge = confidenceBadge(doc.ocr_confidence);
+  const confBadge = confidenceBadge(doc.ocr_confidence, doc.extraction_mode);
   const alertCount = doc.quality_alerts || 0;
   const alertBadge = alertCount > 0 ? `<span class="badge badge-warning" title="质量告警数">${alertCount} 告警</span>` : '';
   const verifiedBadge = doc.human_verified ? '<span class="badge badge-verified">已核对</span>' : '<span class="badge badge-pending">待核对</span>';
@@ -2394,7 +2394,12 @@ function renderStructuredTable(tab, rows, data, doc, confBadge, alertBadge, veri
   if (saveBtnEl) saveBtnEl.addEventListener('click', saveTableChanges);
 }
 
-function confidenceBadge(conf) {
+function confidenceBadge(conf, extractionMode) {
+  // v7.2 C3: 电子表/非扫描PDF 显示"无需OCR"确定态，不谎报 OCR%
+  const mode = extractionMode || (state.currentDoc ? state.currentDoc.extraction_mode : '');
+  if (mode === 'meta_xlsx') return '<span class="badge badge-verified" title="电子表·已记元数据·无需OCR">电子表 · 无需OCR</span>';
+  if (mode === 'text_pdf') return '<span class="badge badge-verified" title="电子档·已抽文本·无需OCR">电子档 · 无需OCR</span>';
+  if (mode === 'docx') return '<span class="badge badge-verified" title="Word文档·已抽文本·无需OCR">Word · 无需OCR</span>';
   if (conf === null || conf === undefined || conf === 0) return '<span class="badge badge-failed">OCR 0% · 未识别</span>';
   const pct = Math.round(conf * 100);
   let cls = 'badge-failed', label = '低';
@@ -2520,7 +2525,7 @@ function renderTextTab() {
   state.totalPages = pageMap.length || 1;
   state.currentPage = 1;
 
-  const confBadge = confidenceBadge(doc.ocr_confidence);
+  const confBadge = confidenceBadge(doc.ocr_confidence, doc.extraction_mode);
 
   let header = `<div class="text-toolbar">
     ${confBadge}

@@ -359,6 +359,68 @@
       font-family: var(--font-mono);
     }
 
+    /* ========== Rescan Section (v7.2 C4) ========== */
+    .rescan-section {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .rescan-section .rescan-header {
+      padding: 10px 16px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--color-border);
+      display: flex; align-items: center; gap: 8px;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .rescan-header .rescan-title { color: var(--color-warning); }
+    .rescan-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--color-border-light);
+      font-size: var(--font-size-sm);
+    }
+    .rescan-item:last-child { border-bottom: none; }
+    .rescan-rank {
+      flex-shrink: 0;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--color-warning-light);
+      color: var(--color-warning);
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .rescan-text { flex: 1; color: var(--color-text-primary); min-width: 0; }
+    .rescan-text .rescan-file {
+      display: block;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .rescan-text .rescan-sub {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+    }
+    .rescan-meta {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      font-family: var(--font-mono);
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .rescan-empty {
+      padding: 16px;
+      text-align: center;
+      color: var(--color-text-tertiary);
+      font-size: var(--font-size-sm);
+    }
+
     /* ========== Actions Bar ========== */
     .actions-bar {
       display: flex; gap: 8px;
@@ -530,6 +592,17 @@
         断档检测 <span style="font-weight:400;color:var(--color-text-tertiary);">(<span id="gaps-count">0</span> 项)</span>
       </div>
       <div id="gaps-list"></div>
+    </div>
+
+    <!-- v7.2 C4: 建议重扫 TOP 10（仅对 extraction_mode="ocr" 的低置信度文件，纯文字提示不强制） -->
+    <div class="rescan-section" id="rescan-section" style="display:none;">
+      <div class="rescan-header">
+        <span class="rescan-title">建议重扫 TOP 10</span>
+        <span style="font-weight:400;color:var(--color-text-tertiary);text-transform:none;letter-spacing:0;">
+          （按 (1−OCR置信度) × 关联Fatal规则条数估算值 排序，仅提示不强制）
+        </span>
+      </div>
+      <div id="rescan-list"></div>
     </div>
 
     <!-- 操作区 -->
@@ -764,7 +837,14 @@
               <td>${d.doc_type || '—'}</td>
               <td class="mono">${d.pages || '—'}</td>
               <td>${d.ocr_engine || '—'}</td>
-              <td class="mono">${d.ocr_confidence ? (d.ocr_confidence * 100).toFixed(1) + '%' : '—'}</td>
+              <td class="mono">${(() => {
+                // v7.2 C3: 电子表/非扫描PDF 显示"免OCR"，不谎报 OCR%
+                const m = d.extraction_mode;
+                if (m === 'meta_xlsx') return '免OCR';
+                if (m === 'text_pdf') return '免OCR';
+                if (m === 'docx') return '免OCR';
+                return d.ocr_confidence ? (d.ocr_confidence * 100).toFixed(1) + '%' : '—';
+              })()}</td>
               <td>${statusBadge(ocrStatus)}</td>
               <td>${verifiedBadge(verifiedStatus)}</td>
               <td>
@@ -793,6 +873,72 @@
       } else {
         gapsSection.style.display = 'none';
       }
+
+      // v7.2 C4: 建议重扫 TOP 10
+      renderRescanTop10(docs);
+    }
+
+    // ========== v7.2 C4: 建议重扫 TOP 10 ==========
+    // 仅对 extraction_mode="ocr" 的文件（向后兼容：缺失字段默认 "ocr"）
+    // 按公式 (1 - ocr_confidence) * 该文件关联 Fatal 规则条数估算值 排序
+    // Fatal 规则条数估算值：用 quality_alerts + confusion_suspects 作为代理指标
+    //   （这两项是 build_foundation.py 检测到的数据质量告警和 OCR 混淆存疑数，
+    //    与 Fatal 规则触发概率正相关）
+    // 纯文字提示，不强制
+    function renderRescanTop10(docs) {
+      const rescanSection = document.getElementById('rescan-section');
+      const rescanList = document.getElementById('rescan-list');
+      if (!rescanSection || !rescanList) return;
+
+      // 仅筛选 extraction_mode="ocr" 的文件（向后兼容：缺失字段默认 "ocr"）
+      const ocrDocs = docs.filter(d => {
+        const mode = d.extraction_mode || 'ocr';
+        return mode === 'ocr';
+      });
+
+      // 筛选 ocr_confidence < 0.85 的文件（向后兼容：缺失字段默认 1.0）
+      const OCR_THRESHOLD = 0.85;
+      const lowConfDocs = ocrDocs.filter(d => {
+        const conf = typeof d.ocr_confidence === 'number' ? d.ocr_confidence : 1.0;
+        return conf < OCR_THRESHOLD;
+      });
+
+      if (lowConfDocs.length === 0) {
+        rescanSection.style.display = 'none';
+        return;
+      }
+
+      // 按公式排序：(1 - ocr_confidence) * 该文件关联 Fatal 规则条数估算值
+      // Fatal 规则条数估算值 = quality_alerts + confusion_suspects（数据质量问题数 + OCR 混淆存疑数）
+      const ranked = lowConfDocs.map(d => {
+        const conf = typeof d.ocr_confidence === 'number' ? d.ocr_confidence : 1.0;
+        const fatalEstimate = (d.quality_alerts || 0) + (d.confusion_suspects || 0);
+        const score = (1 - conf) * fatalEstimate;
+        return { doc: d, score, fatalEstimate, conf };
+      }).sort((a, b) => b.score - a.score).slice(0, 10);
+
+      rescanSection.style.display = 'block';
+      rescanList.innerHTML = ranked.map((item, idx) => {
+        const d = item.doc;
+        const confPct = (item.conf * 100).toFixed(1);
+        const fileName = d.original_file || d.id || '—';
+        const docType = d.doc_type || '未知类型';
+        const professional = d.professional || '';
+        const subLine = [docType, professional].filter(Boolean).join(' · ');
+        return `
+          <div class="rescan-item">
+            <span class="rescan-rank">${idx + 1}</span>
+            <span class="rescan-text">
+              <span class="rescan-file" title="${fileName}">${fileName}</span>
+              <span class="rescan-sub">${subLine}</span>
+            </span>
+            <span class="rescan-meta">
+              OCR ${confPct}%<br>
+              估算Fatal ${item.fatalEstimate} · 评分 ${item.score.toFixed(2)}
+            </span>
+          </div>
+        `;
+      }).join('');
     }
 
     function statusBadge(status) {

@@ -69,13 +69,9 @@ DEFAULT_ALLOWED_EXTENSIONS = {
 
 
 # ========== 专业/资料分类规则 ==========
-PROFESSIONAL_RULES: List[Tuple[List[str], str]] = [
-    (["场道", "土方", "碎石桩", "换填", "混凝土", "跑道", "滑行道"], "01_场道工程"),
-    (["空管", "雷达", "VOR", "DME", "ILS", "航向"], "02_空管工程"),
-    (["助航", "灯光", "灯箱", "标记牌", "调光器", "PAPI"], "03_助航设施"),
-    (["弱电", "监控", "安防", "网络", "信息集成"], "04_弱电系统"),
-    (["供油", "储油", "管线", "油罐", "加油"], "05_供油工程"),
-]
+# v7.2 C1: PROFESSIONAL_RULES 硬编码表已删除，改为运行时聚合三真相源
+# 真相源：references/classification-terms.json + rules trigger_when.doc_type + FIELD_ALIAS_MAP
+# 聚合函数见 aggregate_classification_terms()，在 classify_file 中调用
 
 REFERENCE_KEYWORDS = ["变更", "设计变更", "变更通知", "变更图纸"]
 GENERIC_KEYWORDS = {
@@ -85,25 +81,81 @@ GENERIC_KEYWORDS = {
     "联系单": ("通用资料", "工程联系单", "工程联系单"),
 }
 
-# 碎石桩表头关键词 → 字段名
-PILE_HEADER_KEYWORDS: Dict[str, List[str]] = {
-    "pile_no": ["桩号", "序号/桩", "序号", "桩"],
-    "design_length": ["设计桩长", "设计长度"],
-    "diameter": ["桩径", "直径"],
-    "bottom_elev": ["桩底高程", "底高程"],
-    "top_elev": ["桩顶高程", "顶高程"],
-    "actual_length": ["实长", "实际桩长", "实际长度"],
-    "current": ["密实电流", "电流"],
-    "re_penetration": ["反插次数", "反插"],
-    "volume": ["灌入量", "灌入"],
-    "filling_coeff": ["充盈系数"],
-    "verticality": ["竖直度", "垂直度"],
-    "start_time": ["开始时间", "开钻时间", "起始时间", "沉管开始"],
-    "end_time": ["结束时间", "终钻时间", "终止时间", "拔管结束"],
-    "sink_time": ["沉管时间", "沉管时长", "沉管开始时间"],
-    "pull_time": ["拔管时间", "拔管时长", "拔管结束时间"],
-    "remark": ["备注", "说明"],
+# v7.2 C5: 桩基表头关键词——从 FIELD_ALIAS_MAP 反向聚合（单一真相源）
+# 额外的 OCR 专用别名（FIELD_ALIAS_MAP 中没有的）在此补充
+_OCR_EXTRA_ALIASES: Dict[str, List[str]] = {
+    "pile_no": ["序号/桩", "序号"],
+    "start_time": ["沉管开始"],
+    "end_time": ["拔管结束"],
+    "sink_time": ["沉管时长", "沉管开始时间"],
+    "pull_time": ["拔管时长", "拔管结束时间"],
 }
+
+_PILE_SLOT_SCHEMA_CACHE: Optional[Dict[str, Any]] = None
+
+
+def get_pile_slot_schema() -> Dict[str, Any]:
+    """v7.2 C5: 从 FIELD_ALIAS_MAP 反向聚合桩基槽位 schema。
+    v7.2 V-70: 同时读取 header-aliases.json 中 status=active 的候选别名（表头自成长）。
+    返回: {slot: {aliases: [...], data_type: str, num_range_hint: str}}
+    """
+    global _PILE_SLOT_SCHEMA_CACHE
+    if _PILE_SLOT_SCHEMA_CACHE is not None:
+        return _PILE_SLOT_SCHEMA_CACHE
+
+    schema: Dict[str, Any] = {}
+
+    # 从 FIELD_ALIAS_MAP 反向聚合
+    try:
+        from rule_engine import FIELD_ALIAS_MAP  # noqa: E402
+        for cn_name, en_slot in FIELD_ALIAS_MAP.items():
+            schema.setdefault(en_slot, {"aliases": [], "data_type": "str", "num_range_hint": ""})
+            schema[en_slot]["aliases"].append(cn_name)
+    except ImportError:
+        pass
+
+    # 补充 OCR 专用别名
+    for slot, extra_aliases in _OCR_EXTRA_ALIASES.items():
+        schema.setdefault(slot, {"aliases": [], "data_type": "str", "num_range_hint": ""})
+        for alias in extra_aliases:
+            if alias not in schema[slot]["aliases"]:
+                schema[slot]["aliases"].append(alias)
+
+    # v7.2 V-70: 读取 header-aliases.json 中 status=active 的候选别名（表头自成长回流）
+    header_aliases_file = SKILL_DIR / "references" / "header-aliases.json"
+    header_data = load_json(header_aliases_file) or {}
+    for slot, slot_data in header_data.get("slots", {}).items():
+        schema.setdefault(slot, {"aliases": [], "data_type": "str", "num_range_hint": ""})
+        for alias in slot_data.get("aliases", []):
+            if alias not in schema[slot]["aliases"]:
+                schema[slot]["aliases"].append(alias)
+        for cand in slot_data.get("candidates", []):
+            if cand.get("status") == "active" and cand.get("alias") not in schema[slot]["aliases"]:
+                schema[slot]["aliases"].append(cand["alias"])
+
+    # 数据类型提示
+    numeric_slots = {"design_length", "diameter", "bottom_elev", "top_elev", "actual_length",
+                     "current", "re_penetration", "volume", "filling_coeff", "verticality"}
+    time_slots = {"start_time", "end_time", "sink_time", "pull_time"}
+    for slot in schema:
+        if slot in numeric_slots:
+            schema[slot]["data_type"] = "number"
+        elif slot in time_slots:
+            schema[slot]["data_type"] = "time"
+
+    _PILE_SLOT_SCHEMA_CACHE = schema
+    return schema
+
+
+def _get_pile_header_keywords() -> Dict[str, List[str]]:
+    """v7.2 C5: 从槽位 schema 获取表头关键词映射（替代硬编码 PILE_HEADER_KEYWORDS）。"""
+    schema = get_pile_slot_schema()
+    return {slot: data["aliases"] for slot, data in schema.items()}
+
+
+# 碎石桩表头关键词 → 字段名（v7.2 C5: 从 FIELD_ALIAS_MAP 运行时聚合，不再硬编码）
+# 保留变量名兼容已有代码，但值在首次使用时从 get_pile_slot_schema() 聚合
+PILE_HEADER_KEYWORDS: Dict[str, List[str]] = {}  # 延迟初始化，使用前调用 _get_pile_header_keywords()
 
 PILE_FIELDS = [
     "pile_no", "design_length", "diameter", "bottom_elev", "top_elev",
@@ -241,45 +293,150 @@ def _has_formal_records(rel_files: List[Path]) -> bool:
     return False
 
 
+# ========== v7.2 C1: 分类词表运行时聚合 ==========
+_AGGREGATED_TERMS: Optional[Dict[str, List[Dict[str, str]]]] = None
+
+
+def aggregate_classification_terms() -> Dict[str, List[Dict[str, str]]]:
+    """v7.2 C1: 从三真相源运行时聚合分类词表。
+
+    真相源：
+    1. references/classification-terms.json（结构化术语表）
+    2. rules/**/*.json 的 trigger_when.doc_type + applies_to.professional
+    3. rule_engine.py 的 FIELD_ALIAS_MAP（桩基字段名→场道工程弱信号）
+
+    返回: {keyword: [{prof, weight, source}, ...]}
+    """
+    terms: Dict[str, List[Dict[str, str]]] = {}
+
+    # Source 1: classification-terms.json
+    terms_file = SKILL_DIR / "references" / "classification-terms.json"
+    terms_data = load_json(terms_file) or {}
+    for prof, data in terms_data.get("terms", {}).items():
+        for kw in data.get("core", []):
+            terms.setdefault(kw, []).append({"prof": prof, "weight": "core", "source": "terms"})
+        for kw in data.get("weak", []):
+            terms.setdefault(kw, []).append({"prof": prof, "weight": "weak", "source": "terms"})
+    # candidates（自成长候选词条）
+    for cand in terms_data.get("candidates", []):
+        if cand.get("status") == "active":
+            prof = cand.get("prof", "")
+            kw = cand.get("keyword", "")
+            if prof and kw:
+                terms.setdefault(kw, []).append({"prof": prof, "weight": "core", "source": "candidate"})
+
+    # Source 2: rules trigger_when.doc_type + applies_to.professional
+    rules_dir = SKILL_DIR / "rules"
+    if rules_dir.exists():
+        for rule_file in rules_dir.rglob("*.json"):
+            if rule_file.name in ("registry.json", "rule-schema.json", "registry-schema.json"):
+                continue
+            try:
+                rule = json.loads(rule_file.read_text(encoding="utf-8"))
+                doc_types = rule.get("trigger_when", {}).get("doc_type", [])
+                profs = rule.get("applies_to", {}).get("professional", [])
+                for dt in doc_types:
+                    if dt == "*":
+                        continue
+                    for prof in profs:
+                        if prof == "*":
+                            continue
+                        terms.setdefault(dt, []).append({"prof": prof, "weight": "core", "source": "rules"})
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    # Source 3: FIELD_ALIAS_MAP（桩基字段名 → 场道工程弱信号）
+    try:
+        from rule_engine import FIELD_ALIAS_MAP  # noqa: E402
+        pile_keywords = ["桩", "高程", "灌入", "电流", "沉管", "拔管", "充盈", "反插"]
+        for cn_name in FIELD_ALIAS_MAP:
+            if any(kw in cn_name for kw in pile_keywords):
+                terms.setdefault(cn_name, []).append(
+                    {"prof": "01_场道工程", "weight": "weak", "source": "field_alias"}
+                )
+    except ImportError:
+        pass
+
+    return terms
+
+
+def get_aggregated_terms() -> Dict[str, List[Dict[str, str]]]:
+    """获取聚合分类词表（带缓存）。"""
+    global _AGGREGATED_TERMS
+    if _AGGREGATED_TERMS is None:
+        _AGGREGATED_TERMS = aggregate_classification_terms()
+    return _AGGREGATED_TERMS
+
+
 def classify_file(
     rel_path: Path,
     excluded_set: set,
     has_formal_records: bool = False,
-) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
+) -> Tuple[str, Optional[str], Optional[str], Optional[str], str, float]:
     """
-    对单个文件进行分类。
+    v7.2 C1: 对单个文件进行分类（三级判定：关键词聚合 → LLM语义(P2) → 人工确认）。
 
     返回：
-        (classification, professional, subcategory, doc_type)
+        (classification, professional, subcategory, doc_type, classification_source, classification_confidence)
         classification ∈ {"audited_files", "reference_files", "excluded_files"}
+        classification_source ∈ {"terms", "rules", "field_alias", "generic_keywords", "reference_keywords", "weak", "weak_multi", "multi_hit", "default", "excluded"}
+        classification_confidence ∈ [0.0, 1.0]
     """
     name = rel_path.name
 
     # 1. 用户明确排除
     if name in excluded_set or str(rel_path) in excluded_set:
-        return "excluded_files", None, None, None
+        return "excluded_files", None, None, None, "excluded", 1.0
 
     # 2. 依据文件（设计变更类）
     for kw in REFERENCE_KEYWORDS:
         if kw in name:
-            return "reference_files", "依据文件", "设计依据", "设计变更文件"
+            return "reference_files", "依据文件", "设计依据", "设计变更文件", "reference_keywords", 1.0
 
     # 3. 通用资料
     for kw, (prof, sub, doc) in GENERIC_KEYWORDS.items():
         if kw in name:
-            # 施工日志：如果项目中同时存在正式施工记录/检验批，降级为依据文件
             if kw == "施工日志" and has_formal_records:
-                return "reference_files", "依据文件", "施工日志", "施工日志"
-            return "audited_files", prof, sub, doc
+                return "reference_files", "依据文件", "施工日志", "施工日志", "generic_keywords", 1.0
+            return "audited_files", prof, sub, doc, "generic_keywords", 1.0
 
-    # 4. 五大专业匹配
-    for kws, prof in PROFESSIONAL_RULES:
-        if any(kw in name for kw in kws):
+    # 4. v7.2 C1: 五大专业匹配（运行时聚合词表，替代硬编码 PROFESSIONAL_RULES）
+    aggregated = get_aggregated_terms()
+    hits: Dict[str, List[Dict[str, str]]] = {}  # prof → list of hit entries
+    for kw, entries in aggregated.items():
+        if kw in name:
+            for entry in entries:
+                prof = entry["prof"]
+                hits.setdefault(prof, []).append(entry)
+
+    if hits:
+        strong_profs = [(p, e) for p, e in hits.items() if any(x["weight"] == "core" for x in e)]
+        weak_profs = [(p, e) for p, e in hits.items() if not any(x["weight"] == "core" for x in e)]
+
+        if len(strong_profs) == 1:
+            # 单专业 core 强命中 → 直接分类
+            prof, entries = strong_profs[0]
             sub, doc = detect_subcategory_and_doctype(name, prof)
-            return "audited_files", prof, sub, doc
+            source = next((e["source"] for e in entries if e["weight"] == "core"), "aggregated")
+            return "audited_files", prof, sub, doc, source, 0.9
+        elif len(strong_profs) > 1:
+            # 多专业 core 命中 → 取首个，标待确认
+            prof, entries = strong_profs[0]
+            sub, doc = detect_subcategory_and_doctype(name, prof)
+            return "audited_files", prof, sub, doc, "multi_hit", 0.6
+        elif len(weak_profs) == 1:
+            # 单专业 weak 命中
+            prof, entries = weak_profs[0]
+            sub, doc = detect_subcategory_and_doctype(name, prof)
+            return "audited_files", prof, sub, doc, "weak", 0.6
+        elif len(weak_profs) > 1:
+            # 多专业 weak 命中 → 取首个，标待确认
+            prof, entries = weak_profs[0]
+            sub, doc = detect_subcategory_and_doctype(name, prof)
+            return "audited_files", prof, sub, doc, "weak_multi", 0.4
 
     # 5. 默认：作为通用资料被审核
-    return "audited_files", "通用资料", "其他", "其他资料"
+    return "audited_files", "通用资料", "其他", "其他资料", "default", 0.3
 
 
 def detect_subcategory_and_doctype(name: str, professional: str) -> Tuple[str, str]:
@@ -350,6 +507,41 @@ def detect_subcategory_and_doctype(name: str, professional: str) -> Tuple[str, s
         return "施工记录", "供油工程"
 
     return "其他", "其他资料"
+
+
+# ========== v7.2 C2: 图纸角色解耦 ==========
+# is_drawing 标签：判断文件是否为图纸类
+_DRAWING_KEYWORDS = [
+    "平面图", "布置图", "设计图", "竣工图", "施工图", "剖面图",
+    "断面图", "详图", "图纸", "示意图", "总平面", "管线图", "结构图",
+]
+
+
+def detect_is_drawing(filename: str) -> bool:
+    """判断文件名是否表明这是一张图纸。"""
+    name = filename.lower()
+    return any(kw in name for kw in _DRAWING_KEYWORDS)
+
+
+def infer_doc_role(is_drawing: bool, stage: str, classification: str) -> str:
+    """根据 is_drawing + 项目阶段 + 分类，推断文档角色。
+    返回: "reference" | "audited" | "general"
+    - 施工阶段图纸 → reference（作为依据）
+    - 竣工阶段图纸 → audited（需审核）
+    - 非图纸 → 跟随 classification
+    """
+    if is_drawing:
+        # 竣工阶段（含"竣工""移交"等关键词）→ 图纸需审核
+        if any(kw in stage for kw in ["竣工", "移交", "验收移交"]):
+            return "audited"
+        # 其他阶段（施工/分部分项验收）→ 图纸作为依据
+        return "reference"
+    # 非图纸：跟随原有 classification
+    if classification == "reference_files":
+        return "reference"
+    if classification == "audited_files":
+        return "audited"
+    return "general"
 
 
 # ========== OCR / PDF 提取 ==========
@@ -491,22 +683,242 @@ def coerce_pile_value(field: str, raw: str) -> Any:
         return raw
 
 
-def detect_header(line: str) -> Optional[Dict[int, str]]:
-    """检测表头行，返回列索引 → 字段名的映射。"""
-    # 用 2 个以上空格或制表符分隔，更符合 OCR 表格文本特点
+# v7.2 C5: 模块级变量记录最近一次表头识别的原始 tokens（供 extract_header_info 使用）
+_LAST_HEADER_RAW_TOKENS: Optional[List[str]] = None
+
+
+def _tokenize_table_line(line: str) -> List[str]:
+    """表头行/数据行统一分词：优先多空格/制表符分隔，回退单空格。"""
     tokens = re.split(r"[\t\s]{2,}", line.strip())
     if len(tokens) < 3:
         tokens = line.strip().split()
+    return tokens
+
+
+def detect_header(line: str) -> Optional[Dict[int, str]]:
+    """v7.2 C5: 表头检测——三路融合之第一路（关键词匹配）。
+
+    从 FIELD_ALIAS_MAP 聚合的槽位 schema 运行时获取关键词（修复原空字典 bug）。
+    返回列索引 → 字段名映射；同时把原始 tokens 写入模块级变量供事后验证使用。
+    """
+    global _LAST_HEADER_RAW_TOKENS
+    keywords = _get_pile_header_keywords()  # 运行时聚合，替代空字典 PILE_HEADER_KEYWORDS
+    tokens = _tokenize_table_line(line)
+    _LAST_HEADER_RAW_TOKENS = tokens
     mapping: Dict[int, str] = {}
     for idx, tok in enumerate(tokens):
-        for field, kws in PILE_HEADER_KEYWORDS.items():
+        for field, kws in keywords.items():
             if any(kw in tok for kw in kws):
-                # 若同一列命中多个关键词，以首次为准（理论上不会）
                 if idx not in mapping:
                     mapping[idx] = field
                 break
-    # 至少识别到 4 列才认为是有效表头
     return mapping if len(mapping) >= 4 else None
+
+
+def _validate_header_by_column_features(
+    rows: List[Dict[str, Any]],
+    header_map: Dict[int, str],
+) -> Tuple[bool, float, Dict[str, str]]:
+    """v7.2 C5: 三路融合之第二路——列特征验证。
+
+    根据每列数据类型/范围验证 header_map 是否合理：
+    - 数值列（design_length/diameter/actual_length 等）应为数字
+    - 时间列（start_time/end_time）应为时间格式或可识别字符串
+    - 桩号列（pile_no）应为 Z/D 开头或纯数字
+
+    返回: (是否通过, 置信度[0-1], 各列问题说明)
+    """
+    schema = get_pile_slot_schema()
+    numeric_slots = {s for s, d in schema.items() if d["data_type"] == "number"}
+    time_slots = {s for s, d in schema.items() if d["data_type"] == "time"}
+
+    issues: Dict[str, str] = {}
+    if not rows:
+        return True, 0.5, issues  # 无数据行无法验证，给中等置信度
+
+    sample_size = min(len(rows), 10)
+    sample = rows[:sample_size]
+    total_checks = 0
+    passed_checks = 0
+
+    for idx, field in header_map.items():
+        values = [r.get(field) for r in sample if r.get(field) is not None]
+        if not values:
+            continue
+        total_checks += 1
+
+        if field in numeric_slots:
+            num_count = sum(1 for v in values if isinstance(v, (int, float)))
+            if num_count / len(values) >= 0.7:
+                passed_checks += 1
+            else:
+                issues[field] = f"数值列 {field} 仅 {num_count}/{len(values)} 为数字"
+        elif field in time_slots:
+            time_count = sum(
+                1 for v in values
+                if isinstance(v, str) and re.match(r"^\d{1,2}:\d{2}", v.strip())
+            )
+            if time_count / len(values) >= 0.6:
+                passed_checks += 1
+            else:
+                issues[field] = f"时间列 {field} 仅 {time_count}/{len(values)} 为时间格式"
+        elif field == "pile_no":
+            pile_count = sum(
+                1 for v in values
+                if isinstance(v, str) and re.match(r"^[ZzDd]?\d", v.strip())
+            )
+            if pile_count / len(values) >= 0.7:
+                passed_checks += 1
+            else:
+                issues[field] = f"桩号列格式异常"
+        else:
+            passed_checks += 1  # 非数值/时间/桩号列不验证
+
+    if total_checks == 0:
+        return True, 0.5, issues
+    confidence = passed_checks / total_checks
+    return confidence >= 0.7, confidence, issues
+
+
+def _validate_header_by_math_chain(
+    rows: List[Dict[str, Any]],
+    header_map: Dict[int, str],
+) -> Tuple[bool, float, List[str]]:
+    """v7.2 C5: 三路融合之第三路——数学链约束验证。
+
+    核心约束：实长 = 桩顶高程 − 桩底高程（容差 ±0.1m）
+    若 header_map 中同时存在这三列，验证约束是否成立。
+    返回: (是否通过, 置信度[0-1], 失败样本说明列表)
+    """
+    field_set = set(header_map.values())
+    required = {"actual_length", "top_elev", "bottom_elev"}
+    if not required.issubset(field_set):
+        return True, 0.6, []  # 缺少必要列，无法验证，给中等置信度不阻断
+
+    sample = [r for r in rows[:20] if all(r.get(f) is not None for f in required)]
+    if len(sample) < 3:
+        return True, 0.6, []  # 样本不足
+
+    failures: List[str] = []
+    passed = 0
+    for r in sample:
+        try:
+            actual = float(r["actual_length"])
+            top = float(r["top_elev"])
+            bottom = float(r["bottom_elev"])
+            computed = top - bottom
+            if abs(actual - computed) <= 0.1 + 1e-9:  # 加 epsilon 避免浮点误差
+                passed += 1
+            else:
+                failures.append(
+                    f"桩号 {r.get('pile_no','?')}: 实长={actual}, 桩顶-桩底={computed:.2f}"
+                )
+        except (ValueError, TypeError):
+            continue
+
+    total = passed + len(failures)
+    if total == 0:
+        return True, 0.6, []
+    confidence = passed / total
+    return confidence >= 0.7, confidence, failures[:3]  # 最多记录3条样本
+
+
+def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
+    """v7.2 C5: 综合表头识别——三路融合 + 人工确认入口。
+
+    返回结构：
+        {
+            "raw_headers": [...],          # 原始表头 tokens
+            "header_mapping": {...},       # 列索引(字符串) → 字段名
+            "header_source": "keyword|heuristic|none",
+            "header_confidence": 0.0~1.0,
+            "math_chain_verified": bool,
+            "math_chain_failures": [...],
+            "column_feature_issues": {...},
+            "needs_human_confirm": bool,   # 置信度<0.7 时为 True
+        }
+    """
+    global _LAST_HEADER_RAW_TOKENS
+    lower = doc_type.lower()
+    is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
+    if not is_pile:
+        return {
+            "raw_headers": [],
+            "header_mapping": {},
+            "header_source": "none",
+            "header_confidence": 1.0,
+            "math_chain_verified": True,
+            "math_chain_failures": [],
+            "column_feature_issues": {},
+            "needs_human_confirm": False,
+        }
+
+    # 找到表头行
+    header_map: Optional[Dict[int, str]] = None
+    raw_tokens: List[str] = []
+    rows_for_validation: List[Dict[str, Any]] = []
+    page = 1
+    line_no = 1
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        m = re.match(r"===\s*第\s*(\d+)\s*页\s*===", line)
+        if m:
+            page = int(m.group(1))
+            header_map = None
+            continue
+        if header_map is None:
+            header_map = detect_header(line)
+            if header_map:
+                raw_tokens = list(_LAST_HEADER_RAW_TOKENS or [])
+                continue
+        if header_map:
+            record = parse_pile_data_line(line, header_map, page, line_no)
+            if record:
+                rows_for_validation.append(record)
+                line_no += 1
+                if len(rows_for_validation) >= 30:
+                    break
+
+    if not header_map:
+        return {
+            "raw_headers": [],
+            "header_mapping": {},
+            "header_source": "none",
+            "header_confidence": 0.0,
+            "math_chain_verified": False,
+            "math_chain_failures": [],
+            "column_feature_issues": {},
+            "needs_human_confirm": True,
+        }
+
+    # 第二路：列特征验证
+    feat_ok, feat_conf, feat_issues = _validate_header_by_column_features(
+        rows_for_validation, header_map
+    )
+    # 第三路：数学链约束
+    math_ok, math_conf, math_failures = _validate_header_by_math_chain(
+        rows_for_validation, header_map
+    )
+
+    # 综合置信度：关键词匹配(0.5) + 列特征(0.3) + 数学链(0.2)
+    # 关键词匹配本身视为 1.0（已识别）
+    confidence = 0.5 + 0.3 * feat_conf + 0.2 * math_conf
+    confidence = min(confidence, 1.0)
+
+    needs_confirm = confidence < 0.7
+
+    return {
+        "raw_headers": raw_tokens,
+        "header_mapping": {str(k): v for k, v in header_map.items()},
+        "header_source": "keyword",
+        "header_confidence": round(confidence, 3),
+        "math_chain_verified": math_ok,
+        "math_chain_failures": math_failures,
+        "column_feature_issues": feat_issues,
+        "needs_human_confirm": needs_confirm,
+    }
 
 
 def parse_pile_data_line(line: str, header_map: Dict[int, str], page: int, line_no: int) -> Optional[Dict[str, Any]]:
@@ -1311,19 +1723,32 @@ def main() -> int:
     for rel in rel_files:
       try:
         abs_path = project_path / rel
-        classification, professional, subcategory, doc_type = classify_file(rel, excluded_set, has_formal_records)
+        classification, professional, subcategory, doc_type, classification_source, classification_confidence = classify_file(rel, excluded_set, has_formal_records)
+
+        # v7.2 C2: 图纸角色解耦——is_drawing 标签与 doc_role 正交
+        is_drawing = detect_is_drawing(rel.name)
+        project_stage = preconditions.get("stage", "分部分项验收")
+        doc_role = infer_doc_role(is_drawing, project_stage, classification)
 
         if classification == "excluded_files":
             file_classification["excluded_files"].append(str(rel))
             print(f"  [排除] {rel.name}", file=sys.stderr)
             continue
 
-        if classification == "reference_files":
+        # 图纸无论角色如何都需生成 doc 条目（记录 is_drawing），不跳过
+        if is_drawing:
+            if doc_role == "reference":
+                file_classification["reference_files"].append(str(rel))
+                print(f"  [图纸·依据] {rel.name}", file=sys.stderr)
+            else:
+                file_classification["audited_files"].append(str(rel))
+                print(f"  [图纸·审核] {rel.name}", file=sys.stderr)
+        elif classification == "reference_files":
             file_classification["reference_files"].append(str(rel))
             print(f"  [依据] {rel.name}", file=sys.stderr)
             continue
-
-        file_classification["audited_files"].append(str(rel))
+        else:
+            file_classification["audited_files"].append(str(rel))
 
         # 格式识别
         sniff = sniff_document(str(abs_path))
@@ -1334,7 +1759,24 @@ def main() -> int:
         if file_type in ("PNG", "JPG", "JPEG", "BMP", "TIFF", "TIF"):
             file_type = "IMAGE"
 
-        print(f"\n📄 {rel.name} | type={file_type} | pages={pages} | scanned={is_scanned} | method={method}", file=sys.stderr)
+        # v7.2 C3: extraction_mode 字段——区分数据提取方式，避免电子表谎报 OCR%
+        _sniff_method = sniff.get("extraction_method", "unknown")
+        if file_type == "IMAGE":
+            extraction_mode = "image"
+        elif _sniff_method == "ocr":
+            extraction_mode = "ocr"
+        elif _sniff_method == "pymupdf":
+            extraction_mode = "text_pdf"
+        elif _sniff_method == "docx":
+            extraction_mode = "docx"
+        elif _sniff_method == "excel":
+            extraction_mode = "meta_xlsx"
+        elif _sniff_method == "text":
+            extraction_mode = "text_pdf"
+        else:
+            extraction_mode = "unknown"
+
+        print(f"\n📄 {rel.name} | type={file_type} | pages={pages} | scanned={is_scanned} | method={method} | mode={extraction_mode}", file=sys.stderr)
 
         # 增量模式：已存在且未变更则跳过
         existing_doc = find_doc_by_original(index, str(rel))
@@ -1523,9 +1965,14 @@ def main() -> int:
                 "original_file": str(rel),
                 "file_type": "XLSX",
                 "is_scanned": False,
+                "extraction_mode": extraction_mode,
+                "is_drawing": is_drawing,
+                "doc_role": doc_role,
                 "doc_type": doc_type,
                 "professional": professional,
                 "subcategory": subcategory,
+                "classification_source": classification_source,
+                "classification_confidence": classification_confidence,
                 "subdivision_code": None,
                 "pages": len(wb.sheetnames) if 'wb' in dir() else 1,
                 "ocr_status": "completed",
@@ -1560,6 +2007,9 @@ def main() -> int:
         # 构建 page_map（三层结构之 Layer 3）
         page_map = build_page_map(abs_path, is_scanned, ocr_text, method)
 
+        # v7.2 C5: 表头三路融合——记录原始表头和映射，支持人工确认与自成长
+        header_info = extract_header_info(ocr_text, doc_type)
+
         structured = {
             "schema_version": "1.0",
             "doc_id": existing_doc.get("id") if existing_doc else next_doc_id(index),
@@ -1578,6 +2028,14 @@ def main() -> int:
             "quality_result": {},
             "confusion_result": {},
             "corrections_applied": [],
+            # v7.2 C5: 表头识别元数据
+            "raw_headers": header_info["raw_headers"],
+            "header_mapping": header_info["header_mapping"],
+            "header_confidence": header_info["header_confidence"],
+            "header_needs_human_confirm": header_info["needs_human_confirm"],
+            "header_math_chain_verified": header_info["math_chain_verified"],
+            "header_math_chain_failures": header_info["math_chain_failures"],
+            "header_column_feature_issues": header_info["column_feature_issues"],
         }
 
         # ===== 分配分部分项 code（v6.0 新增） =====
@@ -1619,9 +2077,14 @@ def main() -> int:
             "original_file": str(rel),
             "file_type": file_type,
             "is_scanned": is_scanned,
+            "extraction_mode": extraction_mode,
+            "is_drawing": is_drawing,
+            "doc_role": doc_role,
             "doc_type": doc_type,
             "professional": professional,
             "subcategory": subcategory,
+            "classification_source": classification_source,
+            "classification_confidence": classification_confidence,
             "subdivision_code": structured.get("subdivision_code"),
             "subdivision_label": structured.get("subdivision_label", ""),
             "sub_division": structured.get("sub_division", ""),
@@ -1678,6 +2141,18 @@ def main() -> int:
     print(f"   被审核文件: {len(file_classification['audited_files'])}", file=sys.stderr)
     print(f"   依据文件: {len(file_classification['reference_files'])}", file=sys.stderr)
     print(f"   排除文件: {len(file_classification['excluded_files'])}", file=sys.stderr)
+
+    # v7.2 C2: 竣工图纸高亮提示
+    drawings = [d for d in index.get("documents", []) if d.get("is_drawing")]
+    if drawings:
+        completion_drawings = [d for d in drawings if d.get("doc_role") == "audited"]
+        if completion_drawings:
+            print(f"\n🟡 竣工图纸提醒：检测到 {len(completion_drawings)} 份图纸在竣工阶段项目中需审核。", file=sys.stderr)
+            print(f"   这些图纸默认角色为「审核文件」，请通过 C-01 人工确认闸门确认角色：", file=sys.stderr)
+            for d in completion_drawings:
+                print(f"   - {d.get('original_file', d.get('id', '?'))}", file=sys.stderr)
+        else:
+            print(f"\n[i] 检测到 {len(drawings)} 份图纸（施工阶段，默认作为依据文件）。", file=sys.stderr)
     # Check if any documents need manual verification
     unverified = [d for d in index.get("documents", []) if not d.get("human_verified", False)]
     if unverified:
