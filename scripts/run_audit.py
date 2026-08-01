@@ -82,16 +82,21 @@ def sniff_document(file_path: str) -> dict:
 
     suffix = info["suffix"]
 
-    if suffix == ".pdf" and HAS_PYMUPDF:
-        doc = fitz.open(file_path)
-        info["page_count"] = len(doc)
-        # 抽样前 3 页判断扫描件（阈值 10 字符/页，避免误判）
-        sample_n = min(3, len(doc))
-        total_chars = sum(len(doc[i].get_text("text").strip()) for i in range(sample_n))
-        avg_chars = total_chars / sample_n
-        info["is_scanned"] = avg_chars < 10
-        doc.close()
-        info["extraction_method"] = "ocr" if info["is_scanned"] else "pymupdf"
+    if suffix == ".pdf":
+        if HAS_PYMUPDF:
+            doc = fitz.open(file_path)
+            info["page_count"] = len(doc)
+            # 抽样前 3 页判断扫描件（阈值 10 字符/页，避免误判）
+            sample_n = min(3, len(doc))
+            total_chars = sum(len(doc[i].get_text("text").strip()) for i in range(sample_n))
+            avg_chars = total_chars / sample_n
+            info["is_scanned"] = avg_chars < 10
+            doc.close()
+            info["extraction_method"] = "ocr" if info["is_scanned"] else "pymupdf"
+        else:
+            # 无 PyMuPDF 时降级为 OCR 提取（保守按扫描件处理），避免 unknown 导致 unsupported
+            info["extraction_method"] = "ocr"
+            info["is_scanned"] = True
 
     elif suffix in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"):
         info["extraction_method"] = "ocr"
@@ -954,6 +959,50 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
           <td>{f.get('spec', '')}</td>
         </tr>"""
 
+    # ===== OCR 低置信度待核实专区（v7.2 C4） =====
+    ocr_review_section = ""
+    ocr_review_count = summary.get("ocr_review_count", 0) or 0
+    ocr_review_notice = summary.get("ocr_review_notice", "") or ""
+    ocr_review_list = summary.get("ocr_review_list", []) or []
+    if ocr_review_count > 0:
+        ocr_rows = ""
+        for item in ocr_review_list[:100]:
+            orig_sev = item.get("original_severity", "") or ""
+            sev_map = {"fatal": "🔴", "high": "🔴", "medium": "🟡", "low": "⚪", "suspicious": "⚠️"}
+            sev_icon = sev_map.get(orig_sev.lower(), "⚪")
+            rule_ref = item.get("rule_id", "") or item.get("checklist_id", "")
+            ocr_rows += f"""
+            <tr>
+              <td title="{item.get('doc_file', '')}">{item.get('doc_file', '')}</td>
+              <td>{sev_icon} {orig_sev} → ⚠️ 存疑</td>
+              <td>{rule_ref}</td>
+              <td>{item.get('finding', '')}</td>
+              <td>{item.get('ocr_confidence', '') if item.get('ocr_confidence') is not None else ''}</td>
+            </tr>"""
+        ocr_review_section = f"""
+  <!-- OCR 低置信度待核实专段（v7.2 C4） -->
+  <div class="section">
+    <h2>六、基于低置信识别需人工重点核实</h2>
+    <div style="background:#fef7e0;border:1px solid #e37400;border-radius:6px;padding:12px 16px;margin-bottom:12px;color:#7c4a03;">
+      <strong>⚠️ {ocr_review_notice}</strong>
+    </div>
+    <p style="color:#666;font-size:13px;margin-bottom:12px;">
+      以下 {ocr_review_count} 项结论因源文档 OCR 置信度低于阈值已降级为「存疑」（R-18 四级结论），
+      不构成确定性违规判定。请人工核实原件或重新扫描后重新审核。
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>文档</th><th>严重度变化</th><th>规则/检查项</th><th>发现</th><th>OCR置信度</th></tr>
+      </thead>
+      <tbody>
+        {ocr_rows or '<tr><td colspan="5" style="text-align:center;color:#999;">（无条目）</td></tr>'}
+      </tbody>
+    </table>
+    </div>
+  </div>
+"""
+
     # ===== 签字异常核查专区 =====
     signature_section = ""
     if signature_anomalies:
@@ -1201,6 +1250,8 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     </table>
     </div>
   </div>
+
+  {ocr_review_section}
 
   <!-- 页脚 -->
   <div class="section" style="text-align:center;color:#999;font-size:12px;">

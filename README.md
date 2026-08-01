@@ -36,7 +36,7 @@ civil-aviation-doc-audit/
 │   ├── document-templates.md         # 审核报告/日志模板
 │   └── html-report-template.html     # HTML 报告标准模板
 │
-├── scripts/                          # 25 个脚本
+├── scripts/                          # 27 个脚本
 │   ├── run_audit.py                  # Skill 入口（含 build/review/report/audit 子命令）
 │   ├── build_foundation.py           # 【v6.0】数据底座建立脚本（阶段 1）
 │   ├── review_audit.py               # 【v6.0】正式审核流水线脚本（阶段 3，多 Agent 并行）
@@ -58,6 +58,8 @@ civil-aviation-doc-audit/
 │   ├── rule_schema_validator.py      # 【v6.0】规则 JSON Schema 校验工具
 │   ├── feedback_store.py             # 【v6.0】反馈存储管理
 │   ├── feedback_analyzer.py          # 【v6.0】LLM 反馈分析管道（聚类/模式提取/候选规则）
+│   ├── llm_client.py                 # 【v7.2】LLM 公共客户端（分类语义辅助，复用 LLM_API_URL/KEY/MODEL）
+│   ├── import_corrections.py         # 【v7.2】自成长导入（人工修正记录 → 分类/表头候选词条回流）
 │   ├── audit_memory.py               # 【v6.0】审核记忆流（JSONL 事件日志）
 │   ├── test_rule_engine.py           # 【v6.0】规则引擎单元测试（6/6 通过）
 │   ├── test_cross_unit_perf.py       # 【v6.0】跨单位性能测试（4/4 通过）

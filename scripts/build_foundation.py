@@ -277,6 +277,46 @@ def scan_files(
     return sorted(files)
 
 
+def _read_text_preview(abs_path: Path) -> str:
+    """v7.2 C1: 轻量读取文件前几行文本摘要（供 LLM 分类语义判定）。
+    失败安全：任何读取异常都返回空字符串，绝不影响 build 主流程。
+    """
+    try:
+        suffix = abs_path.suffix.lower()
+        lines: List[str] = []
+        if suffix in (".txt", ".md", ".log"):
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                for _ in range(5):
+                    line = f.readline()
+                    if not line:
+                        break
+                    lines.append(line.strip())
+        elif suffix in (".pdf",) and HAS_PYMUPDF:
+            try:
+                import fitz  # noqa: E402
+                with fitz.open(str(abs_path)) as doc:
+                    if doc.page_count > 0:
+                        text = doc[0].get_text()
+                        lines = [ln.strip() for ln in text.splitlines() if ln.strip()][:5]
+            except Exception:
+                return ""
+        elif suffix in (".xlsx", ".xls"):
+            try:
+                import openpyxl  # noqa: E402
+                wb = openpyxl.load_workbook(str(abs_path), read_only=True, data_only=True)
+                ws = wb.worksheets[0]
+                for row in ws.iter_rows(max_row=4, values_only=True):
+                    cells = [str(c) for c in row if c is not None]
+                    if cells:
+                        lines.append(" ".join(cells))
+                wb.close()
+            except Exception:
+                return ""
+        return "\n".join(lines)[:300]
+    except Exception:
+        return ""
+
+
 def _has_formal_records(rel_files: List[Path]) -> bool:
     """
     判断文件列表中是否包含正式施工记录/检验批等应逐行审核的资料。
@@ -372,14 +412,15 @@ def classify_file(
     rel_path: Path,
     excluded_set: set,
     has_formal_records: bool = False,
+    text_preview: str = "",
 ) -> Tuple[str, Optional[str], Optional[str], Optional[str], str, float]:
     """
-    v7.2 C1: 对单个文件进行分类（三级判定：关键词聚合 → LLM语义(P2) → 人工确认）。
+    v7.2 C1: 对单个文件进行分类（三级判定：关键词聚合 → LLM语义 → 人工确认）。
 
     返回：
         (classification, professional, subcategory, doc_type, classification_source, classification_confidence)
         classification ∈ {"audited_files", "reference_files", "excluded_files"}
-        classification_source ∈ {"terms", "rules", "field_alias", "generic_keywords", "reference_keywords", "weak", "weak_multi", "multi_hit", "default", "excluded"}
+        classification_source ∈ {"terms", "rules", "field_alias", "generic_keywords", "reference_keywords", "weak", "weak_multi", "multi_hit", "llm", "default", "excluded"}
         classification_confidence ∈ [0.0, 1.0]
     """
     name = rel_path.name
@@ -414,29 +455,68 @@ def classify_file(
         weak_profs = [(p, e) for p, e in hits.items() if not any(x["weight"] == "core" for x in e)]
 
         if len(strong_profs) == 1:
-            # 单专业 core 强命中 → 直接分类
+            # 单专业 core 强命中 → 直接分类，不上 LLM（省成本）
             prof, entries = strong_profs[0]
             sub, doc = detect_subcategory_and_doctype(name, prof)
             source = next((e["source"] for e in entries if e["weight"] == "core"), "aggregated")
             return "audited_files", prof, sub, doc, source, 0.9
         elif len(strong_profs) > 1:
-            # 多专业 core 命中 → 取首个，标待确认
+            # 多专业 core 命中 → LLM 语义判定，失败则取首个标待确认
+            llm_result = _try_llm_classify(name, text_preview)
+            if llm_result:
+                prof, sub, doc = _apply_llm_result(name, llm_result)
+                return "audited_files", prof, sub, doc, "llm", llm_result["confidence"]
             prof, entries = strong_profs[0]
             sub, doc = detect_subcategory_and_doctype(name, prof)
             return "audited_files", prof, sub, doc, "multi_hit", 0.6
         elif len(weak_profs) == 1:
-            # 单专业 weak 命中
+            # 单专业 weak 命中 → LLM 语义判定，失败则取该专业标待确认
+            llm_result = _try_llm_classify(name, text_preview)
+            if llm_result:
+                prof, sub, doc = _apply_llm_result(name, llm_result)
+                return "audited_files", prof, sub, doc, "llm", llm_result["confidence"]
             prof, entries = weak_profs[0]
             sub, doc = detect_subcategory_and_doctype(name, prof)
             return "audited_files", prof, sub, doc, "weak", 0.6
         elif len(weak_profs) > 1:
-            # 多专业 weak 命中 → 取首个，标待确认
+            # 多专业 weak 命中 → LLM 语义判定，失败则取首个标待确认
+            llm_result = _try_llm_classify(name, text_preview)
+            if llm_result:
+                prof, sub, doc = _apply_llm_result(name, llm_result)
+                return "audited_files", prof, sub, doc, "llm", llm_result["confidence"]
             prof, entries = weak_profs[0]
             sub, doc = detect_subcategory_and_doctype(name, prof)
             return "audited_files", prof, sub, doc, "weak_multi", 0.4
 
-    # 5. 默认：作为通用资料被审核
+    # 5. 无任何关键词命中 → LLM 语义判定，失败则默认通用资料（标待确认）
+    llm_result = _try_llm_classify(name, text_preview)
+    if llm_result:
+        prof, sub, doc = _apply_llm_result(name, llm_result)
+        return "audited_files", prof, sub, doc, "llm", llm_result["confidence"]
+
     return "audited_files", "通用资料", "其他", "其他资料", "default", 0.3
+
+
+def _try_llm_classify(name: str, text_preview: str) -> Optional[Dict[str, Any]]:
+    """v7.2 C1: 调用 LLM 语义判定，失败/不可用返回 None（调用方降级）。"""
+    try:
+        from llm_client import classify_document  # noqa: E402
+    except ImportError:
+        return None
+    try:
+        return classify_document(name, text_preview)
+    except Exception:
+        # 失败安全：LLM 异常绝不影响 build 主流程
+        return None
+
+
+def _apply_llm_result(name: str, llm_result: Dict[str, Any]) -> Tuple[str, str, str]:
+    """应用 LLM 分类结果，返回 (professional, subcategory, doc_type)。"""
+    prof = llm_result.get("professional", "通用资料")
+    if prof == "通用资料":
+        return prof, "其他", "其他资料"
+    sub, doc = detect_subcategory_and_doctype(name, prof)
+    return prof, sub, doc
 
 
 def detect_subcategory_and_doctype(name: str, professional: str) -> Tuple[str, str]:
@@ -523,14 +603,36 @@ def detect_is_drawing(filename: str) -> bool:
     return any(kw in name for kw in _DRAWING_KEYWORDS)
 
 
-def infer_doc_role(is_drawing: bool, stage: str, classification: str) -> str:
-    """根据 is_drawing + 项目阶段 + 分类，推断文档角色。
+def detect_drawing_type(filename: str) -> Optional[str]:
+    """v7.2 C2: 细分图纸类型（由文件名模式推断，不作硬判据）。
+
+    返回:
+        - "as_built"       竣工图
+        - "process_sketch" 示意图/方案图
+        - "design_basis"   设计依据图（施工图/平面图/布置图等）
+        - None             非图纸
+    """
+    if not detect_is_drawing(filename):
+        return None
+    name = filename.lower()
+    if "竣工图" in name or ("竣工" in name and "图" in name):
+        return "as_built"
+    if any(kw in name for kw in ["示意", "方案"]):
+        return "process_sketch"
+    return "design_basis"
+
+
+def infer_doc_role(is_drawing: bool, stage: str, classification: str, drawing_type: Optional[str] = None) -> str:
+    """根据 is_drawing + 项目阶段 + 图纸类型 + 分类，推断文档角色。
     返回: "reference" | "audited" | "general"
-    - 施工阶段图纸 → reference（作为依据）
     - 竣工阶段图纸 → audited（需审核）
+    - 示意图/方案图 → reference（过程示意，不审）
+    - 施工阶段设计依据图 → reference
     - 非图纸 → 跟随 classification
     """
     if is_drawing:
+        if drawing_type == "process_sketch":
+            return "reference"
         # 竣工阶段（含"竣工""移交"等关键词）→ 图纸需审核
         if any(kw in stage for kw in ["竣工", "移交", "验收移交"]):
             return "audited"
@@ -686,6 +788,21 @@ def coerce_pile_value(field: str, raw: str) -> Any:
 # v7.2 C5: 模块级变量记录最近一次表头识别的原始 tokens（供 extract_header_info 使用）
 _LAST_HEADER_RAW_TOKENS: Optional[List[str]] = None
 
+# v7.2 C5: OCR 常见字符混淆归一化（路1 增强——OCR 认错表头字也能命中别名）
+# 仅在表头匹配时使用，不改动原始 token
+_OCR_HEADER_NORMALIZERS = [
+    ("程高", "高程"),      # 高程 → 程高（常见 OCR 误读）
+    ("实长", "实长"),      # 占位，保持列表非空可扩展
+]
+
+
+def _normalize_header_token(tok: str) -> str:
+    """对表头 token 做 OCR 混淆归一化，返回归一化后的字符串。"""
+    norm = tok
+    for a, b in _OCR_HEADER_NORMALIZERS:
+        norm = norm.replace(a, b)
+    return norm
+
 
 def _tokenize_table_line(line: str) -> List[str]:
     """表头行/数据行统一分词：优先多空格/制表符分隔，回退单空格。"""
@@ -696,9 +813,10 @@ def _tokenize_table_line(line: str) -> List[str]:
 
 
 def detect_header(line: str) -> Optional[Dict[int, str]]:
-    """v7.2 C5: 表头检测——三路融合之第一路（关键词匹配）。
+    """v7.2 C5: 表头检测——三路融合之第一路（关键词匹配 + OCR 归一化）。
 
     从 FIELD_ALIAS_MAP 聚合的槽位 schema 运行时获取关键词（修复原空字典 bug）。
+    token 先做 OCR 混淆归一化（如"桩顶程高"→"桩顶高程"）再与别名比对。
     返回列索引 → 字段名映射；同时把原始 tokens 写入模块级变量供事后验证使用。
     """
     global _LAST_HEADER_RAW_TOKENS
@@ -707,8 +825,9 @@ def detect_header(line: str) -> Optional[Dict[int, str]]:
     _LAST_HEADER_RAW_TOKENS = tokens
     mapping: Dict[int, str] = {}
     for idx, tok in enumerate(tokens):
+        norm_tok = _normalize_header_token(tok)
         for field, kws in keywords.items():
-            if any(kw in tok for kw in kws):
+            if any(kw in norm_tok for kw in kws):
                 if idx not in mapping:
                     mapping[idx] = field
                 break
@@ -823,17 +942,181 @@ def _validate_header_by_math_chain(
     return confidence >= 0.7, confidence, failures[:3]  # 最多记录3条样本
 
 
+def _to_float(v: Any) -> Optional[float]:
+    """尽力把值转成 float，失败返回 None。"""
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip().rstrip("mM")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+    return None
+
+
+def _infer_missing_slots_by_math_chain(
+    raw_rows: List[List[str]],
+    header_map: Dict[int, str],
+) -> Tuple[Dict[int, str], List[str]]:
+    """v7.2 C5: 数学链推断（路3 增强）——缺失三槽位时从未映射列推断。
+
+    约束：实长 = 桩顶高程 − 桩底高程（容差 ±0.1m）
+    场景：
+      - 缺 actual_length，但 top/bottom 已映射 → target = mean(顶 - 底)
+      - 缺 top_elev → target = mean(底 + 实长)
+      - 缺 bottom_elev → target = mean(顶 - 实长)
+      - 缺 top 和 bottom，但 actual_length 已映射 → 找两列差 ≈ 实长
+    推断成立条件：样本 ≥3 行，匹配率 ≥80%，且列均值与 target 偏差 ≤0.1。
+
+    返回: (补充后的 header_map, 推断说明列表)
+    """
+    if not raw_rows or len(raw_rows) < 3:
+        return header_map, []
+
+    mapped_fields = set(header_map.values())
+    missing = {"top_elev", "bottom_elev", "actual_length"} - mapped_fields
+    if not missing:
+        return header_map, []
+
+    # 提取每列数值（只取数字列）
+    col_vals: Dict[int, List[float]] = {}
+    for row in raw_rows:
+        for idx, tok in enumerate(row):
+            v = _to_float(tok)
+            if v is not None:
+                col_vals.setdefault(idx, []).append(v)
+
+    unmapped_cols = [
+        i for i in range(max(list(header_map.keys()) + [0]) + 1)
+        if i not in header_map and len(col_vals.get(i, [])) >= 3
+    ]
+    if not unmapped_cols:
+        return header_map, []
+
+    def _find_col_approx(target_vals: List[float]) -> Optional[int]:
+        """在未映射列中找均值最接近 target_vals 均值且逐行匹配率≥80% 的列。"""
+        best_col = None
+        best_err = None
+        for c in unmapped_cols:
+            vals = col_vals[c]
+            if len(vals) < 3:
+                continue
+            n = min(len(vals), len(target_vals))
+            if n < 3:
+                continue
+            # 逐行校验（前 n 行对齐）
+            matches = sum(
+                1 for k in range(n)
+                if abs(vals[k] - target_vals[k]) <= 0.1 + 1e-9
+            )
+            if matches / n < 0.8:
+                continue
+            mean_err = abs(sum(vals[:n]) / n - sum(target_vals[:n]) / n)
+            if best_err is None or mean_err < best_err:
+                best_err = mean_err
+                best_col = c
+        return best_col
+
+    inferred: Dict[int, str] = {}
+    notes: List[str] = []
+
+    # 每行目标值生成器
+    def _row_target() -> List[float]:
+        """根据缺失集合生成 target 序列（按行）。"""
+        targets: List[float] = []
+        for row in raw_rows:
+            vals: Dict[str, float] = {}
+            for idx, field in header_map.items():
+                v = _to_float(row[idx]) if idx < len(row) else None
+                if v is not None:
+                    vals[field] = v
+            if "top_elev" in vals and "bottom_elev" in vals:
+                # 顶/底都有：可推实长
+                if "actual_length" in missing:
+                    targets.append(vals["top_elev"] - vals["bottom_elev"])
+            if "bottom_elev" in vals and "actual_length" in vals:
+                if "top_elev" in missing:
+                    targets.append(vals["bottom_elev"] + vals["actual_length"])
+            if "top_elev" in vals and "actual_length" in vals:
+                if "bottom_elev" in missing:
+                    targets.append(vals["top_elev"] - vals["actual_length"])
+        return targets
+
+    # 场景1：缺 top 和 bottom，但 actual_length 已映射 → 找两列差 ≈ 实长
+    if "top_elev" in missing and "bottom_elev" in missing and "actual_length" in mapped_fields:
+        target = [
+            _to_float(row[col_idx])
+            for col_idx, field in header_map.items()
+            if field == "actual_length"
+            for row in raw_rows
+        ]
+        if len(target) >= 3:
+            best_pair = None
+            best_pair_err = None
+            for i in unmapped_cols:
+                for j in unmapped_cols:
+                    if i == j:
+                        continue
+                    vals_i = col_vals[i]
+                    vals_j = col_vals[j]
+                    n = min(len(vals_i), len(vals_j), len(target))
+                    if n < 3:
+                        continue
+                    matches = sum(
+                        1 for k in range(n)
+                        if abs((vals_i[k] - vals_j[k]) - target[k]) <= 0.1 + 1e-9
+                    )
+                    if matches / n < 0.8:
+                        continue
+                    mean_err = abs(
+                        (sum(vals_i[:n]) - sum(vals_j[:n])) / n - sum(target[:n]) / n
+                    )
+                    if best_pair_err is None or mean_err < best_pair_err:
+                        best_pair_err = mean_err
+                        best_pair = (i, j)
+            if best_pair:
+                hi, lo = best_pair
+                # 高者通常数值更大（桩顶高程 > 桩底高程）
+                if sum(col_vals[hi]) < sum(col_vals[lo]):
+                    hi, lo = lo, hi
+                inferred[hi] = "top_elev"
+                inferred[lo] = "bottom_elev"
+                notes.append(f"数学链推断: 列{hi}→桩顶高程, 列{lo}→桩底高程（顶-底≈实长）")
+
+    # 场景2：单一缺失槽位
+    elif len(missing) == 1:
+        targets = _row_target()
+        if len(targets) >= 3:
+            col = _find_col_approx(targets)
+            if col is not None:
+                slot = next(iter(missing))
+                inferred[col] = slot
+                notes.append(f"数学链推断: 列{col}→{slot}（满足实长=顶-底约束）")
+
+    if not inferred:
+        return header_map, notes
+
+    # 合并：已映射列优先，推断列不覆盖已映射
+    merged = dict(header_map)
+    for idx, field in inferred.items():
+        if idx not in merged:
+            merged[idx] = field
+    return merged, notes
+
+
 def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
-    """v7.2 C5: 综合表头识别——三路融合 + 人工确认入口。
+    """v7.2 C5: 综合表头识别——三路融合 + 数学链推断 + 人工确认入口。
 
     返回结构：
         {
             "raw_headers": [...],          # 原始表头 tokens
-            "header_mapping": {...},       # 列索引(字符串) → 字段名
-            "header_source": "keyword|heuristic|none",
+            "header_mapping": {...},       # 列索引(字符串) → 字段名（含推断补全）
+            "header_source": "keyword|keyword_math|none",
             "header_confidence": 0.0~1.0,
             "math_chain_verified": bool,
             "math_chain_failures": [...],
+            "math_chain_inferred": [...],  # 数学链推断说明
             "column_feature_issues": {...},
             "needs_human_confirm": bool,   # 置信度<0.7 时为 True
         }
@@ -849,14 +1132,16 @@ def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
             "header_confidence": 1.0,
             "math_chain_verified": True,
             "math_chain_failures": [],
+            "math_chain_inferred": [],
             "column_feature_issues": {},
             "needs_human_confirm": False,
         }
 
-    # 找到表头行
+    # 找到表头行，同时收集原始 token 行供数学链推断
     header_map: Optional[Dict[int, str]] = None
     raw_tokens: List[str] = []
     rows_for_validation: List[Dict[str, Any]] = []
+    raw_rows: List[List[str]] = []  # 原始 token 行（含未映射列）
     page = 1
     line_no = 1
     for raw_line in text.splitlines():
@@ -874,9 +1159,11 @@ def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
                 raw_tokens = list(_LAST_HEADER_RAW_TOKENS or [])
                 continue
         if header_map:
+            tokens = _tokenize_table_line(line)
             record = parse_pile_data_line(line, header_map, page, line_no)
             if record:
                 rows_for_validation.append(record)
+                raw_rows.append(tokens)
                 line_no += 1
                 if len(rows_for_validation) >= 30:
                     break
@@ -889,22 +1176,30 @@ def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
             "header_confidence": 0.0,
             "math_chain_verified": False,
             "math_chain_failures": [],
+            "math_chain_inferred": [],
             "column_feature_issues": {},
             "needs_human_confirm": True,
         }
+
+    # 路3增强：数学链推断补全缺失三槽位（OCR 表头认错时仍能对上）
+    header_map, math_notes = _infer_missing_slots_by_math_chain(raw_rows, header_map)
+    source = "keyword_math" if math_notes else "keyword"
 
     # 第二路：列特征验证
     feat_ok, feat_conf, feat_issues = _validate_header_by_column_features(
         rows_for_validation, header_map
     )
-    # 第三路：数学链约束
+    # 第三路：数学链约束验证
     math_ok, math_conf, math_failures = _validate_header_by_math_chain(
         rows_for_validation, header_map
     )
 
     # 综合置信度：关键词匹配(0.5) + 列特征(0.3) + 数学链(0.2)
-    # 关键词匹配本身视为 1.0（已识别）
-    confidence = 0.5 + 0.3 * feat_conf + 0.2 * math_conf
+    # 有数学链推断时置信度不再因缺列而降级，且推断本身是强信号
+    if math_notes:
+        confidence = 0.5 + 0.3 * feat_conf + 0.2 * max(math_conf, 0.7)
+    else:
+        confidence = 0.5 + 0.3 * feat_conf + 0.2 * math_conf
     confidence = min(confidence, 1.0)
 
     needs_confirm = confidence < 0.7
@@ -912,10 +1207,11 @@ def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
     return {
         "raw_headers": raw_tokens,
         "header_mapping": {str(k): v for k, v in header_map.items()},
-        "header_source": "keyword",
+        "header_source": source,
         "header_confidence": round(confidence, 3),
         "math_chain_verified": math_ok,
         "math_chain_failures": math_failures,
+        "math_chain_inferred": math_notes,
         "column_feature_issues": feat_issues,
         "needs_human_confirm": needs_confirm,
     }
@@ -1408,6 +1704,10 @@ def detect_gaps(index: Dict[str, Any], out_base: Path) -> List[Dict[str, Any]]:
         if ocr_status != "completed":
             continue
 
+        # v7.2: Excel/元数据类文档没有 data_file（不参与断档检测）
+        if not data_file_rel:
+            continue
+
         data_path = out_base / data_file_rel
         if not data_path.exists():
             continue
@@ -1723,26 +2023,61 @@ def main() -> int:
     for rel in rel_files:
       try:
         abs_path = project_path / rel
-        classification, professional, subcategory, doc_type, classification_source, classification_confidence = classify_file(rel, excluded_set, has_formal_records)
+        # v7.2 C1: 文件文本预览（前几行）供 LLM 分类语义判定
+        text_preview = _read_text_preview(abs_path)
+        classification, professional, subcategory, doc_type, classification_source, classification_confidence = classify_file(
+            rel, excluded_set, has_formal_records, text_preview=text_preview
+        )
 
         # v7.2 C2: 图纸角色解耦——is_drawing 标签与 doc_role 正交
         is_drawing = detect_is_drawing(rel.name)
+        drawing_type = detect_drawing_type(rel.name)
         project_stage = preconditions.get("stage", "分部分项验收")
-        doc_role = infer_doc_role(is_drawing, project_stage, classification)
+        doc_role = infer_doc_role(is_drawing, project_stage, classification, drawing_type)
 
         if classification == "excluded_files":
             file_classification["excluded_files"].append(str(rel))
             print(f"  [排除] {rel.name}", file=sys.stderr)
             continue
 
-        # 图纸无论角色如何都需生成 doc 条目（记录 is_drawing），不跳过
+        # 图纸 reference 角色：作为依据文件，只记录元数据 doc 条目，不 OCR 提取
+        if is_drawing and doc_role == "reference":
+            file_classification["reference_files"].append(str(rel))
+            print(f"  [图纸·依据] {rel.name}", file=sys.stderr)
+            content_hash = _compute_file_hash(abs_path)
+            ref_doc = {
+                "id": next_doc_id(index),
+                "original_file": str(rel),
+                "file_type": Path(rel.name).suffix.upper().lstrip(".") or "UNKNOWN",
+                "is_scanned": False,
+                "extraction_mode": "reference_skip",
+                "is_drawing": True,
+                "drawing_type": drawing_type,
+                "doc_role": "reference",
+                "doc_type": doc_type,
+                "professional": professional,
+                "subcategory": subcategory,
+                "classification_source": classification_source,
+                "classification_confidence": classification_confidence,
+                "subdivision_code": None,
+                "pages": 1,
+                "ocr_status": "skipped",
+                "ocr_engine": "",
+                "ocr_confidence": 0.0,
+                "data_file": None,
+                "human_verified": True,
+                "audit_status": "skipped",
+                "last_updated": now_iso(),
+                "size_bytes": abs_path.stat().st_size,
+                "content_hash": content_hash,
+            }
+            update_index_for_doc(index, ref_doc)
+            continue
+
+        # 图纸 audited 角色：需审核，继续走提取流程
         if is_drawing:
-            if doc_role == "reference":
-                file_classification["reference_files"].append(str(rel))
-                print(f"  [图纸·依据] {rel.name}", file=sys.stderr)
-            else:
-                file_classification["audited_files"].append(str(rel))
-                print(f"  [图纸·审核] {rel.name}", file=sys.stderr)
+            file_classification["audited_files"].append(str(rel))
+            print(f"  [图纸·审核] {rel.name}", file=sys.stderr)
         elif classification == "reference_files":
             file_classification["reference_files"].append(str(rel))
             print(f"  [依据] {rel.name}", file=sys.stderr)
@@ -1967,6 +2302,7 @@ def main() -> int:
                 "is_scanned": False,
                 "extraction_mode": extraction_mode,
                 "is_drawing": is_drawing,
+                "drawing_type": drawing_type,
                 "doc_role": doc_role,
                 "doc_type": doc_type,
                 "professional": professional,
@@ -2035,6 +2371,7 @@ def main() -> int:
             "header_needs_human_confirm": header_info["needs_human_confirm"],
             "header_math_chain_verified": header_info["math_chain_verified"],
             "header_math_chain_failures": header_info["math_chain_failures"],
+            "header_math_chain_inferred": header_info["math_chain_inferred"],
             "header_column_feature_issues": header_info["column_feature_issues"],
         }
 
@@ -2079,6 +2416,7 @@ def main() -> int:
             "is_scanned": is_scanned,
             "extraction_mode": extraction_mode,
             "is_drawing": is_drawing,
+            "drawing_type": drawing_type,
             "doc_role": doc_role,
             "doc_type": doc_type,
             "professional": professional,
