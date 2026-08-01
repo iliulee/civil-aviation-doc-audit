@@ -681,6 +681,35 @@ body::before {
 .badge-warning { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
 .badge-failed { background: var(--c-red-light); color: var(--c-red); border: 1px solid #fecaca; }
 .badge-info { background: var(--c-blue-light); color: var(--c-blue); border: 1px solid #bfdbfe; }
+/* v7.2 C1: AI 分类待确认徽标（文档树标黄） */
+.badge-pending-class { background: var(--c-amber-light); color: #b45309; border: 1px solid #fde68a; cursor: help; }
+
+/* v7.2 C1: 文档属性面板 */
+.props-view { padding: 16px; }
+.props-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; max-width: 720px; }
+.props-card h3 { margin: 0 0 14px; font-size: 15px; color: var(--text-primary); }
+.props-meta { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.props-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.props-label { width: 90px; color: var(--text-muted); flex-shrink: 0; }
+.props-value { color: var(--text-primary); word-break: break-all; }
+.props-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; border-top: 1px dashed var(--border); padding-top: 14px; }
+.props-field { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.props-field span { width: 90px; color: var(--text-muted); flex-shrink: 0; }
+.props-field select, .props-field input {
+  flex: 1; max-width: 360px; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg); color: var(--text-primary); font-size: 13px;
+}
+.props-actions { display: flex; align-items: center; gap: 8px; border-top: 1px dashed var(--border); padding-top: 14px; }
+
+/* v7.2 C5: 表头映射面板 */
+.hm-view { padding: 16px; }
+.hm-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.hm-sync { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.hm-note { background: var(--c-teal-light); color: #0f766e; border: 1px solid #99f6e4; border-radius: 8px; padding: 8px 12px; font-size: 12px; margin-bottom: 10px; }
+.hm-note-warn { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
+.hm-table { max-width: 720px; }
+.hm-table td select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-primary); font-size: 12px; }
+.hm-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 
 .table-meta {
   font-family: var(--font-mono);
@@ -1398,6 +1427,8 @@ table.data-table td.pulse {
       <button class="tab-btn" data-tab="text">原文预览</button>
       <button class="tab-btn" data-tab="images">图纸</button>
       <button class="tab-btn" data-tab="problems">问题视图<span class="tab-badge" id="badgeProblems" style="display:none;"></span></button>
+      <button class="tab-btn" data-tab="props">文档属性<span class="tab-badge" id="badgeProps" style="display:none;"></span></button>
+      <button class="tab-btn" data-tab="headerMap">表头映射</button>
     </div>
     <div class="tab-content active" id="tabTable">
       <div class="empty-state">
@@ -1425,6 +1456,20 @@ table.data-table td.pulse {
         <div class="empty-graphic"></div>
         <h3>未加载文档</h3>
         <p>选择文档后将显示质量告警与 OCR 存疑项。</p>
+      </div>
+    </div>
+    <div class="tab-content" id="tabProps">
+      <div class="empty-state">
+        <div class="empty-graphic"></div>
+        <h3>未加载文档</h3>
+        <p>选择文档后在此查看 / 修改专业分类（v7.2 C1 人工闸门）。</p>
+      </div>
+    </div>
+    <div class="tab-content" id="tabHeaderMap">
+      <div class="empty-state">
+        <div class="empty-graphic"></div>
+        <h3>未加载文档</h3>
+        <p>选择文档后在此核对表头列映射（v7.2 C5 路4 人工闸门）。</p>
       </div>
     </div>
   </main>
@@ -2083,11 +2128,15 @@ function renderDocTree() {
         const tip = statusTooltip(doc, status);
         const active = (state.currentDoc && state.currentDoc.id === doc.id) ? ' active' : '';
         const name = doc.original_file || doc.doc_type || doc.id;
+        // v7.2 C1: AI 分类待人工确认标黄徽标（仅审核类文档；依据文件无需确认）
+        const pendingClass = (doc.human_confirmed !== true && doc.doc_role !== 'reference')
+          ? '<span class="badge badge-pending-class" title="AI 自动分类，请人工确认">AI分类</span>'
+          : '';
         const delay = Math.min(staggerIdx++ * 20, 300);
         html += `<div class="tree-doc${active} stagger-in" style="animation-delay:${delay}ms;"
           onclick="selectDocument('${doc.id}')" title="${escapeHtml(tip)}">
           <span class="doc-status"><span class="status-icon ${status}" title="${escapeHtml(tip)}"></span></span>
-          <span class="doc-name">${escapeHtml(name)}</span>
+          <span class="doc-name">${escapeHtml(name)}</span>${pendingClass}
         </div>`;
       });
       html += `</div></div>`;
@@ -2191,6 +2240,8 @@ window.selectDocument = async function(docId) {
     renderTextTab();
     renderImagesTab();
     renderProblemsTab();
+    renderPropsTab();
+    renderHeaderMapTab();
     updateStatusInfo();
     updateConfirmGate();
 
@@ -3052,6 +3103,237 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // ========== 确认安全闸 ==========
+
+// ========== v7.2 C1: 文档属性面板（人工分类确认闸门） ==========
+
+const PROFESSION_OPTIONS = ['01_场道工程', '02_空管工程', '03_助航设施', '04_弱电系统', '05_供油工程', '通用资料'];
+const CLASS_SOURCE_LABEL = {
+  'keyword': '关键词', 'terms': '术语表', 'rules': '规则库', 'field_alias': '字段别名',
+  'generic_keywords': '通用词', 'reference_keywords': '依据词', 'weak': '弱命中',
+  'weak_multi': '多弱命中', 'multi_hit': '多专业', 'llm': 'LLM语义', 'default': '默认',
+  'human': '人工', 'candidate': '候选词条', 'excluded': '排除',
+};
+
+function renderPropsTab() {
+  const tab = $('tabProps');
+  if (!state.currentDoc || isNonDoc(state.currentDoc)) {
+    tab.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>未加载文档</h3><p>选择文档后在此查看 / 修改专业分类（v7.2 C1 人工闸门）。</p></div>`;
+    return;
+  }
+  const doc = state.currentDoc;
+  const isReference = doc.doc_role === 'reference';
+  const confirmed = doc.human_confirmed === true;
+  const src = CLASS_SOURCE_LABEL[doc.classification_source] || doc.classification_source || '—';
+  const conf = (doc.classification_confidence !== undefined && doc.classification_confidence !== null)
+    ? (doc.classification_confidence * 100).toFixed(0) + '%' : '—';
+  const canSave = state.foundationDirHandle !== null;
+
+  let html = '<div class="props-view">';
+  html += `<div class="props-card">
+    <h3>文档分类属性</h3>
+    <div class="props-meta">
+      <div class="props-row"><span class="props-label">文件</span><span class="props-value">${escapeHtml(doc.original_file || doc.id)}</span></div>
+      <div class="props-row"><span class="props-label">分类来源</span><span class="props-value">${escapeHtml(src)} · 置信度 ${escapeHtml(conf)}</span></div>
+      <div class="props-row"><span class="props-label">文档角色</span><span class="props-value">${isReference ? '<span class="badge badge-info">依据文件</span>（无需分类确认）' : '<span class="badge badge-pending">待审核</span>'}</span></div>
+      <div class="props-row"><span class="props-label">确认状态</span>
+        <span class="props-value">${confirmed
+          ? '<span class="badge badge-verified">已人工确认</span>'
+          : '<span class="badge badge-pending-class" title="AI 自动分类，请人工核对">AI分类 · 待确认</span>'}</span>
+      </div>
+    </div>
+    ${isReference ? '' : `
+    <div class="props-form">
+      <label class="props-field"><span>专业</span>
+        <select id="propProfessional">
+          ${PROFESSION_OPTIONS.map(p => `<option value="${p}" ${doc.professional === p ? 'selected' : ''}>${p}</option>`).join('')}
+        </select>
+      </label>
+      <label class="props-field"><span>子类</span><input id="propSubcategory" value="${escapeHtml(doc.subcategory || '其他')}" placeholder="子分类"></label>
+      <label class="props-field"><span>资料类型</span><input id="propDocType" value="${escapeHtml(doc.doc_type || '其他资料')}" placeholder="doc_type"></label>
+    </div>
+    <div class="props-actions">
+      <button class="btn btn-primary" id="btnConfirmClass" ${canSave ? '' : 'disabled'}>${confirmed ? '已确认 · 可修改后重新确认' : '确认分类'}</button>
+      <span class="table-meta" style="margin-left:8px;">${canSave ? '确认后写回 index.json 并解除 C-01 闸门' : '只读模式（拖拽）无法写回'}</span>
+    </div>`}
+  </div>`;
+  html += '</div>';
+  tab.innerHTML = html;
+
+  const btn = $('btnConfirmClass');
+  if (btn) btn.addEventListener('click', confirmDocClassification);
+}
+
+window.confirmDocClassification = async function() {
+  const doc = state.currentDoc;
+  if (!doc || !state.index || !state.foundationDirHandle) return;
+  const newProf = $('propProfessional').value;
+  const newSub = $('propSubcategory').value.trim() || '其他';
+  const newType = $('propDocType').value.trim() || '其他资料';
+  showModal('确认分类', `将文档「${doc.original_file || doc.id}」分类确定为：\n\n专业: ${newProf}\n子类: ${newSub}\n类型: ${newType}\n\n并将 human_confirmed 置为 true（解除 C-01 闸门），同时写入自成长候选词条（若分类与 AI 原判不同）。`, async () => {
+    const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
+    if (docIdx < 0) return;
+    const oldProf = doc.professional;
+    state.index.documents[docIdx].professional = newProf;
+    state.index.documents[docIdx].subcategory = newSub;
+    state.index.documents[docIdx].doc_type = newType;
+    state.index.documents[docIdx].human_confirmed = true;
+    state.index.documents[docIdx].classification_source = 'human';
+    state.index.documents[docIdx].classification_confidence = 1.0;
+    state.index.documents[docIdx].last_updated = nowIso();
+    // 分类与 AI 原判不同 → 自动生成自成长候选词条（写回 index，由 import_corrections 或后端脚本回流）
+    if (oldProf && oldProf !== newProf && doc.classification_source !== 'human') {
+      state.index.documents[docIdx].self_growth_candidate = {
+        keyword_pattern: (doc.original_file || '').replace(/\.[^.]+$/, ''),
+        corrected_professional: newProf,
+        corrected_doc_type: newType,
+        status: 'candidate',
+      };
+    } else {
+      delete state.index.documents[docIdx].self_growth_candidate;
+    }
+    // 更新 C-01 闸门状态
+    const docs = state.index.documents || [];
+    state.index.file_classification_confirmed = docs.every(d => d.doc_role === 'reference' || d.human_confirmed === true);
+    state.index.classification_pending_count = docs.filter(d => d.doc_role !== 'reference' && d.human_confirmed !== true).length;
+    state.index.updated_at = nowIso();
+    try {
+      await writeJson('index.json', state.index);
+      diagLog('index.json 已更新: human_confirmed=true, 分类已确认', 'ok');
+      showToast('分类已确认: ' + (doc.original_file || doc.id), 'success');
+    } catch (e) {
+      showToast('写回失败: ' + e.message, 'error', 5000);
+      diagLog('分类确认写回失败: ' + e.message, 'error');
+    }
+    renderDocTree();
+    renderPropsTab();
+    updateConfirmGate();
+  });
+};
+
+// ========== v7.2 C5: 表头映射人工闸门（路4） ==========
+
+const PILE_SLOT_OPTIONS = [
+  'actual_length', 'top_elev', 'bottom_elev', 'pile_no', 'design_length',
+  'diameter', 'current', 're_penetration', 'volume', 'filling_coeff',
+  'verticality', 'start_time', 'end_time', 'sink_time', 'pull_time', 'remark',
+];
+const SLOT_CN = {
+  actual_length: '实长', top_elev: '桩顶高程', bottom_elev: '桩底高程', pile_no: '桩号',
+  design_length: '设计桩长', diameter: '直径', current: '电流', re_penetration: '复打',
+  volume: '灌入量', filling_coeff: '充盈系数', verticality: '垂直度',
+  start_time: '开始时间', end_time: '结束时间', sink_time: '沉桩时间', pull_time: '拔桩时间', remark: '备注',
+};
+
+function renderHeaderMapTab() {
+  const tab = $('tabHeaderMap');
+  if (!state.currentDoc || isNonDoc(state.currentDoc)) {
+    tab.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>未加载文档</h3><p>选择文档后在此核对表头列映射（v7.2 C5 路4 人工闸门）。</p></div>`;
+    return;
+  }
+  const doc = state.currentDoc;
+  const data = state.currentData;
+  const rawHeaders = (data && data.raw_headers) || [];
+  const mapping = (data && data.header_mapping) || {};
+  const conf = data ? data.header_confidence : null;
+  const needsConfirm = data ? data.header_needs_human_confirm : false;
+  const inferred = (data && data.header_math_chain_inferred) || [];
+  const failures = (data && data.header_math_chain_failures) || [];
+  const canSave = state.foundationDirHandle !== null;
+
+  if (!rawHeaders || rawHeaders.length === 0) {
+    tab.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>无表头识别数据</h3><p>该文档非桩基类，或 OCR 未识别到表头行（路2 独立推断，无数学链约束）。</p></div>`;
+    return;
+  }
+
+  let html = '<div class="hm-view">';
+  html += `<div class="hm-toolbar">
+    <span class="table-meta">表头置信度 ${conf !== null && conf !== undefined ? (conf * 100).toFixed(0) + '%' : '—'}${needsConfirm ? ' · <span class="badge badge-pending-class">需人工确认</span>' : ''}</span>
+    <label class="hm-sync"><input type="checkbox" id="hmSyncGlobal" ${canSave ? '' : 'disabled'}> 同步到全局别名库（写 header-aliases.json）</label>
+  </div>`;
+
+  if (inferred.length > 0) {
+    html += `<div class="hm-note">数学链推断已补全缺失列：${escapeHtml(inferred.join('；'))}</div>`;
+  }
+  if (failures.length > 0) {
+    html += `<div class="hm-note hm-note-warn">数学链自洽校验未通过（${failures.length} 条样本）：${escapeHtml(failures.slice(0, 3).join('；'))}</div>`;
+  }
+
+  html += `<table class="data-table hm-table"><thead><tr>
+    <th>列索引</th><th>OCR 识别表头</th><th>映射槽位</th></tr></thead><tbody>`;
+  rawHeaders.forEach((h, idx) => {
+    const cur = mapping[String(idx)] || '';
+    html += `<tr>
+      <td class="row-no">${idx}</td>
+      <td>${escapeHtml(h)}</td>
+      <td><select data-hm-col="${idx}">
+        <option value="">— 未映射 —</option>
+        ${PILE_SLOT_OPTIONS.map(s => `<option value="${s}" ${cur === s ? 'selected' : ''}>${SLOT_CN[s] || s} (${s})</option>`).join('')}
+      </select></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+
+  html += `<div class="hm-actions">
+    <button class="btn btn-primary" id="btnSaveHeaderMap" ${canSave ? '' : 'disabled'}>保存映射</button>
+    <span class="table-meta" style="margin-left:8px;">保存后轻量重算 structured_rows（不重 OCR）</span>
+  </div>`;
+  html += '</div>';
+  tab.innerHTML = html;
+
+  const btn = $('btnSaveHeaderMap');
+  if (btn) btn.addEventListener('click', saveHeaderMapping);
+}
+
+window.saveHeaderMapping = async function() {
+  const doc = state.currentDoc;
+  const data = state.currentData;
+  if (!doc || !data || !state.foundationDirHandle) return;
+  const selects = document.querySelectorAll('[data-hm-col]');
+  const mapping = {};
+  selects.forEach(sel => {
+    const col = sel.getAttribute('data-hm-col');
+    if (sel.value) mapping[col] = sel.value;
+  });
+  // 更新结构化数据（轻量重算 header_mapping，不重 OCR）
+  data.header_mapping = mapping;
+  data.header_confidence = 1.0;
+  data.header_needs_human_confirm = false;
+  try {
+    await writeJson(doc.data_file, data);
+    // 同步 index 元数据
+    const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
+    if (docIdx >= 0) {
+      state.index.documents[docIdx].header_mapping = mapping;
+      state.index.documents[docIdx].header_confidence = 1.0;
+      state.index.documents[docIdx].last_updated = nowIso();
+    }
+    state.index.updated_at = nowIso();
+    await writeJson('index.json', state.index);
+    diagLog(`表头映射已保存: ${Object.keys(mapping).length} 列`, 'ok');
+    showToast('表头映射已保存', 'success');
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error', 5000);
+    diagLog('表头映射保存失败: ' + e.message, 'error');
+  }
+  // 勾选同步到全局别名库时，生成回流文件（供 import_corrections.py 使用）
+  const syncBox = $('hmSyncGlobal');
+  if (syncBox && syncBox.checked && state.foundationDirHandle) {
+    try {
+      const corr = { header_corrections: Object.entries(mapping).map(([col, slot]) => ({
+        file: doc.original_file || '',
+        original_header: (data.raw_headers || [])[Number(col)] || '',
+        corrected_slot: slot,
+        sync_to_global: true,
+        corrected_at: nowIso(),
+      })) };
+      await writeJson('header_corrections_export.json', corr);
+      showToast('已导出回流文件 header_corrections_export.json，运行 import_corrections.py 写入全局别名库', 'success', 6000);
+    } catch (e) {
+      showToast('回流文件导出失败: ' + e.message, 'error', 5000);
+    }
+  }
+  renderHeaderMapTab();
+};
 
 function updateConfirmGate() {
   const doc = state.currentDoc;

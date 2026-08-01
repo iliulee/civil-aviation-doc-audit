@@ -125,7 +125,7 @@ civil-aviation-doc-audit/
 
 ### v7.2 新增
 - 🔑 **关键词聚合分类（无硬编码副本）**：从 references/classification-terms.json + 91 条规则 trigger_when.doc_type + FIELD_ALIAS_MAP 三真相源运行时聚合，带来源标注可追溯
-- 🧭 **三级判定 + 人工闸门 + 简化自成长**：关键词快筛 → LLM 语义（弱/多专业/无命中才上）→ 确认；人工改分类自动追加 candidate 词条下次确认即生效
+- 🧭 **三级判定 + 人工闸门 + 简化自成长**：关键词快筛 → LLM 语义（弱/多专业/无命中才上）→ 确认；C-01 闸门强制检查（分类未确认不进入审核，--force 可跳过）；人工改分类自动追加 candidate 词条，data-editor 文档属性 Tab 确认，`import_corrections.py --from-index` 回流全局词表
 - 🖼️ **图纸角色解耦**：is_drawing 标签与 C-01 三分法角色正交，施工阶段图纸默认依据，竣工阶段默认审核，build 阶段终端高亮提示
 - 🧾 **电子表状态语义修正**：xlsx/非扫描 PDF 在 editor+dashboard 统一显示"无需OCR"确定态，不谎报 OCR%
 - ⚠️ **文档级置信度存疑降级**：糊件照常可审核，规则结论 severity 自动标存疑入 R-20 清单；总览建议重扫 TOP 10 纯文字不强制

@@ -235,6 +235,32 @@ def check_human_verified(index: Dict[str, Any]) -> Tuple[bool, List[str]]:
     return len(unverified) == 0, unverified
 
 
+def check_classification_confirmed(index: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    """
+    v7.2 C1/C2: C-01 人工分类确认闸门检查。
+
+    检查 index.json 的 file_classification_confirmed 状态：
+    - file_classification_confirmed === true → 全部已确认，通过
+    - 字段缺失（旧版本数据底座）→ 向后兼容，视为通过
+    - file_classification_confirmed === false → 列出所有未确认（human_confirmed != true
+      且非 reference 角色）的文档
+
+    返回 (是否通过, 未确认文档列表)。
+    """
+    confirmed = index.get("file_classification_confirmed")
+    # 向后兼容：旧版数据底座无该字段，视为已确认
+    if confirmed is None:
+        return True, []
+    if confirmed is True:
+        return True, []
+    pending = [
+        d.get("original_file", d.get("id", "?"))
+        for d in index.get("documents", [])
+        if d.get("doc_role", "audited") != "reference" and d.get("human_confirmed") is not True
+    ]
+    return len(pending) == 0, pending
+
+
 def load_link_graph(out_base: Path) -> Dict[str, Any]:
     """加载文档关联图谱，用于精准加载关联文档。"""
     graph_path = out_base / "link_graph.json"
@@ -1188,9 +1214,18 @@ def run_review(
             print("\n请先打开 data-editor.html 完成人工核对，再执行审核。", file=sys.stderr)
             print("如需跳过此检查（仅测试用），请使用 --force 参数。", file=sys.stderr)
             return 1
-        print("✅ 审核前置检查通过 — 所有文件已完成人工核对\n", file=sys.stderr)
+        # v7.2 C1/C2: C-01 人工分类确认闸门（分类未经确认不进入审核）
+        cls_ok, cls_pending = check_classification_confirmed(index)
+        if not cls_ok:
+            print("⛔ C-01 分类确认闸门未通过 — 以下文件分类未经人工确认：", file=sys.stderr)
+            for f in cls_pending:
+                print(f"   - {f}", file=sys.stderr)
+            print("\n请打开 data-editor.html → 文档属性 Tab，确认各文件专业分类后再执行审核。", file=sys.stderr)
+            print("如需跳过此检查（仅测试用），请使用 --force 参数。", file=sys.stderr)
+            return 1
+        print("✅ 审核前置检查通过 — 所有文件已完成人工核对与分类确认\n", file=sys.stderr)
     else:
-        print("⚠️  --force：跳过 human_verified 闸门\n", file=sys.stderr)
+        print("⚠️  --force：跳过 human_verified 闸门与 C-01 分类确认闸门\n", file=sys.stderr)
         force_info = {
             "force_bypass_gate": True,
             "unverified_files": unverified,

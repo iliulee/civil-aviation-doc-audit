@@ -2069,6 +2069,7 @@ def main() -> int:
                 "ocr_confidence": 0.0,
                 "data_file": None,
                 "human_verified": True,
+                "human_confirmed": True,   # v7.2 C1: 依据文件角色由规则确定，无需 AI 分类确认
                 "audit_status": "skipped",
                 "last_updated": now_iso(),
                 "size_bytes": abs_path.stat().st_size,
@@ -2325,6 +2326,7 @@ def main() -> int:
                     "total_rows": len(sheet_rows) if 'sheet_rows' in dir() else 0,
                 },
                 "human_verified": True,
+                "human_confirmed": False,  # v7.2 C1: AI 分类结果，待人工确认
                 "audit_status": "pending",
                 "last_updated": now_iso(),
                 "size_bytes": sniff.get("size_bytes"),
@@ -2442,6 +2444,7 @@ def main() -> int:
             "quality_alerts": quality_alerts,
             "confusion_suspects": confusion_suspects,
             "human_verified": not (is_scanned or file_type == "IMAGE"),
+            "human_confirmed": False,  # v7.2 C1: AI 分类结果，待人工确认
             "corrected_file": None,
             "audit_status": "pending",
             "last_updated": now_iso(),
@@ -2472,6 +2475,13 @@ def main() -> int:
     # 更新 index 元信息
     index["updated_at"] = now_iso()
     index["stage"] = "foundation_built"
+    # v7.2 C1/C2: C-01 人工分类确认闸门——分类未经人工确认前为 false，
+    # data-editor 文档属性面板确认分类后置 true，审核阶段检查
+    index["file_classification_confirmed"] = False
+    index["classification_pending_count"] = sum(
+        1 for d in index.get("documents", [])
+        if d.get("doc_role", "audited") != "reference" and d.get("human_confirmed") is not True
+    )
     save_json(out_base / "index.json", index)
 
     # 复制 Web 模板

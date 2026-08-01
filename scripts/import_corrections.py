@@ -10,6 +10,11 @@ v7.2 V-70 自成长导入脚本（import_corrections.py）
 
 用法：
     python scripts/import_corrections.py <修正记录JSON路径>
+    python scripts/import_corrections.py --from-index <index.json路径>
+
+    --from-index 模式：从 data-editor 写入 index.json 的
+    documents[].self_growth_candidate（人工改分类且与 AI 原判不同时生成）
+    提取候选词条，回流到 classification-terms.json candidates。
 
 修正记录 JSON 格式（data-editor 导出）：
     {
@@ -154,10 +159,51 @@ def import_header_corrections(corrections: list) -> tuple:
     return added, skipped
 
 
+def import_candidates_from_index(index_path: Path) -> tuple:
+    """v7.2 V-70: 从 index.json 提取 self_growth_candidate 回流为候选词条。
+    返回 (新增数, 跳过数)。
+    """
+    index = load_json(index_path)
+    if not index:
+        print(f"[!] index.json 不存在或为空: {index_path}", file=sys.stderr)
+        return 0, 0
+    corrections = []
+    for doc in index.get("documents", []):
+        cand = doc.get("self_growth_candidate") or {}
+        if cand.get("status") != "candidate":
+            continue
+        corrections.append({
+            "file": doc.get("original_file", ""),
+            "corrected_professional": cand.get("corrected_professional", ""),
+            "corrected_doc_type": cand.get("corrected_doc_type", ""),
+            "keyword_pattern": cand.get("keyword_pattern", ""),
+            "corrected_at": cand.get("corrected_at") or doc.get("last_updated", ""),
+        })
+    if not corrections:
+        print(f"[i] index.json 中未发现 self_growth_candidate", file=sys.stderr)
+        return 0, 0
+    return import_classification_corrections(corrections)
+
+
 def main():
     if len(sys.argv) < 2:
         print("用法: python scripts/import_corrections.py <修正记录JSON路径>", file=sys.stderr)
+        print("      python scripts/import_corrections.py --from-index <index.json路径>", file=sys.stderr)
         sys.exit(1)
+
+    if sys.argv[1] == "--from-index":
+        index_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+        if not index_path or not index_path.exists():
+            print(f"[!] index.json 不存在: {index_path}", file=sys.stderr)
+            sys.exit(1)
+        print(f"=== v7.2 V-70 自成长导入（--from-index） ===", file=sys.stderr)
+        print(f"来源: {index_path.name}", file=sys.stderr)
+        cls_added, cls_skipped = import_candidates_from_index(index_path)
+        print(f"  分类候选词条: 新增 {cls_added} 条，跳过 {cls_skipped} 条", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"=== 导入完成 ===", file=sys.stderr)
+        print(f"候选词条请在分类确认流程中确认后变 active", file=sys.stderr)
+        sys.exit(0)
 
     corrections_file = Path(sys.argv[1])
     if not corrections_file.exists():
