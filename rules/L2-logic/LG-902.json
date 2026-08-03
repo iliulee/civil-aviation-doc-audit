@@ -6,8 +6,15 @@
   "category": "跨资料合计值反向验证",
   "description": "合计值来源判定四种情况：①有合计行+合计值正确→资料可信度提升；②有合计行+合计值错误→数据汇总错误，需逐项修正；③无合计行+有合计值→合计值来源不明，审计线索；④无合计行+无合计值→资料不完整，需补全。",
   "trigger_when": {
-    "doc_type": ["施工记录", "施工日志", "汇总表"],
-    "field_required": ["合计行", "合计值"]
+    "doc_type": [
+      "施工记录",
+      "施工日志",
+      "汇总表"
+    ],
+    "field_required": [
+      "合计行",
+      "合计值"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.9.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

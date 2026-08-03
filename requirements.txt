@@ -4,14 +4,10 @@
 # 验证方式：pip install -r requirements.txt
 # 安装后运行 python scripts/run_audit.py info <任意文件> 验证
 
-# ----- PDF 文字提取（主力：PyMuPDF）-----
-# 实际测试对中文 PDF 字符识别 100%，比 pdfplumber / MarkItDown 更稳定
+# ----- PDF 文字提取 + PDF 转图片（PyMuPDF 统一引擎）-----
+# PyMuPDF 同时承担：①电子档 PDF 文字提取 ②扫描件 PDF 转图片（替代 pdf2image+poppler）
+# 性能：内存内直接渲染，零进程开销，比 poppler 快 3-5x，原生支持中文路径
 PyMuPDF>=1.23.0
-
-# ----- PDF 转图片（pdf2image + poppler）-----
-# pdf2image 依赖 poppler（PDF 拆图用）
-# Poppler 由 install.ps1 自动下载，不打包在 Skill 中
-pdf2image>=1.16.3
 
 # Pillow 是图像处理共同依赖
 Pillow>=10.0.0

@@ -6,8 +6,16 @@
   "category": "人员一致性",
   "description": "变更应有正式手续，前后职责交接清晰。矛盾表现：新经理已签字但无变更手续。",
   "trigger_when": {
-    "doc_type": ["项目经理变更通知", "总监变更通知", "签字资料"],
-    "field_required": ["签字人", "签字日期", "变更批准日期"]
+    "doc_type": [
+      "项目经理变更通知",
+      "总监变更通知",
+      "签字资料"
+    ],
+    "field_required": [
+      "签字人",
+      "签字日期",
+      "变更批准日期"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.3.6 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,17 @@
   "category": "状态描述一致性",
   "description": "不合格 → 整改通知 → 整改实施 → 复验合格，闭环。矛盾表现：只有\"不合格\"，无后续整改记录。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "不合格记录", "整改通知单", "整改回复单", "复验记录"],
-    "field_required": ["不合格项编号", "整改状态"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "不合格记录",
+      "整改通知单",
+      "整改回复单",
+      "复验记录"
+    ],
+    "field_required": [
+      "不合格项编号",
+      "整改状态"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +33,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +55,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.4.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

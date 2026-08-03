@@ -6,8 +6,13 @@
   "category": "数量累计一致性",
   "description": "同 9.2.1，向上累计。各分项工程量加起来应等于分部工程总量，差值不应超出施工误差范围。",
   "trigger_when": {
-    "doc_type": ["分项工程质量验收记录", "分部工程质量验收记录"],
-    "field_required": ["工程量"]
+    "doc_type": [
+      "分项工程质量验收记录",
+      "分部工程质量验收记录"
+    ],
+    "field_required": [
+      "工程量"
+    ]
   },
   "check_expr": {
     "type": "aggregation",
@@ -24,7 +29,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +51,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.2.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -2,7 +2,7 @@
   "rule_id": "CU-016",
   "name": "平行检测报告 vs 施工检测报告日期比对",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "平行检测取样日期应与施工检测取样日期相近（同批次或同期）。平行检测报告日期 ≥ 施工检测报告日期（监理复核在后）。平行检测报告日期早于施工检测报告日期，或取样日期相差过大（非同批次）均为矛盾",
   "trigger_when": {
@@ -68,5 +68,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.15 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

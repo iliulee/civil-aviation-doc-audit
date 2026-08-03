@@ -6,8 +6,15 @@
   "category": "时间轴一致性",
   "description": "监测方案规定频率：施工期多久一次、加载期多久一次，实际记录间隔应符合。矛盾表现：方案要求3天一次，实际出现10天间隔。",
   "trigger_when": {
-    "doc_type": ["沉降监测方案", "变形监测方案", "监测记录"],
-    "field_required": ["监测频率", "监测日期"]
+    "doc_type": [
+      "沉降监测方案",
+      "变形监测方案",
+      "监测记录"
+    ],
+    "field_required": [
+      "监测频率",
+      "监测日期"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.7 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

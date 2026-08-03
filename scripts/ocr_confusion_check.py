@@ -78,27 +78,30 @@ class OCRConfusionChecker:
 
     def __init__(self, data: dict):
         self.data = data
-        self.rows = data.get("rows", [])
+        # 优先读 structured_rows，回退到 rows（向后兼容）
+        self.rows = data.get("structured_rows") or data.get("rows", [])
         self.doc_type = data.get("doc_type", "")
         self.n_rows = len(self.rows)
         self.suspects: list[dict] = []
 
-        # 构建列数据
+        # 构建列数据（字段名归一化为中文）
         self.columns: dict[str, list] = {}
         self._build_columns()
 
     def _build_columns(self):
-        """从 rows 构建列数据"""
+        """从 rows 构建列数据，字段名统一归一化为中文"""
         if not self.rows:
             return
+        from data_quality_check import _normalize_col_name
         for row in self.rows:
             for key, val in row.items():
-                if key not in self.columns:
-                    self.columns[key] = []
-                self.columns[key].append(val)
+                cn_key = _normalize_col_name(key)
+                if cn_key not in self.columns:
+                    self.columns[cn_key] = []
+                self.columns[cn_key].append(val)
 
     # ========== 1. 桩号 Z→2 混淆检测 ==========
-    def check_pile_prefix_consistency(self, col_name: str = "pile_no") -> list[dict]:
+    def check_pile_prefix_consistency(self, col_name: str = "桩号") -> list[dict]:
         """
         检测桩号前缀一致性：
         - 如果大部分桩号以 Z 开头，个别以 2 开头 → 疑似 Z→2 混淆
@@ -170,7 +173,7 @@ class OCRConfusionChecker:
         return w
 
     # ========== 2. 充盈系数范围异常检测 ==========
-    def check_filling_coeff_range(self, col_name: str = "filling_coeff") -> list[dict]:
+    def check_filling_coeff_range(self, col_name: str = "充盈系数") -> list[dict]:
         """
         检测充盈系数是否超出正常范围：
         - < 1.0 → 几乎不可能，疑似 OCR 误读（如 1.46→1.06 的 4→0）
@@ -284,10 +287,10 @@ class OCRConfusionChecker:
     # ========== 4. 桩长与高程差交叉验证 ==========
     def check_length_elevation_consistency(
         self,
-        actual_len_col: str = "actual_length",
-        top_elev_col: str = "top_elev",
-        bottom_elev_col: str = "bottom_elev",
-        remark_col: str = "remark",
+        actual_len_col: str = "实长",
+        top_elev_col: str = "桩顶高程",
+        bottom_elev_col: str = "桩底高程",
+        remark_col: str = "备注",
     ) -> list[dict]:
         """
         检测桩长与高程差是否一致：
@@ -359,8 +362,8 @@ class OCRConfusionChecker:
     # ========== 5. 桩长突变疑似 OCR 误读 ==========
     def check_length_jump_ocr_suspect(
         self,
-        actual_len_col: str = "actual_length",
-        remark_col: str = "remark",
+        actual_len_col: str = "实长",
+        remark_col: str = "备注",
     ) -> list[dict]:
         """
         检测桩长突变是否可能是 OCR 误读：
@@ -426,9 +429,9 @@ class OCRConfusionChecker:
         """
         w = []
         numeric_fields = [
-            "actual_length", "filling_coeff", "volume", "verticality",
-            "diameter", "design_length", "current", "re_penetration",
-            "top_elev", "bottom_elev",
+            "实长", "充盈系数", "灌入量", "竖直度",
+            "桩径", "设计桩长", "密实电流", "反插次数",
+            "桩顶高程", "桩底高程",
         ]
 
         alpha_to_digit = {"O": "0", "o": "0", "l": "1", "I": "1", "S": "5", "s": "5", "B": "8"}

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-07-31T09:30:00+08:00",
+  "updated_at": "2026-08-03T01:30:00+08:00",
   "total_rules": 93,
   "by_level": {
     "L1-IRON": 17,
@@ -9,7 +9,8 @@
   },
   "by_scope": {
     "SINGLE_DOC": 30,
-    "CROSS_DOC": 63
+    "CROSS_UNIT": 18,
+    "CROSS_DOC": 45
   },
   "by_status": {
     "active": 92,
@@ -29,7 +30,8 @@
       "version": "1.0.0",
       "file": "L3-business/BZ-001.json",
       "category": "数据质量-重复值",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "BZ-002",
@@ -40,7 +42,8 @@
       "version": "1.0.0",
       "file": "L3-business/BZ-002.json",
       "category": "数据质量-突变",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "BZ-003",
@@ -51,205 +54,224 @@
       "version": "1.0.0",
       "file": "L3-business/BZ-003.json",
       "category": "数据质量-涂改",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-001",
       "name": "监理-施工方混凝土量偏差校验",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-001.json",
       "category": "跨单位数量对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-002",
       "name": "开工令日期 ≥ 开工报审表日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-002.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-003",
       "name": "复工令日期 ≥ 复工报审表日期 ≥ 暂停令签发日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-003.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-004",
       "name": "工程延期报审：事件日期 → 申请日期 → 批准日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-004.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-005",
       "name": "费用索赔报审：事件日期 → 申请日期 → 审核日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-005.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-006",
       "name": "施工进度计划报审：编制日期 → 审查日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-006.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-007",
       "name": "工程款支付报审：申请日期 → 审核日期 → 签发日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-007.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-008",
       "name": "竣工验收申请：预验收 → 整改 → 申请",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-008.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-009",
       "name": "旁站记录日期 = 施工日志对应工序日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-009.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-010",
       "name": "旁站通知提前量：施工日期 - 通知日期 ≥ 12小时",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-010.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-011",
       "name": "巡视记录日期连续性 vs 施工日志",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-011.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-012",
       "name": "工序/检验批验收：施工自检日期 ≤ 监理验收日期",
       "level": "L1-IRON",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-012.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-013",
       "name": "工程试验段：施工 → 记录 → 总结审批",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-013.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-014",
       "name": "危大工程：方案审查 → 专家论证 → 验收",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-014.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-015",
       "name": "施工检测报告：取样 ≤ 检测 ≤ 报告 ≤ 验收",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-015.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-016",
       "name": "平行检测报告 vs 施工检测报告日期比对",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-016.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-017",
       "name": "第一次工地会议纪要日期 ≤ 开工日期",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-017.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "CU-018",
       "name": "监理例会/专题会议：会议日期 vs 议定事项时限",
       "level": "L2-LOGIC",
-      "scope": "CROSS_DOC",
+      "scope": "CROSS_UNIT",
       "status": "active",
       "version": "1.0.0",
       "file": "L2-logic/CU-018.json",
       "category": "跨单位日期对照",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "IR-001",
@@ -260,7 +282,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-001.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-002",
@@ -271,7 +294,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-002.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-003",
@@ -282,7 +306,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-003.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-004",
@@ -293,7 +318,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-004.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-005",
@@ -304,7 +330,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-005.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-006",
@@ -315,7 +342,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-006.json",
       "category": "伦理红线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-007",
@@ -326,7 +354,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-007.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-008",
@@ -337,7 +366,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-008.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-010",
@@ -348,7 +378,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-010.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-011",
@@ -359,40 +390,44 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-011.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
-      "rule_id": "IR-012",
+      "rule_id": "LG-904",
       "name": "高程自洽",
       "level": "L2-LOGIC",
       "scope": "SINGLE_DOC",
       "status": "active",
       "version": "1.0.0",
-      "file": "L2-logic/IR-012.json",
+      "file": "L2-logic/LG-904.json",
       "category": "数学自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
-      "rule_id": "IR-013",
+      "rule_id": "LG-905",
       "name": "缺合计行判定",
       "level": "L2-LOGIC",
       "scope": "SINGLE_DOC",
       "status": "active",
       "version": "1.0.0",
-      "file": "L2-logic/IR-013.json",
+      "file": "L2-logic/LG-905.json",
       "category": "结构检查",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
-      "rule_id": "IR-014",
+      "rule_id": "LG-906",
       "name": "多参数联检",
       "level": "L2-LOGIC",
       "scope": "SINGLE_DOC",
       "status": "active",
       "version": "1.0.0",
-      "file": "L2-logic/IR-014.json",
+      "file": "L2-logic/LG-906.json",
       "category": "数学自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-015",
@@ -403,7 +438,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-015.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-016",
@@ -414,7 +450,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-016.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-017",
@@ -425,7 +462,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-017.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-018",
@@ -436,7 +474,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-018.json",
       "category": "合规底线",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-019",
@@ -447,7 +486,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-019.json",
       "category": "持续改进",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "IR-020",
@@ -458,7 +498,8 @@
       "version": "1.0.0",
       "file": "L1-iron/IR-020.json",
       "category": "数据校验",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "LG-001",
@@ -469,7 +510,8 @@
       "version": "1.2.0",
       "file": "L2-logic/LG-001.json",
       "category": "数学自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-006",
@@ -480,7 +522,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-006.json",
       "category": "数据完整性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-007",
@@ -491,7 +534,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-007.json",
       "category": "数据完整性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-1001",
@@ -502,7 +546,8 @@
       "version": "1.1.0",
       "file": "L2-logic/LG-1001.json",
       "category": "数据自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-1002",
@@ -513,7 +558,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-1002.json",
       "category": "数据自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-1003",
@@ -524,7 +570,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-1003.json",
       "category": "数据自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-1004",
@@ -535,7 +582,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-1004.json",
       "category": "数据自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-1005",
@@ -546,7 +594,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-1005.json",
       "category": "数据自洽",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-101",
@@ -557,7 +606,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-101.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-102",
@@ -568,7 +618,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-102.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-103",
@@ -579,7 +630,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-103.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-104",
@@ -590,7 +642,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-104.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-105",
@@ -601,7 +654,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-105.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-106",
@@ -612,7 +666,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-106.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-107",
@@ -623,7 +678,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-107.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-108",
@@ -634,7 +690,8 @@
       "version": "1.0.0",
       "file": "L3-business/LG-108.json",
       "category": "时间轴一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": true
     },
     {
       "rule_id": "LG-201",
@@ -645,7 +702,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-201.json",
       "category": "数量累计一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-202",
@@ -656,7 +714,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-202.json",
       "category": "数量累计一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-203",
@@ -667,7 +726,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-203.json",
       "category": "数量累计一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-204",
@@ -678,7 +738,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-204.json",
       "category": "数量累计一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-205",
@@ -689,7 +750,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-205.json",
       "category": "数量累计一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-206",
@@ -700,7 +762,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-206.json",
       "category": "数量累计一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-301",
@@ -711,7 +774,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-301.json",
       "category": "人员一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-302",
@@ -722,7 +786,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-302.json",
       "category": "人员一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-303",
@@ -733,7 +798,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-303.json",
       "category": "人员一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-304",
@@ -744,7 +810,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-304.json",
       "category": "人员一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-305",
@@ -755,7 +822,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-305.json",
       "category": "人员一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-306",
@@ -766,7 +834,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-306.json",
       "category": "人员一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-401",
@@ -777,7 +846,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-401.json",
       "category": "状态描述一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-402",
@@ -788,7 +858,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-402.json",
       "category": "状态描述一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-403",
@@ -799,7 +870,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-403.json",
       "category": "状态描述一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-404",
@@ -810,7 +882,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-404.json",
       "category": "状态描述一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-501",
@@ -821,7 +894,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-501.json",
       "category": "签字一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-502",
@@ -832,7 +906,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-502.json",
       "category": "签字一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-503",
@@ -843,7 +918,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-503.json",
       "category": "签字一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-504",
@@ -854,7 +930,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-504.json",
       "category": "签字一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-601",
@@ -865,7 +942,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-601.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-602",
@@ -876,7 +954,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-602.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-603",
@@ -887,7 +966,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-603.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-604",
@@ -898,7 +978,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-604.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-605",
@@ -909,7 +990,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-605.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-606",
@@ -920,7 +1002,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-606.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-607",
@@ -931,7 +1014,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-607.json",
       "category": "因果一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-701",
@@ -942,7 +1026,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-701.json",
       "category": "规范引用一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-702",
@@ -953,7 +1038,8 @@
       "version": "1.0.0",
       "file": "L3-business/LG-702.json",
       "category": "规范引用一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-703",
@@ -964,7 +1050,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-703.json",
       "category": "规范引用一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-801",
@@ -975,7 +1062,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-801.json",
       "category": "试验检测一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-802",
@@ -986,7 +1074,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-802.json",
       "category": "试验检测一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-803",
@@ -997,7 +1086,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-803.json",
       "category": "试验检测一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-804",
@@ -1008,7 +1098,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-804.json",
       "category": "试验检测一致性",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-901",
@@ -1019,7 +1110,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-901.json",
       "category": "跨资料合计值反向验证",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-902",
@@ -1030,7 +1122,8 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-902.json",
       "category": "跨资料合计值反向验证",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     },
     {
       "rule_id": "LG-903",
@@ -1041,7 +1134,12 @@
       "version": "1.0.0",
       "file": "L2-logic/LG-903.json",
       "category": "跨资料合计值反向验证",
-      "source": "system"
+      "source": "system",
+      "is_placeholder": false
     }
-  ]
+  ],
+  "by_type": {
+    "substantive": 74,
+    "placeholder": 19
+  }
 }

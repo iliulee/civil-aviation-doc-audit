@@ -6,8 +6,15 @@
   "category": "时间轴一致性",
   "description": "材料报审日期（监理审批日期）应在材料使用前；材料进场日期应在报审合格后；检验批使用该材料的日期应在进场之后。矛盾表现：使用日期早于进场日期，或进场日期早于报审日期。典型场景：钢筋焊接检验批日期 = 2024-03-15，钢筋进场日期 = 2024-03-18，矛盾：用了还没进场的钢筋。",
   "trigger_when": {
-    "doc_type": ["检验批", "材料进场记录", "材料报审表"],
-    "field_required": ["日期", "材料名称"]
+    "doc_type": [
+      "检验批",
+      "材料进场记录",
+      "材料报审表"
+    ],
+    "field_required": [
+      "日期",
+      "材料名称"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

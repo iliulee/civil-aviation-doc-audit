@@ -4,52 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>项目总览 — 民航施工资料审核</title>
+  <link rel="stylesheet" href="tokens.css">
   <style>
     /* ================================================================
-       Design Tokens — "Precision Instrument"
-       与 data-editor.html 共享设计语言
+       页面专属变量（共享令牌见 tokens.css）
     ================================================================ */
     :root {
-      --color-bg-app:        #f4f6f9;
-      --color-bg-surface:    #ffffff;
-      --color-bg-header:     #0f172a;
-      --color-bg-panel-hdr:  #f8fafc;
-
-      --color-text-primary:  #1e293b;
-      --color-text-secondary:#64748b;
-      --color-text-tertiary: #94a3b8;
-      --color-text-inverse:  #f1f5f9;
-
-      --color-border:        #e2e8f0;
-      --color-border-light:  #f1f5f9;
-
-      --color-accent:        #2563eb;
-      --color-accent-hover:  #1d4ed8;
-      --color-accent-light:  #eff6ff;
-
-      --color-success:       #0d9488;
-      --color-success-light: #f0fdfa;
-      --color-success-border:#99f6e4;
-
-      --color-warning:       #d97706;
-      --color-warning-light: #fffbeb;
-      --color-warning-border:#fde68a;
-
-      --color-danger:        #dc2626;
-      --color-danger-light:  #fef2f2;
-      --color-danger-border: #fecaca;
-
-      --radius-sm: 4px;
-      --radius-md: 6px;
-      --radius-lg: 8px;
-
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
-      --shadow-overlay: 0 12px 40px rgba(0,0,0,0.24);
-
-      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
-      --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
       --font-size-xs: 11px;
       --font-size-sm: 12px;
       --font-size-base: 13px;
@@ -843,6 +803,7 @@
                 if (m === 'meta_xlsx') return '免OCR';
                 if (m === 'text_pdf') return '免OCR';
                 if (m === 'docx') return '免OCR';
+                if (m === 'reference_skip') return '免OCR';
                 return d.ocr_confidence ? (d.ocr_confidence * 100).toFixed(1) + '%' : '—';
               })()}</td>
               <td>${statusBadge(ocrStatus)}</td>

@@ -2,7 +2,7 @@
   "rule_id": "CU-004",
   "name": "工程延期报审：事件日期 → 申请日期 → 批准日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "工程延期报审流程：索赔事件发生日期 ≤ 事件结束日期 ≤ 施工单位《工程延期报审表》（B.28）申请日期 ≤ 监理批准日期。申请延期天数应与事件持续天数逻辑匹配。跨单位核心校验为监理批准日期 ≥ 施工申请日期",
   "trigger_when": {
@@ -66,5 +66,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

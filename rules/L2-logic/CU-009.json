@@ -2,7 +2,7 @@
   "rule_id": "CU-009",
   "name": "旁站记录日期 = 施工日志对应工序日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "《旁站记录》（A.8）记录的日期应与施工日志中对应工序的施工日期一致。旁站开始时间、结束时间应在施工日志记录的作业时段内",
   "trigger_when": {
@@ -68,5 +68,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.8 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

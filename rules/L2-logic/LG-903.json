@@ -6,8 +6,17 @@
   "category": "跨资料合计值反向验证",
   "description": "总桩数 = 各页小计桩数之和；总米数 = 各页小计米数之和。矛盾表现：总桩数 33 根，但各页桩号差 = 32（Z420→Z415，差 5 个号，但共 6 根桩）→ 桩号跳跃需说明。",
   "trigger_when": {
-    "doc_type": ["施工记录", "汇总表"],
-    "field_required": ["总桩数", "总米数", "各页小计桩数", "各页小计米数", "桩号"]
+    "doc_type": [
+      "施工记录",
+      "汇总表"
+    ],
+    "field_required": [
+      "总桩数",
+      "总米数",
+      "各页小计桩数",
+      "各页小计米数",
+      "桩号"
+    ]
   },
   "check_expr": {
     "type": "aggregation",
@@ -24,7 +33,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +55,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.9.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

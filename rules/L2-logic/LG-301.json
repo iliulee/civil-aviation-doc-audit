@@ -6,8 +6,15 @@
   "category": "人员一致性",
   "description": "三处出现的人员名单应一致：施工日志记录的人员、实际作业班组、考勤表。矛盾表现：施工日志写\"张三班组\"，考勤表无此人。",
   "trigger_when": {
-    "doc_type": ["施工日志", "班组记录", "考勤表"],
-    "field_required": ["人员姓名", "日期"]
+    "doc_type": [
+      "施工日志",
+      "班组记录",
+      "考勤表"
+    ],
+    "field_required": [
+      "人员姓名",
+      "日期"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.3.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

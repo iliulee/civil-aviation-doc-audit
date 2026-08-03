@@ -4,12 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>数据核对编辑器 — 民航施工资料人工核对</title>
+<link rel="stylesheet" href="tokens.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 /* ============================================================================
    设计系统 — 民航工程审核 · 精密仪表盘风格
 ============================================================================ */
 :root {
-  /* 骨架色（深墨蓝/炭灰） */
+  /* 页面专属变量（tokens.css 提供共享令牌） */
+
+  /* 骨架色（深墨蓝/炭灰）—— data-editor 专属深色主题 */
   --frame-darkest: #0a1628;
   --frame-dark: #0f1e2e;
   --frame-mid: #16293d;
@@ -21,26 +25,26 @@
   --surface: #ffffff;
   --surface-alt: #f5f7fa;
   --border: #cbd5e1;
-  --border-light: #e2e8f0;
+  --border-light: var(--color-border);
 
   /* 文字 */
   --text-primary: #0f1e2e;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: var(--color-text-tertiary);
   --text-inverse: #e2e8f0;
-  --text-inverse-muted: #94a3b8;
+  --text-inverse-muted: var(--color-text-tertiary);
 
-  /* 信号色（语义化、克制） */
-  --c-blue: #2563eb;       /* 选中/主操作 */
-  --c-blue-light: #dbeafe;
-  --c-amber: #d97706;      /* 待核对/告警 */
-  --c-amber-light: #fef3c7;
-  --c-teal: #0d9488;       /* 已核对/通过 */
-  --c-teal-light: #ccfbf1;
-  --c-red: #dc2626;        /* 仅留给否决/加载失败 */
-  --c-red-light: #fee2e2;
-  --c-gray: #6b7280;       /* 非文档 */
-  --c-gray-light: #f3f4f6;
+  /* 信号色别名（映射到 tokens.css 统一令牌） */
+  --c-blue: var(--color-accent);
+  --c-blue-light: var(--color-accent-light);
+  --c-amber: var(--color-warning);
+  --c-amber-light: var(--color-warning-light);
+  --c-teal: var(--color-success);
+  --c-teal-light: var(--color-success-light);
+  --c-red: var(--color-danger);
+  --c-red-light: var(--color-danger-light);
+  --c-gray: var(--color-neutral);
+  --c-gray-light: var(--color-neutral-light);
 
   /* 字体 */
   --font-display: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', 'Consolas', 'Courier New', monospace;
@@ -301,7 +305,37 @@ body::before {
   background: var(--frame-dark);
   border-right: 1px solid var(--frame-light);
   min-width: 200px;
+  position: relative;
 }
+.tree-panel.collapsed {
+  flex: 0 0 32px;
+  min-width: 32px;
+  cursor: pointer;
+}
+.tree-panel.collapsed .tree-toolbar,
+.tree-panel.collapsed .tree-container,
+.tree-panel.collapsed .tree-footer { display: none; }
+.tree-panel.collapsed::after {
+  content: '▶';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  color: var(--text-inverse);
+}
+.tree-collapse-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-inverse);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.tree-collapse-btn:hover { background: var(--frame-light); }
 .tree-toolbar {
   padding: 8px 10px;
   border-bottom: 1px solid var(--frame-light);
@@ -602,10 +636,214 @@ body::before {
 .content-panel {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--surface);
   overflow: hidden;
   min-width: 300px;
+}
+
+/* ============================================================================
+   分屏布局 — PDF 原图面板 + 分隔条 + 数据面板
+============================================================================ */
+.pdf-panel {
+  width: 40%;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-alt);
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+.pdf-panel.collapsed {
+  width: 32px !important;
+  min-width: 32px;
+  cursor: pointer;
+}
+.pdf-panel.collapsed .pdf-toolbar,
+.pdf-panel.collapsed .pdf-body,
+.pdf-panel.collapsed .pdf-nav { display: none; }
+.pdf-panel.collapsed::after {
+  content: '▶';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  color: var(--c-blue);
+}
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.pdf-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.pdf-collapse-btn {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+.pdf-collapse-btn:hover { color: var(--c-blue); border-color: var(--c-blue); }
+
+.pdf-body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+}
+.pdf-body .empty-state { padding: 40px 20px; text-align: center; }
+
+/* PDF canvas 渲染区 */
+.pdf-canvas-wrap {
+  position: relative;
+  margin: 0 auto;
+}
+.pdf-canvas-wrap canvas {
+  max-width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: zoom-in;
+}
+.pdf-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.pdf-drop-zone:hover, .pdf-drop-zone.dragover {
+  border-color: var(--c-blue);
+  background: var(--c-blue-light);
+  color: var(--c-blue);
+}
+.pdf-drop-zone .drop-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+/* PDF 翻页导航 */
+.pdf-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  justify-content: center;
+}
+.pdf-nav button {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.pdf-nav button:hover:not(:disabled) { color: var(--c-blue); border-color: var(--c-blue); }
+.pdf-nav button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pdf-nav .page-indicator { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
+.pdf-nav input[type="number"] {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+/* 分隔条 */
+.splitter {
+  width: 4px;
+  background: var(--border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background var(--transition);
+  z-index: 5;
+}
+.splitter:hover, .splitter.dragging { background: var(--c-blue); }
+.splitter::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  opacity: 0.3;
+}
+.splitter:hover::after, .splitter.dragging::after { opacity: 0.8; }
+.splitter.hidden { display: none; }
+
+/* 文本预览 Tab — 可编辑文本区域 */
+.text-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+  flex-shrink: 0;
+}
+.text-preview-box {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+.text-preview-editor {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-primary);
+  background: var(--surface);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  min-height: 200px;
+  outline: none;
+}
+.text-preview-editor:focus {
+  border-color: var(--c-blue);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+}
+.text-preview-editor.modified-line {
+  background: rgba(37,99,235,0.06);
+}
+
+/* 数据面板 */
+.data-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 200px;
 }
 
 /* Tab 栏 */
@@ -1296,6 +1534,7 @@ table.data-table td.pulse {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
+  white-space: pre-wrap;  /* 渲染 \n 为换行 */
 }
 .modal-body .modal-detail {
   margin-top: 8px;
@@ -1360,6 +1599,12 @@ table.data-table td.pulse {
 /* ============================================================================
    响应式
 ============================================================================ */
+@media (max-width: 900px) {
+  .content-panel { flex-direction: column !important; }
+  .preview-panel { width: 100% !important; max-height: 40%; border-bottom: 1px solid var(--border); }
+  .splitter { display: none; }
+  .data-panel { flex: 1; min-height: 200px; }
+}
 @media (max-width: 768px) {
   .main-layout { flex-direction: column; height: auto; }
   .tree-panel { flex: 0 0 220px; border-right: none; border-bottom: 1px solid var(--frame-light); }
@@ -1399,9 +1644,12 @@ table.data-table td.pulse {
 <!-- 主布局 -->
 <div class="main-layout">
   <!-- 左侧文档树 -->
-  <aside class="tree-panel">
+  <aside class="tree-panel" id="treePanel">
     <div class="tree-toolbar">
-      <input type="text" class="tree-search" id="treeSearch" placeholder="搜索文档...">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="text" class="tree-search" id="treeSearch" placeholder="搜索文档..." style="flex:1;">
+        <button class="tree-collapse-btn" id="btnCollapseTree" title="折叠/展开文档树">◀</button>
+      </div>
       <div class="tree-filters">
         <button class="filter-btn active" data-filter="all">全部</button>
         <button class="filter-btn" data-filter="pending">待核对</button>
@@ -1420,56 +1668,75 @@ table.data-table td.pulse {
     </div>
   </aside>
 
-  <!-- 右侧内容 -->
+  <!-- 右侧内容（分屏：PDF原图 + 数据面板） -->
   <main class="content-panel">
-    <div class="tab-bar">
-      <button class="tab-btn active" data-tab="table">表格数据<span class="tab-badge" id="badgeTable" style="display:none;"></span></button>
-      <button class="tab-btn" data-tab="text">原文预览</button>
-      <button class="tab-btn" data-tab="images">图纸</button>
-      <button class="tab-btn" data-tab="problems">问题视图<span class="tab-badge" id="badgeProblems" style="display:none;"></span></button>
-      <button class="tab-btn" data-tab="props">文档属性<span class="tab-badge" id="badgeProps" style="display:none;"></span></button>
-      <button class="tab-btn" data-tab="headerMap">表头映射</button>
-    </div>
-    <div class="tab-content active" id="tabTable">
-      <div class="empty-state">
-        <div class="empty-graphic"></div>
-        <h3>未加载文档</h3>
-        <p>从左侧文档列表选择一份资料，即可查看并编辑表格数据。</p>
+    <!-- 左侧：PDF 原图面板 -->
+    <div class="pdf-panel" id="pdfPanel">
+      <div class="pdf-toolbar">
+        <span class="pdf-title">PDF 原图</span>
+        <button class="pdf-collapse-btn" id="btnCollapsePdf" title="折叠/展开 PDF 面板">◀ 折叠</button>
+      </div>
+      <div class="pdf-body" id="pdfBody">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后将显示 PDF 扫描原图。</p>
+        </div>
+      </div>
+      <div class="pdf-nav" id="pdfNav" style="display:none;">
+        <button id="prevPdfPage" disabled>上一页</button>
+        <span class="page-indicator"><span id="curPdfPage">1</span> / <span id="totalPdfPage">1</span></span>
+        <input type="number" id="jumpPdfPage" min="1" value="1" style="width:50px;" title="输入页码跳转">
+        <button id="nextPdfPage" disabled>下一页</button>
       </div>
     </div>
-    <div class="tab-content" id="tabText">
-      <div class="empty-state">
-        <div class="empty-graphic"></div>
-        <h3>未加载文档</h3>
-        <p>选择文档后将显示 OCR 提取的全文预览。</p>
+
+    <!-- 分隔条 -->
+    <div class="splitter" id="splitter"></div>
+
+    <!-- 右侧：数据面板 -->
+    <div class="data-panel">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="table">表格数据<span class="tab-badge" id="badgeTable" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="textPreview">文本预览<span class="tab-badge" id="badgeText" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="problems">问题视图<span class="tab-badge" id="badgeProblems" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="props">文档属性<span class="tab-badge" id="badgeProps" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="headerMap">表头映射</button>
       </div>
-    </div>
-    <div class="tab-content" id="tabImages">
-      <div class="empty-state">
-        <div class="empty-graphic"></div>
-        <h3>未加载文档</h3>
-        <p>选择文档后将显示对应的图纸/截图。</p>
+      <div class="tab-content active" id="tabTable">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>从左侧文档列表选择一份资料，即可查看并编辑表格数据。</p>
+        </div>
       </div>
-    </div>
-    <div class="tab-content" id="tabProblems">
-      <div class="empty-state">
-        <div class="empty-graphic"></div>
-        <h3>未加载文档</h3>
-        <p>选择文档后将显示质量告警与 OCR 存疑项。</p>
+      <div class="tab-content" id="tabTextPreview">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后将显示 OCR 文本预览，可编辑并同步到表格。</p>
+        </div>
       </div>
-    </div>
-    <div class="tab-content" id="tabProps">
-      <div class="empty-state">
-        <div class="empty-graphic"></div>
-        <h3>未加载文档</h3>
-        <p>选择文档后在此查看 / 修改专业分类（v7.2 C1 人工闸门）。</p>
+      <div class="tab-content" id="tabProblems">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后将显示质量告警与 OCR 存疑项。</p>
+        </div>
       </div>
-    </div>
-    <div class="tab-content" id="tabHeaderMap">
-      <div class="empty-state">
-        <div class="empty-graphic"></div>
-        <h3>未加载文档</h3>
-        <p>选择文档后在此核对表头列映射（v7.2 C5 路4 人工闸门）。</p>
+      <div class="tab-content" id="tabProps">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后在此查看 / 修改专业分类（v7.2 C1 人工闸门）。</p>
+        </div>
+      </div>
+      <div class="tab-content" id="tabHeaderMap">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后在此核对表头列映射（v7.2 C5 路4 人工闸门）。</p>
+        </div>
       </div>
     </div>
   </main>
@@ -1528,12 +1795,20 @@ const state = {
   originalRows: null,
   modified: false,
   corrections: [],
-  currentPage: 1,
-  totalPages: 1,
   docCache: new Map(),
   qualityCache: new Map(),
   filterMode: 'all',
   diagEntries: [],
+  // PDF 面板状态
+  previewPage: 1,
+  previewTotalPages: 1,
+  previewPageMap: [],
+  currentPdfUrl: null,
+  pdfDocCache: {},
+  pdfCache: {},
+  pdfTotalPages: 0,
+  // Tab 状态
+  activeTab: 'table',
 };
 
 // ========== 工具函数 ==========
@@ -1744,7 +2019,7 @@ function diagnoseDocuments() {
   const sampleDoc = docs.find(d => !isNonDoc(d));
   if (sampleDoc) {
     diagLog(`抽样检查数据结构: ${sampleDoc.data_file}`, 'info');
-    readJsonViaHandle(sampleDoc.data_file).then(data => {
+    readJson(sampleDoc.data_file).then(data => {
       const keys = Object.keys(data);
       diagLog(`  顶层 keys: ${keys.join(', ')}`, 'info');
       if (data.structured_rows) {
@@ -2208,6 +2483,8 @@ window.selectDocument = async function(docId) {
   // 提示未保存修改
   if (state.modified && state.currentDoc) {
     if (!confirm(`当前文档「${state.currentDoc.original_file}」有未保存的修改，切换后将丢失。是否继续？`)) return;
+    // 用户确认丢弃修改，清除旧文档缓存中的脏数据
+    if (state.currentDoc.id) state.docCache.delete(state.currentDoc.id);
   }
 
   state.currentDoc = doc;
@@ -2236,9 +2513,12 @@ window.selectDocument = async function(docId) {
       state.originalRows = JSON.parse(JSON.stringify(rows));
     }
 
+    // P5: 重置预览页码（在 renderTableTab 之前，确保表格过滤正确）
+    state.previewPage = 1;
+
     renderTableTab();
-    renderTextTab();
-    renderImagesTab();
+    renderPdfPanel();
+    renderTextPreviewTab();
     renderProblemsTab();
     renderPropsTab();
     renderHeaderMapTab();
@@ -2400,8 +2680,16 @@ function renderStructuredTable(tab, rows, data, doc, confBadge, alertBadge, veri
   const visibleFields = fields.filter(f => !internalFields.includes(f));
   const leadingFields = fields.filter(f => internalFields.includes(f));
 
+  // P5: 多页文档自动联动过滤
+  const pageSet = new Set();
+  rows.forEach(r => { const p = getCellValue(r, 'page'); if (p !== '' && p !== null && p !== undefined) pageSet.add(String(p)); });
+  const isMultiPage = pageSet.size > 1;
+  const pageIndicator = isMultiPage
+    ? `<span class="badge badge-pending" id="tablePageIndicator" style="font-size:10px;">第 ${state.previewPage || 1} 页</span>`
+    : '';
+
   let html = `<div class="table-toolbar">${verifiedBadge}${confBadge}${alertBadge}
-    <span class="table-meta">${rows.length} 行 · ${visibleFields.length + leadingFields.length} 列</span>${saveBtn}</div>`;
+    <span class="table-meta">${rows.length} 行 · ${visibleFields.length + leadingFields.length} 列</span>${pageIndicator}${saveBtn}</div>`;
 
   html += `<div class="table-wrap"><table class="data-table"><thead><tr>`;
   html += `<th class="row-no">#</th>`;
@@ -2410,7 +2698,8 @@ function renderStructuredTable(tab, rows, data, doc, confBadge, alertBadge, veri
   html += `</tr></thead><tbody>`;
 
   rows.forEach((row, idx) => {
-    html += `<tr><td class="row-no">${idx + 1}</td>`;
+    const pageVal = getCellValue(row, 'page') || '';
+    html += `<tr data-page="${pageVal}" data-row-idx="${idx}"><td class="row-no">${idx + 1}</td>`;
     leadingFields.forEach(f => {
       const v = getCellValue(row, f);
       html += `<td class="num-cell">${escapeHtml(formatValue(v))}</td>`;
@@ -2443,6 +2732,35 @@ function renderStructuredTable(tab, rows, data, doc, confBadge, alertBadge, veri
   bindCellEditEvents();
   const saveBtnEl = $('btnSaveTable');
   if (saveBtnEl) saveBtnEl.addEventListener('click', saveTableChanges);
+
+  // P5: 多页文档自动按预览页码过滤
+  if (isMultiPage && state.previewPage) {
+    filterTableByPage(state.previewPage);
+  }
+}
+
+/** P5: 按页码过滤表格行 — 翻页自动联动 */
+function filterTableByPage(page) {
+  const trs = document.querySelectorAll('#tabTable tbody tr[data-page]');
+  if (!trs.length) return;
+
+  let visibleCount = 0;
+  if (page === null || page === undefined) {
+    trs.forEach(tr => { tr.style.display = ''; visibleCount++; });
+  } else {
+    const pageStr = String(page);
+    trs.forEach(tr => {
+      const show = tr.dataset.page === pageStr;
+      tr.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
+    });
+  }
+
+  // 更新页码指示器
+  const indicator = $('tablePageIndicator');
+  if (indicator) {
+    indicator.textContent = page ? `第 ${page} 页 (${visibleCount} 行)` : `全部 (${trs.length} 行)`;
+  }
 }
 
 function confidenceBadge(conf, extractionMode) {
@@ -2451,7 +2769,8 @@ function confidenceBadge(conf, extractionMode) {
   if (mode === 'meta_xlsx') return '<span class="badge badge-verified" title="电子表·已记元数据·无需OCR">电子表 · 无需OCR</span>';
   if (mode === 'text_pdf') return '<span class="badge badge-verified" title="电子档·已抽文本·无需OCR">电子档 · 无需OCR</span>';
   if (mode === 'docx') return '<span class="badge badge-verified" title="Word文档·已抽文本·无需OCR">Word · 无需OCR</span>';
-  if (conf === null || conf === undefined || conf === 0) return '<span class="badge badge-failed">OCR 0% · 未识别</span>';
+  if (mode === 'reference_skip') return '<span class="badge badge-verified" title="依据文件· skipped OCR">依据文件 · 无需OCR</span>';
+  if (conf === null || conf === undefined || conf === 0) return '<span class="badge badge-pending" title="未提取到OCR数据">未提取</span>';
   const pct = Math.round(conf * 100);
   let cls = 'badge-failed', label = '低';
   if (conf >= 0.9) { cls = 'badge-verified'; label = '高'; }
@@ -2501,13 +2820,15 @@ function bindCellEditEvents() {
     let original = '';
     td.addEventListener('focus', () => { original = td.textContent; });
     td.addEventListener('blur', () => {
-      const newVal = td.textContent;
+      const newVal = td.textContent.trim();
       if (newVal !== original) {
         const rowIdx = parseInt(td.dataset.row, 10);
         const field = td.dataset.field;
         const rows = getRows(state.currentData);
         if (rows && rows[rowIdx]) {
-          setCellValue(rows[rowIdx], field, newVal);
+          // 数值类型自动转换
+          const coerced = isNum(newVal) ? parseFloat(newVal) : newVal;
+          setCellValue(rows[rowIdx], field, coerced);
           if (isCellModified(rowIdx, field)) {
             td.classList.add('modified');
             td.classList.add('pulse');
@@ -2520,7 +2841,7 @@ function bindCellEditEvents() {
           state.corrections.push({
             doc_id: state.currentDoc.id,
             row_index: rowIdx,
-            page: rows[rowIdx].page || null,
+            page: getCellValue(rows[rowIdx], 'page') || null,
             field: field,
             original_value: original,
             corrected_value: newVal,
@@ -2529,8 +2850,16 @@ function bindCellEditEvents() {
             timestamp: nowIso(),
           });
           updateStatusInfo();
+          updateConfirmGate();  // P0: 实时更新确认按钮状态
+          syncTableToText(rowIdx, field, original, newVal);  // 表格编辑 → 文本预览联动
         }
       }
+    });
+    // 粘贴时只保留纯文本，防止 HTML 污染
+    td.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
     });
     td.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
@@ -2541,13 +2870,30 @@ function bindCellEditEvents() {
 
 async function saveTableChanges() {
   if (!state.currentDoc || !state.currentData) { showToast('未加载文档', 'warning'); return; }
+  const hadCorrections = state.corrections.length > 0;
   try {
     await writeJson(state.currentDoc.data_file, state.currentData);
     const rows = getRows(state.currentData);
     state.originalRows = rows ? JSON.parse(JSON.stringify(rows)) : null;
     state.modified = false;
+    state.corrections = [];  // 清空修正记录，避免重复导出
     document.querySelectorAll('#tabTable td.modified').forEach(td => td.classList.remove('modified'));
+
+    // P0: 已确认文档修改后保存 → 重置 human_verified，使确认按钮重新可用
+    if (hadCorrections && state.currentDoc.human_verified === true) {
+      const docIdx = state.index?.documents?.findIndex(d => d.id === state.currentDoc.id);
+      if (docIdx >= 0) {
+        state.index.documents[docIdx].human_verified = false;
+        state.currentDoc.human_verified = false;
+        try {
+          await writeJson('index.json', state.index);
+          diagLog('保存含修正数据 → human_verified 重置为 false', 'ok');
+        } catch (e2) { diagLog('index.json 写回失败: ' + e2.message, 'warn'); }
+      }
+    }
+
     updateStatusInfo();
+    updateConfirmGate();
     showToast('表格修改已保存', 'success');
     diagLog(`表格修改已写入: ${state.currentDoc.data_file}`, 'ok');
   } catch (e) {
@@ -2559,128 +2905,617 @@ async function saveTableChanges() {
   }
 }
 
-// ========== Tab 2: 原文预览 ==========
+// ========== PDF 原图面板 + 文本预览 Tab ==========
 
-function renderTextTab() {
-  const tab = $('tabText');
+/** 渲染 PDF 原图面板（左侧） */
+async function renderPdfPanel() {
+  const body = $('pdfBody');
+  const nav = $('pdfNav');
   const doc = state.currentDoc;
   const data = state.currentData;
 
   if (!doc || !data) {
-    tab.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示 OCR 提取的全文预览。');
+    body.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示 PDF 扫描原图。');
+    nav.style.display = 'none';
+    return;
+  }
+
+  if (isNonDoc(doc)) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>OCR 中间产物</h3><p>无原文可预览。</p></div>`;
+    nav.style.display = 'none';
     return;
   }
 
   const pageMap = getPageMap(data);
-  const fullText = getFullText(data);
-  state.totalPages = pageMap.length || 1;
-  state.currentPage = 1;
+  state.previewPageMap = pageMap;
+  state.previewPage = 1;
 
-  const confBadge = confidenceBadge(doc.ocr_confidence, doc.extraction_mode);
+  // 非 PDF 文档（Excel/Word/电子档PDF）
+  const ext = doc.extraction_mode || '';
+  const isExcel = ext === 'meta_xlsx';
+  const isTextPdf = ext === 'text_pdf' || ext === 'docx' || ext === 'reference_skip';
+  const pdfFile = doc.original_file || '';
+  const isPdf = pdfFile.toLowerCase().endsWith('.pdf');
 
-  let header = `<div class="text-toolbar">
-    ${confBadge}
-    <span class="table-meta">${pageMap.length} 页 · ${fullText.length} 字符</span>`;
-
-  if (pageMap.length > 1) {
-    header += `<div class="page-nav">
-      <button id="prevPage" ${state.currentPage <= 1 ? 'disabled' : ''}>上一页</button>
-      <span class="page-indicator"><span id="curPage">${state.currentPage}</span> / ${state.totalPages}</span>
-      <button id="nextPage" ${state.currentPage >= state.totalPages ? 'disabled' : ''}>下一页</button>
-    </div>`;
-  }
-  header += `</div>`;
-
-  if (pageMap.length > 0) {
-    let body = '<div class="fulltext-box" id="fulltextBox">';
-    body += renderPageText(pageMap, state.currentPage);
-    body += '</div>';
-    tab.innerHTML = header + body;
-
-    // 绑定翻页
-    const prev = $('prevPage'), next = $('nextPage');
-    if (prev) prev.addEventListener('click', () => changePage(-1, pageMap));
-    if (next) next.addEventListener('click', () => changePage(1, pageMap));
-  } else if (fullText) {
-    tab.innerHTML = header + `<div class="fulltext-box">${escapeHtml(fullText)}</div>`;
-  } else {
-    tab.innerHTML = header + emptyStateHtml('无原文数据', '该文档未提取到全文文本。');
-  }
-}
-
-function renderPageText(pageMap, pageNum) {
-  const pm = pageMap.find(p => p.page === pageNum) || pageMap[0];
-  if (!pm) return '';
-  let html = `<span class="page-marker">— 第 ${pm.page} 页 —</span>`;
-  html += `<div>${escapeHtml(pm.text || '')}</div>`;
-  if (pm.image_ref) {
-    html += `<div style="margin-top:8px;"><span style="color:var(--c-blue);cursor:pointer;font-size:11px;" onclick="switchToImagesTab()">查看第 ${pm.page} 页截图 →</span></div>`;
-  }
-  return html;
-}
-
-function changePage(delta, pageMap) {
-  const newPage = state.currentPage + delta;
-  if (newPage < 1 || newPage > state.totalPages) return;
-  state.currentPage = newPage;
-  const box = $('fulltextBox');
-  if (box) box.innerHTML = renderPageText(pageMap, newPage);
-  $('curPage').textContent = newPage;
-  $('prevPage').disabled = newPage <= 1;
-  $('nextPage').disabled = newPage >= state.totalPages;
-}
-
-window.switchToImagesTab = function() { switchTab('images'); };
-
-// ========== Tab 3: 图纸 ==========
-
-function renderImagesTab() {
-  const tab = $('tabImages');
-  const doc = state.currentDoc;
-  const data = state.currentData;
-
-  if (!doc || !data) {
-    tab.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示对应的图纸/截图。');
+  if (isExcel) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>Excel 文档</h3><p>Excel 文件无 PDF 原图，请使用右侧「文本预览」或「表格数据」Tab 查看。</p></div>`;
+    nav.style.display = 'none';
     return;
   }
 
-  const pageMap = getPageMap(data);
-  const imageEntries = pageMap.filter(pm => pm.image_ref);
-
-  if (imageEntries.length === 0) {
-    tab.innerHTML = `<div class="empty-state">
-      <div class="empty-graphic"></div>
-      <h3>此文档无图纸/截图</h3>
-      <p>该文档的数据文件中没有 <code>page_map</code> 或 <code>image_ref</code> 条目。</p>
-      <p style="font-size:11px;margin-top:-4px;">可能原因：OCR 使用旧版格式提取，未生成页面截图；或文档为 Excel 格式，不产生图纸。</p>
-    </div>`;
+  if (!isPdf) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>非 PDF 文档</h3><p>该文档不是 PDF 格式，无扫描原图可显示。</p></div>`;
+    nav.style.display = 'none';
     return;
   }
 
-  // 占位渲染，异步加载图片
-  tab.innerHTML = `<div class="image-grid" id="imageGrid"></div>`;
-  const grid = $('imageGrid');
+  // PDF 文档 — 多层兜底加载
+  body.innerHTML = `<div class="pdf-canvas-wrap" id="pdfCanvasWrap"><div style="padding:40px;color:var(--text-muted);font-size:12px;">加载 PDF 中...</div></div>`;
 
-  imageEntries.forEach(async (pm, idx) => {
-    const pageNum = pm.page || (idx + 1);
-    const card = document.createElement('div');
-    card.className = 'image-card stagger-in';
-    card.style.animationDelay = (idx * 50) + 'ms';
-    card.innerHTML = `<div class="image-skeleton"></div>
-      <div class="image-caption">第 ${pageNum} 页</div>`;
-    grid.appendChild(card);
-
-    const url = state.foundationDirHandle ? await readImageObjectUrl(pm.image_ref) : null;
-
-    if (url) {
-      card.innerHTML = `<img src="${url}" alt="第 ${pageNum} 页" onclick="window.open('${url}')">
-        <div class="image-caption">第 ${pageNum} 页 · 点击查看原图</div>`;
+  try {
+    const pdfUrl = await loadPdfUrl(doc);
+    if (pdfUrl) {
+      state.currentPdfUrl = pdfUrl;
+      await renderPdfCanvas(pdfUrl, state.previewPage);
+      // PDF.js 加载后获取真实总页数
+      const totalPages = state.pdfTotalPages || (pageMap.length || 1);
+      state.previewTotalPages = totalPages;
+      nav.style.display = totalPages > 1 ? 'flex' : 'none';
+      updatePdfNav();
     } else {
-      card.innerHTML = `<div style="height:220px;display:flex;align-items:center;justify-content:center;background:var(--c-red-light);color:var(--c-red);font-size:11px;text-align:center;padding:12px;">
-        图片加载失败<br><span style="font-family:var(--font-mono);font-size:10px;">${escapeHtml(pm.image_ref)}</span></div>
-        <div class="image-caption">第 ${pageNum} 页 · 加载失败</div>`;
+      // 所有加载方式失败 → 显示拖拽区
+      showPdfDropZone(body, doc);
+      nav.style.display = 'none';
+    }
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF 渲染失败: ${escapeHtml(e.message)}</div>`;
+    nav.style.display = 'none';
+  }
+}
+
+/** 多层兜底加载 PDF URL */
+async function loadPdfUrl(doc) {
+  const fileName = doc.original_file || '';
+  if (!fileName) return null;
+
+  // 第 1 层：从 rootDirHandle 读取（File System Access API）
+  if (state.rootDirHandle) {
+    try {
+      const url = await loadPdfFromHandle(fileName);
+      if (url) {
+        diagLog(`PDF 加载成功（文件夹读取）: ${fileName}`, 'ok');
+        return url;
+      }
+    } catch (e) {
+      diagLog(`PDF 文件夹读取失败: ${e.message}`, 'warn');
+    }
+  }
+
+  // 第 2 层：从 pdfCache 查找（之前拖拽过）
+  if (state.pdfCache && state.pdfCache[doc.id]) {
+    diagLog(`PDF 加载成功（缓存）: ${doc.id}`, 'ok');
+    return state.pdfCache[doc.id];
+  }
+
+  // 第 3 层：如果数据文件中有 image_ref（OCR 转图片路径）
+  const data = state.currentData;
+  const pageMap = getPageMap(data);
+  if (pageMap.length > 0 && pageMap[0].image_ref) {
+    if (state.foundationDirHandle) {
+      try {
+        const imgUrl = await readImageObjectUrl(pageMap[0].image_ref);
+        if (imgUrl) {
+          diagLog(`PDF 降级为图片加载: ${pageMap[0].image_ref}`, 'ok');
+          return { type: 'image', url: imgUrl, pageMap };
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  return null;
+}
+
+/** 从 rootDirHandle 读取 PDF 文件为 Uint8Array — 支持子目录搜索 */
+async function loadPdfFromHandle(fileName) {
+  if (!state.rootDirHandle) return null;
+  const parts = fileName.replace(/\\/g, '/').split('/').filter(Boolean);
+  const baseName = parts[parts.length - 1];
+  let dir = state.rootDirHandle;
+
+  // 如果路径有子目录，先按路径走
+  if (parts.length > 1) {
+    try {
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = await dir.getDirectoryHandle(parts[i]);
+      }
+      const fh = await dir.getFileHandle(baseName);
+      const file = await fh.getFile();
+      const buf = await file.arrayBuffer();
+      return new Uint8Array(buf);
+    } catch (e) {
+      diagLog(`PDF 按路径查找失败: ${e.message}`, 'warn');
+    }
+  }
+
+  // 路径查找失败或只有文件名 → 先在根目录找
+  try {
+    const fh = await dir.getFileHandle(baseName);
+    const file = await fh.getFile();
+    diagLog(`PDF 在根目录找到: ${baseName}`, 'ok');
+    const buf = await file.arrayBuffer();
+    return new Uint8Array(buf);
+  } catch (e) {
+    // 根目录没有 → 遍历一级子目录搜索
+    diagLog(`PDF 不在根目录，搜索子目录...`, 'info');
+  }
+
+  // 遍历一级子目录
+  try {
+    for await (const entry of dir.values()) {
+      if (entry.kind === 'directory') {
+        try {
+          const subDir = await dir.getDirectoryHandle(entry.name);
+          const fh = await subDir.getFileHandle(baseName);
+          const file = await fh.getFile();
+          diagLog(`PDF 在子目录找到: ${entry.name}/${baseName}`, 'ok');
+          const buf = await file.arrayBuffer();
+          return new Uint8Array(buf);
+        } catch (e2) { /* 继续搜索 */ }
+      }
+    }
+  } catch (e) {
+    diagLog(`子目录搜索失败: ${e.message}`, 'warn');
+  }
+
+  diagLog(`PDF 未找到: ${baseName}`, 'warn');
+  return null;
+}
+
+/** 确保 pdfBody 中有 canvas 容器 */
+function ensurePdfCanvasWrap() {
+  let wrap = $('pdfCanvasWrap');
+  if (!wrap) {
+    const body = $('pdfBody');
+    if (!body) return null;
+    body.innerHTML = '<div class="pdf-canvas-wrap" id="pdfCanvasWrap"></div>';
+    wrap = $('pdfCanvasWrap');
+  }
+  return wrap;
+}
+
+/** 用 PDF.js 渲染 PDF 单页到 canvas */
+async function renderPdfCanvas(pdfUrl, pageNum) {
+  let wrap = ensurePdfCanvasWrap();
+  if (!wrap) return;
+
+  // 如果是图片类型（降级模式）
+  if (pdfUrl && pdfUrl.type === 'image') {
+    wrap.innerHTML = `<img src="${pdfUrl.url}" alt="扫描图片" style="max-width:100%;border:1px solid var(--border);border-radius:3px;cursor:zoom-in;" onclick="window.open('${pdfUrl.url}')">`;
+    state.pdfTotalPages = pdfUrl.pageMap.length;
+    return;
+  }
+
+  if (!window.pdfjsLib) {
+    wrap.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF.js 未加载，正在尝试加载...</div>`;
+    // 尝试动态加载 PDF.js
+    await loadPdfJs();
+    if (!window.pdfjsLib) {
+      wrap.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF.js 加载失败，请检查网络连接<br>或手动拖拽 PDF 文件到此处</div>`;
+      return;
+    }
+  }
+
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  // 显示加载中
+  wrap.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;">PDF 加载中...</div>';
+
+  try {
+    // 缓存 PDF 文档对象
+    if (!state.pdfDocCache) state.pdfDocCache = {};
+    const cacheKey = state.currentDoc ? state.currentDoc.id : pdfUrl;
+    let pdfDoc = state.pdfDocCache[cacheKey];
+    if (!pdfDoc) {
+      // blob URL 需要先 fetch 为 ArrayBuffer，否则 worker 访问不到
+      let pdfSource = pdfUrl;
+      if (typeof pdfUrl === 'string' && pdfUrl.startsWith('blob:')) {
+        const resp = await fetch(pdfUrl);
+        const buf = await resp.arrayBuffer();
+        pdfSource = { data: new Uint8Array(buf) };
+      } else if (pdfUrl instanceof Uint8Array) {
+        pdfSource = { data: pdfUrl };
+      }
+      const loadingTask = pdfjsLib.getDocument(pdfSource);
+      pdfDoc = await loadingTask.promise;
+      state.pdfDocCache[cacheKey] = pdfDoc;
+    }
+
+    state.pdfTotalPages = pdfDoc.numPages;
+    state.previewTotalPages = pdfDoc.numPages;
+
+    const page = await pdfDoc.getPage(pageNum);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const viewport = page.getViewport({ scale: 1.5 });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.onclick = () => canvas.requestFullscreen?.();
+    wrap.innerHTML = '';
+    wrap.appendChild(canvas);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  } catch (e) {
+    wrap.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF 渲染失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+/** 动态加载 PDF.js */
+function loadPdfJs() {
+  return new Promise((resolve) => {
+    if (window.pdfjsLib) return resolve();
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+}
+
+/** 显示 PDF 拖拽区（兜底） */
+function showPdfDropZone(body, doc) {
+  const fileName = doc.original_file || doc.id;
+  body.innerHTML = `<div class="pdf-drop-zone" id="pdfDropZone">
+    <div class="drop-icon">📄</div>
+    <p>无法自动加载 PDF 文件</p>
+    <p style="font-size:11px;margin-top:4px;">文件名: ${escapeHtml(fileName)}</p>
+    <p style="font-size:11px;margin-top:8px;color:var(--c-blue);">将 PDF 文件拖拽到此处，或点击选择文件</p>
+  </div>`;
+
+  const zone = $('pdfDropZone');
+  zone.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const buf = await file.arrayBuffer();
+        if (!state.pdfCache) state.pdfCache = {};
+        state.pdfCache[doc.id] = new Uint8Array(buf);
+        state.currentPdfUrl = state.pdfCache[doc.id];
+        diagLog(`PDF 通过文件选择加载: ${file.name}`, 'ok');
+        $('pdfBody').innerHTML = '<div class="pdf-canvas-wrap" id="pdfCanvasWrap"></div>';
+        await renderPdfCanvas(state.currentPdfUrl, 1);
+        state.previewPage = 1;
+        $('pdfNav').style.display = state.pdfTotalPages > 1 ? 'flex' : 'none';
+        updatePdfNav();
+      }
+    };
+    input.click();
+  });
+
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.toLowerCase().endsWith('.pdf')) {
+      const buf = await file.arrayBuffer();
+      if (!state.pdfCache) state.pdfCache = {};
+      state.pdfCache[doc.id] = new Uint8Array(buf);
+      state.currentPdfUrl = state.pdfCache[doc.id];
+      diagLog(`PDF 通过拖拽加载: ${file.name}`, 'ok');
+      $('pdfBody').innerHTML = '<div class="pdf-canvas-wrap" id="pdfCanvasWrap"></div>';
+      await renderPdfCanvas(state.currentPdfUrl, 1);
+      state.previewPage = 1;
+      $('pdfNav').style.display = state.pdfTotalPages > 1 ? 'flex' : 'none';
+      updatePdfNav();
     }
   });
+}
+
+/** 更新 PDF 翻页导航 */
+function updatePdfNav() {
+  $('curPdfPage').textContent = state.previewPage;
+  $('totalPdfPage').textContent = state.previewTotalPages;
+  $('prevPdfPage').disabled = state.previewPage <= 1;
+  $('nextPdfPage').disabled = state.previewPage >= state.previewTotalPages;
+  $('jumpPdfPage').value = state.previewPage;
+  $('jumpPdfPage').max = state.previewTotalPages;
+}
+
+/** PDF 翻页 */
+async function changePdfPage(delta) {
+  const newPage = state.previewPage + delta;
+  if (newPage < 1 || newPage > state.previewTotalPages) return;
+  state.previewPage = newPage;
+  await renderPdfCanvas(state.currentPdfUrl, newPage);
+  updatePdfNav();
+  // 联动：表格过滤 + 文本预览刷新
+  filterTableByPage(newPage);
+  if (state.activeTab === 'textPreview') renderTextPreviewTab();
+}
+
+/** PDF 跳转到指定页 */
+async function jumpToPdfPage(pageNum) {
+  const p = parseInt(pageNum, 10);
+  if (isNaN(p) || p < 1 || p > state.previewTotalPages) return;
+  state.previewPage = p;
+  await renderPdfCanvas(state.currentPdfUrl, p);
+  updatePdfNav();
+  filterTableByPage(p);
+  if (state.activeTab === 'textPreview') renderTextPreviewTab();
+}
+
+// ========== 文本预览 Tab（右侧） ==========
+
+/** 渲染文本预览 Tab */
+function renderTextPreviewTab() {
+  const tab = $('tabTextPreview');
+  const doc = state.currentDoc;
+  const data = state.currentData;
+
+  if (!doc || !data) {
+    tab.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示 OCR 文本预览。');
+    return;
+  }
+
+  if (isNonDoc(doc)) {
+    tab.innerHTML = emptyStateHtml('OCR 中间产物', '无文本可预览。');
+    return;
+  }
+
+  const pageMap = state.previewPageMap;
+  const pm = pageMap.find(p => p.page === state.previewPage) || pageMap[0];
+
+  let text = '';
+  let pageLabel = '全文';
+  if (pm && pm.text) {
+    text = pm.text;
+    pageLabel = `第 ${pm.page} 页`;
+  } else {
+    text = getFullText(data);
+  }
+
+  if (!text) {
+    tab.innerHTML = emptyStateHtml('无文本数据', '该文档未提取到 OCR 文本。');
+    return;
+  }
+
+  const totalPages = state.previewTotalPages || pageMap.length || 1;
+  const pageNav = totalPages > 1
+    ? `<span class="table-meta">${pageLabel} · 共 ${totalPages} 页</span>
+       <button class="btn btn-outline" id="btnTextPrev" style="font-size:11px;padding:2px 8px;" ${state.previewPage <= 1 ? 'disabled' : ''}>上一页</button>
+       <button class="btn btn-outline" id="btnTextNext" style="font-size:11px;padding:2px 8px;" ${state.previewPage >= totalPages ? 'disabled' : ''}>下一页</button>`
+    : `<span class="table-meta">${pageLabel}</span>`;
+
+  tab.innerHTML = `<div class="text-preview-toolbar">
+    <span style="font-size:12px;font-weight:600;color:var(--text-secondary);">OCR 文本（可编辑 · 自动同步表格）</span>
+    ${pageNav}
+  </div>
+  <div class="text-preview-box">
+    <div class="text-preview-editor" id="textPreviewEditor" contenteditable="true" spellcheck="false">${escapeHtml(text)}</div>
+  </div>`;
+
+  bindTextPreviewEdit($('textPreviewEditor'), pm);
+
+  const prevBtn = $('btnTextPrev');
+  const nextBtn = $('btnTextNext');
+  if (prevBtn) prevBtn.addEventListener('click', () => changePdfPage(-1));
+  if (nextBtn) nextBtn.addEventListener('click', () => changePdfPage(1));
+}
+
+/** 绑定文本预览编辑事件 — 修改后同步到表格 */
+function bindTextPreviewEdit(editor, pm) {
+  let original = editor.textContent;
+
+  editor.addEventListener('blur', () => {
+    const newText = editor.textContent;
+    if (newText !== original) {
+      const page = pm ? pm.page : state.previewPage;
+      // 通过 rows[] 桥接同步
+      syncTextToTable(page, original, newText, pm);
+
+      state.modified = true;
+      state.corrections.push({
+        doc_id: state.currentDoc.id,
+        page: page,
+        field: 'ocr_text',
+        original_value: original,
+        corrected_value: newText,
+        reason: '',
+        verified_by: 'manual',
+        source: 'text-preview',
+        timestamp: nowIso(),
+      });
+      updateStatusInfo();
+      updateConfirmGate();
+      diagLog(`文本预览修改: 第${page}页`, 'ok');
+      original = newText;
+    }
+  });
+
+  editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editor.blur(); }
+    if (e.key === 'Escape') { editor.textContent = original; editor.blur(); }
+  });
+}
+
+// ========== rows[] 桥接双向同步 ==========
+
+/**
+ * 统一双向同步函数 — 通过 rows[] 桥接 Table ↔ Text
+ * 不管从表格改还是从文本改，rows[]、page_map、structured_rows 三者保持一致
+ */
+function syncValueChange(page, oldVal, newVal, source) {
+  if (!state.currentData || oldVal === newVal) return;
+  const data = state.currentData;
+
+  // 1. 更新 rows[] 中的 raw_text
+  const rows = data.rows;
+  if (rows && isTextRows(rows)) {
+    const pageRows = rows.filter(r => String(r.page) === String(page));
+    for (const r of pageRows) {
+      if (r.raw_text && r.raw_text.includes(oldVal)) {
+        r.raw_text = r.raw_text.split(oldVal).join(newVal);
+      }
+    }
+  }
+
+  // 2. 重建 page_map[page].text
+  const pageMap = getPageMap(data);
+  const pm = pageMap.find(p => String(p.page) === String(page));
+  if (pm && rows && isTextRows(rows)) {
+    pm.text = rows.filter(r => String(r.page) === String(page)).map(r => r.raw_text || '').join('\n');
+  }
+
+  // 3. 更新 structured_rows 中匹配的值
+  const sr = data.structured_rows;
+  if (sr) {
+    for (const row of sr) {
+      const rowPage = getCellValue(row, 'page');
+      if (String(rowPage) === String(page)) {
+        for (const key of Object.keys(row)) {
+          if (['row_index', 'page', 'sheet_name'].includes(key)) continue;
+          const v = getCellValue(row, key);
+          if (formatValue(v).trim() === oldVal.trim()) {
+            setCellValue(row, key, newVal);
+          }
+        }
+      }
+    }
+  }
+
+  // 4. 刷新视图
+  if (source !== 'table') {
+    // 从文本修改 → 刷新表格 DOM
+    refreshTableCells(page);
+  }
+  if (source !== 'text') {
+    // 从表格修改 → 刷新文本预览
+    refreshTextPreview(page);
+  }
+}
+
+/** 表格修改 → 同步到文本预览 */
+function syncTableToText(rowIdx, field, oldVal, newVal) {
+  const rows = getRows(state.currentData);
+  if (!rows || !rows[rowIdx]) return;
+  const page = getCellValue(rows[rowIdx], 'page');
+  if (!page) return;
+
+  // 通过桥接同步
+  syncValueChange(page, oldVal, newVal, 'table');
+}
+
+/** 文本修改 → 同步到表格 */
+function syncTextToTable(page, oldFullText, newFullText, pm) {
+  if (!state.currentData) return;
+
+  // 更新 page_map 文本
+  if (pm) pm.text = newFullText;
+
+  // 逐行对比，找出变更的值
+  const oldLines = oldFullText.split('\n');
+  const newLines = newFullText.split('\n');
+  const data = state.currentData;
+
+  // 更新 rows[] 的 raw_text
+  const rows = data.rows;
+  if (rows && isTextRows(rows)) {
+    const pageRows = rows.filter(r => String(r.page) === String(page));
+    const maxLen = Math.max(oldLines.length, newLines.length, pageRows.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < pageRows.length && i < newLines.length) {
+        const oldRowText = pageRows[i].raw_text || '';
+        const newRowText = newLines[i] || '';
+        if (oldRowText !== newRowText) {
+          // 找出该行中变化的值，同步到 structured_rows
+          syncRowChange(page, i, oldRowText, newRowText);
+          pageRows[i].raw_text = newRowText;
+        }
+      }
+    }
+  }
+}
+
+/** 同步单行变化到 structured_rows */
+function syncRowChange(page, localRowIdx, oldText, newText) {
+  const data = state.currentData;
+  if (!data.structured_rows) return;
+
+  // 找到同 page 的 structured_rows，按顺序匹配 localRowIdx
+  const sr = data.structured_rows;
+  const pageSr = sr.map((r, i) => ({ row: r, idx: i })).filter(x => {
+    return String(getCellValue(x.row, 'page')) === String(page);
+  });
+
+  if (!pageSr[localRowIdx]) return;
+  const target = pageSr[localRowIdx].row;
+  const rowIdx = pageSr[localRowIdx].idx;
+
+  // 在 oldText 中找 newText 不同的部分，尝试匹配 structured_rows 的字段
+  for (const key of Object.keys(target)) {
+    if (['row_index', 'page', 'sheet_name'].includes(key)) continue;
+    const cellVal = formatValue(getCellValue(target, key));
+    if (cellVal && oldText.includes(cellVal) && !newText.includes(cellVal)) {
+      // 尝试从 newText 中找到替换后的值
+      const idx = oldText.indexOf(cellVal);
+      if (idx >= 0) {
+        // 简单策略：找 newText 对应位置的值
+        const before = oldText.substring(0, idx);
+        const after = oldText.substring(idx + cellVal.length);
+        if (newText.startsWith(before) && newText.endsWith(after)) {
+          const newVal = newText.substring(before.length, newText.length - after.length);
+          if (newVal && newVal !== cellVal) {
+            setCellValue(target, key, newVal);
+            // 更新表格 DOM
+            const td = document.querySelector(`#tabTable td.editable[data-row="${rowIdx}"][data-field="${escapeHtml(key)}"]`);
+            if (td) {
+              td.textContent = newVal;
+              td.classList.add('modified', 'pulse');
+              setTimeout(() => td.classList.remove('pulse'), 600);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/** 刷新表格单元格（文本修改后调用） */
+function refreshTableCells(page) {
+  const rows = getRows(state.currentData);
+  if (!rows) return;
+  // 遍历当前页的行，更新表格 DOM
+  document.querySelectorAll('#tabTable tbody tr[data-page]').forEach(tr => {
+    const rowPage = tr.dataset.page;
+    if (String(rowPage) !== String(page)) return;
+    const rowIdx = parseInt(tr.dataset.rowIdx, 10);
+    if (!rows[rowIdx]) return;
+    tr.querySelectorAll('td.editable').forEach(td => {
+      const field = td.dataset.field;
+      const newVal = formatValue(getCellValue(rows[rowIdx], field));
+      if (td.textContent.trim() !== newVal.trim()) {
+        td.textContent = newVal;
+        td.classList.add('modified', 'pulse');
+        setTimeout(() => td.classList.remove('pulse'), 600);
+      }
+    });
+  });
+}
+
+/** 刷新文本预览（表格修改后调用） */
+function refreshTextPreview(page) {
+  const editor = $('textPreviewEditor');
+  if (!editor) return;
+  const pageMap = getPageMap(state.currentData);
+  const pm = pageMap.find(p => String(p.page) === String(page));
+  if (pm && pm.text) {
+    editor.textContent = pm.text;
+  }
 }
 
 // ========== Tab 4: 问题视图 ==========
@@ -3061,8 +3896,8 @@ function renderNondocNotice() {
     <p>「${escapeHtml(doc.original_file || doc.id)}」是 OCR 过程文件，无结构化数据可核对。<br>无需人工确认，已自动排除在核对范围外。</p>
   </div>`;
   $('tabTable').innerHTML = notice;
-  $('tabText').innerHTML = notice;
-  $('tabImages').innerHTML = notice;
+  $('pdfBody').innerHTML = notice;
+  $('tabTextPreview').innerHTML = notice;
   $('tabProblems').innerHTML = notice;
 }
 
@@ -3074,8 +3909,8 @@ function renderLoadFailure(msg) {
     <p style="font-size:11px;">请检查 data_file 路径是否正确：<code>${escapeHtml(state.currentDoc?.data_file || '')}</code></p>
   </div>`;
   $('tabTable').innerHTML = html;
-  $('tabText').innerHTML = html;
-  $('tabImages').innerHTML = html;
+  $('pdfBody').innerHTML = html;
+  $('tabTextPreview').innerHTML = html;
   $('tabProblems').innerHTML = html;
 }
 
@@ -3087,19 +3922,103 @@ function emptyStateHtml(title, desc) {
   </div>`;
 }
 
-// ========== Tab 切换 ==========
+// ========== Tab 切换（仅右侧数据面板） ==========
 
 function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  state.activeTab = name;
+  document.querySelectorAll('.data-panel .tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === name);
   });
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.data-panel .tab-content').forEach(c => c.classList.remove('active'));
   const target = $('tab' + name.charAt(0).toUpperCase() + name.slice(1));
   if (target) target.classList.add('active');
+  // 切换到文本预览时刷新内容
+  if (name === 'textPreview') renderTextPreviewTab();
 }
 
-document.querySelectorAll('.tab-btn').forEach(btn => {
+document.querySelectorAll('.data-panel .tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ========== PDF 面板翻页 + 分隔条拖拽 + Tab 切换 ==========
+
+// PDF 翻页按钮
+$('prevPdfPage').addEventListener('click', () => changePdfPage(-1));
+$('nextPdfPage').addEventListener('click', () => changePdfPage(1));
+$('jumpPdfPage').addEventListener('change', (e) => jumpToPdfPage(e.target.value));
+
+// 分隔条拖拽
+(function initSplitter() {
+  const splitter = $('splitter');
+  const pdfPanel = $('pdfPanel');
+  const content = document.querySelector('.content-panel');
+  let dragging = false;
+
+  splitter.addEventListener('mousedown', (e) => {
+    dragging = true;
+    splitter.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = content.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = (x / rect.width) * 100;
+    const clamped = Math.max(15, Math.min(70, pct));
+    pdfPanel.style.width = clamped + '%';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging = false;
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+
+  splitter.addEventListener('dblclick', () => {
+    pdfPanel.style.width = '40%';
+  });
+})();
+
+// PDF 面板折叠/展开
+$('btnCollapsePdf').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = $('pdfPanel');
+  const splitter = $('splitter');
+  panel.classList.toggle('collapsed');
+  splitter.classList.toggle('hidden');
+  const btn = $('btnCollapsePdf');
+  btn.textContent = panel.classList.contains('collapsed') ? '▶ 展开' : '◀ 折叠';
+});
+// 点击折叠状态的面板展开
+$('pdfPanel').addEventListener('click', (e) => {
+  const panel = $('pdfPanel');
+  if (panel.classList.contains('collapsed')) {
+    panel.classList.remove('collapsed');
+    $('splitter').classList.remove('hidden');
+    $('btnCollapsePdf').textContent = '◀ 折叠';
+  }
+});
+
+// 文档树折叠/展开
+$('btnCollapseTree').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = $('treePanel');
+  panel.classList.toggle('collapsed');
+  const btn = $('btnCollapseTree');
+  btn.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
+});
+$('treePanel').addEventListener('click', (e) => {
+  const panel = $('treePanel');
+  if (panel.classList.contains('collapsed')) {
+    panel.classList.remove('collapsed');
+    $('btnCollapseTree').textContent = '◀';
+  }
 });
 
 // ========== 确认安全闸 ==========
@@ -3145,7 +4064,14 @@ function renderPropsTab() {
     <div class="props-form">
       <label class="props-field"><span>专业</span>
         <select id="propProfessional">
-          ${PROFESSION_OPTIONS.map(p => `<option value="${p}" ${doc.professional === p ? 'selected' : ''}>${p}</option>`).join('')}
+          ${(() => {
+            const opts = PROFESSION_OPTIONS.map(p => `<option value="${p}" ${doc.professional === p ? 'selected' : ''}>${p}</option>`).join('');
+            // 若当前专业不在标准列表中，追加一个选中项防止静默丢失
+            if (doc.professional && !PROFESSION_OPTIONS.includes(doc.professional)) {
+              return `<option value="${escapeHtml(doc.professional)}" selected>${escapeHtml(doc.professional)}</option>` + opts;
+            }
+            return opts;
+          })()}
         </select>
       </label>
       <label class="props-field"><span>子类</span><input id="propSubcategory" value="${escapeHtml(doc.subcategory || '其他')}" placeholder="子分类"></label>
@@ -3173,6 +4099,7 @@ window.confirmDocClassification = async function() {
     const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
     if (docIdx < 0) return;
     const oldProf = doc.professional;
+    const oldSource = doc.classification_source;  // 在修改前捕获，否则已被覆盖为 'human'
     state.index.documents[docIdx].professional = newProf;
     state.index.documents[docIdx].subcategory = newSub;
     state.index.documents[docIdx].doc_type = newType;
@@ -3181,7 +4108,7 @@ window.confirmDocClassification = async function() {
     state.index.documents[docIdx].classification_confidence = 1.0;
     state.index.documents[docIdx].last_updated = nowIso();
     // 分类与 AI 原判不同 → 自动生成自成长候选词条（写回 index，由 import_corrections 或后端脚本回流）
-    if (oldProf && oldProf !== newProf && doc.classification_source !== 'human') {
+    if (oldProf && oldProf !== newProf && oldSource !== 'human') {
       state.index.documents[docIdx].self_growth_candidate = {
         keyword_pattern: (doc.original_file || '').replace(/\.[^.]+$/, ''),
         corrected_professional: newProf,
@@ -3364,8 +4291,16 @@ function updateConfirmGate() {
 
   // 已核对
   if (doc.human_verified === true) {
-    btn.disabled = true;
-    btn.textContent = '已确认';
+    if (state.modified) {
+      // 已确认文档有未保存修改 → 按钮可用，提示重新确认
+      btn.disabled = false;
+      btn.textContent = '已修改·需重新确认';
+    } else {
+      btn.disabled = true;
+      btn.textContent = '已确认';
+    }
+    const hasUnverified = (state.index?.documents || []).some(d => !isNonDoc(d) && d.human_verified !== true);
+    btnAll.disabled = !hasUnverified;
     return;
   }
 

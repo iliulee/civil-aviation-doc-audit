@@ -6,8 +6,18 @@
   "category": "试验检测一致性",
   "description": "不合格报告 → 复验/退货/降级使用。矛盾表现：报告不合格但材料已使用且无复验。",
   "trigger_when": {
-    "doc_type": ["试验检测报告", "复验报告", "退货记录", "降级使用记录", "材料使用记录"],
-    "field_required": ["报告编号", "检测结论", "处理方式"]
+    "doc_type": [
+      "试验检测报告",
+      "复验报告",
+      "退货记录",
+      "降级使用记录",
+      "材料使用记录"
+    ],
+    "field_required": [
+      "报告编号",
+      "检测结论",
+      "处理方式"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +34,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +56,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.8.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

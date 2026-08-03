@@ -6,8 +6,15 @@
   "category": "试验检测一致性",
   "description": "压实度+地基承载力、含水率+压实度 应数据匹配。矛盾表现：现场压实度合格但承载力不合格。",
   "trigger_when": {
-    "doc_type": ["现场检测报告", "实验室检测报告"],
-    "field_required": ["检测项目", "检测结论", "检测点编号"]
+    "doc_type": [
+      "现场检测报告",
+      "实验室检测报告"
+    ],
+    "field_required": [
+      "检测项目",
+      "检测结论",
+      "检测点编号"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.8.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

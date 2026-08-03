@@ -4,69 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>规则管理子系统 — 民航施工资料审核</title>
+  <link rel="stylesheet" href="tokens.css">
   <style>
     /* ================================================================
-       Design Tokens — "Precision Instrument"
-       沿用 data-editor.html 的设计风格
+       页面专属变量（共享令牌见 tokens.css）
     ================================================================ */
     :root {
-      --color-bg-app:        #f4f6f9;
-      --color-bg-surface:    #ffffff;
-      --color-bg-header:     #0f172a;
-      --color-bg-panel-hdr:  #f8fafc;
       --color-bg-preview:    #1e293b;
-
-      --color-text-primary:  #1e293b;
-      --color-text-secondary:#64748b;
-      --color-text-tertiary: #94a3b8;
-      --color-text-inverse:  #f1f5f9;
-      --color-text-link:     #2563eb;
-
-      --color-border:        #e2e8f0;
-      --color-border-light:  #f1f5f9;
-      --color-border-focus:  #2563eb;
-
-      --color-accent:        #2563eb;
-      --color-accent-hover:  #1d4ed8;
-      --color-accent-light:  #eff6ff;
-
-      --color-success:       #0d9488;
-      --color-success-light: #f0fdfa;
-      --color-success-border:#99f6e4;
-
-      --color-warning:       #d97706;
-      --color-warning-light: #fffbeb;
-      --color-warning-border:#fde68a;
-
-      --color-danger:        #dc2626;
-      --color-danger-light:  #fef2f2;
-      --color-danger-border: #fecaca;
+      --color-text-link:     var(--color-accent);
 
       /* 层级颜色 */
-      --color-l1:            #dc2626;
-      --color-l1-light:      #fef2f2;
-      --color-l2:            #d97706;
-      --color-l2-light:      #fffbeb;
-      --color-l3:            #2563eb;
-      --color-l3-light:      #eff6ff;
+      --color-l1:            var(--color-danger);
+      --color-l1-light:      var(--color-danger-light);
+      --color-l2:            var(--color-warning);
+      --color-l2-light:      var(--color-warning-light);
+      --color-l3:            var(--color-accent);
+      --color-l3-light:      var(--color-accent-light);
       --color-cu:            #7c3aed;
       --color-cu-light:      #f5f3ff;
 
       --color-row-hover:     #f8fafc;
       --color-row-stripe:    #fafbfc;
-      --color-row-highlight: #eff6ff;
+      --color-row-highlight: var(--color-accent-light);
 
-      --radius-sm: 4px;
-      --radius-md: 6px;
-      --radius-lg: 8px;
-
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
-      --shadow-overlay: 0 12px 40px rgba(0,0,0,0.24);
-
-      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
-      --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
       --font-size-xs: 11px;
       --font-size-sm: 12px;
       --font-size-base: 13px;
@@ -1931,6 +1891,11 @@
           <div class="kpi-value" id="kpiTotal">0</div>
           <div class="kpi-trend" id="kpiTotalTrend">加载中...</div>
         </div>
+        <div class="kpi-card" style="border-left-color: var(--color-accent);">
+          <div class="kpi-label">实质性 / 清单</div>
+          <div class="kpi-value" id="kpiSubstantive">0 / 0</div>
+          <div class="kpi-trend" id="kpiSubstantiveTrend">加载中...</div>
+        </div>
         <div class="kpi-card success">
           <div class="kpi-label">Active 规则</div>
           <div class="kpi-value" id="kpiActive">0</div>
@@ -2405,7 +2370,8 @@
       const ls = levelShort(rule.level);
       const pc = idPrefixClass(rule.rule_id);
       const hitRate = (rule.hit_rate || 0) * 100;
-      const hitRateDisplay = rule.hit_rate != null ? hitRate.toFixed(1) + '%' : '—';
+      const hasReviewData = rule.total_reviews != null && rule.total_reviews > 0;
+      const hitRateDisplay = hasReviewData ? hitRate.toFixed(1) + '%' : '未统计';
       // E-3.1：pending_confirmation 状态添加醒目样式（左侧色条 + 淡黄色背景）
       const rowClasses = [];
       if (state.selectedRuleId === rule.rule_id) rowClasses.push('selected');
@@ -2871,9 +2837,9 @@
         <div class="detail-grid">
           <div class="label">总命中数</div><div class="value mono">${stats.total_hits ?? 0}</div>
           <div class="label">总审核数</div><div class="value mono">${stats.total_reviews ?? 0}</div>
-          <div class="label">命中率</div><div class="value mono">${((stats.hit_rate || 0) * 100).toFixed(2)}%</div>
+          <div class="label">命中率</div><div class="value mono">${(stats.total_reviews != null && stats.total_reviews > 0) ? ((stats.hit_rate || 0) * 100).toFixed(2) + '%' : '未统计'}</div>
           <div class="label">误报数</div><div class="value mono">${stats.false_positive_count ?? 0}</div>
-          <div class="label">误报率</div><div class="value mono">${((stats.false_positive_rate || 0) * 100).toFixed(2)}%</div>
+          <div class="label">误报率</div><div class="value mono">${(stats.total_reviews != null && stats.total_reviews > 0) ? ((stats.false_positive_rate || 0) * 100).toFixed(2) + '%' : '未统计'}</div>
           <div class="label">最近命中</div><div class="value mono">${escapeHtml(formatDateTime(stats.last_hit_at))}</div>
         </div>
       </div>
@@ -3665,6 +3631,9 @@
     if (statsR.code !== 0) { toastErr('加载统计失败'); return; }
     const stats = statsR.data;
     $('#kpiTotal').textContent = stats.total_rules || 0;
+    const byType = stats.by_type || {};
+    $('#kpiSubstantive').textContent = `${byType.substantive || 0} / ${byType.placeholder || 0}`;
+    $('#kpiSubstantiveTrend').textContent = `实质性 ${byType.substantive || 0} 条 · 清单 ${byType.placeholder || 0} 条`;
     $('#kpiActive').textContent = (stats.by_status && stats.by_status.active) || 0;
     const draftCount = ((stats.by_status && stats.by_status.draft) || 0) + ((stats.by_status && stats.by_status.testing) || 0);
     $('#kpiDraft').textContent = draftCount;
@@ -3673,16 +3642,20 @@
     const rulesR = await api.getRules();
     let avgHit = 0;
     let topRules = [];
+    let reviewedCount = 0;
     if (rulesR.code === 0) {
       topRules = rulesR.data.rules || [];
-      const hitRates = topRules.map(r => r.hit_rate || 0).filter(v => v != null);
+      // 仅对有审核数据的规则计算平均命中率
+      const reviewedRules = topRules.filter(r => r.total_reviews != null && r.total_reviews > 0);
+      reviewedCount = reviewedRules.length;
+      const hitRates = reviewedRules.map(r => r.hit_rate || 0);
       avgHit = hitRates.length ? (hitRates.reduce((a, b) => a + b, 0) / hitRates.length) * 100 : 0;
     }
-    $('#kpiHitRate').textContent = avgHit.toFixed(1) + '%';
+    $('#kpiHitRate').textContent = reviewedCount > 0 ? avgHit.toFixed(1) + '%' : '未统计';
     $('#kpiTotalTrend').textContent = `L1: ${(stats.by_level && stats.by_level['L1-IRON']) || 0} · L2: ${(stats.by_level && stats.by_level['L2-LOGIC']) || 0} · L3: ${(stats.by_level && stats.by_level['L3-BUSINESS']) || 0}`;
     $('#kpiActiveTrend').textContent = `占总量 ${stats.total_rules ? (((stats.by_status && stats.by_status.active) || 0) / stats.total_rules * 100).toFixed(1) : 0}%`;
     $('#kpiDraftTrend').textContent = `draft: ${(stats.by_status && stats.by_status.draft) || 0} · testing: ${(stats.by_status && stats.by_status.testing) || 0}`;
-    $('#kpiHitRateTrend').textContent = `基于 ${topRules.length} 条规则统计`;
+    $('#kpiHitRateTrend').textContent = reviewedCount > 0 ? `基于 ${reviewedCount}/${topRules.length} 条已审核规则` : `全部 ${topRules.length} 条规则尚未审核`;
 
     // Render pie chart (by level)
     const levelData = [
@@ -3702,8 +3675,9 @@
     }));
     renderBarChart(statusData);
 
-    // Render Top 10 tables
-    const sortedByHit = topRules.slice().sort((a, b) => (a.hit_rate || 0) - (b.hit_rate || 0));
+    // Render Top 10 tables — 仅含有审核数据的规则参与低活跃排名
+    const reviewedRules = topRules.filter(r => r.total_reviews != null && r.total_reviews > 0);
+    const sortedByHit = reviewedRules.slice().sort((a, b) => (a.hit_rate || 0) - (b.hit_rate || 0));
     const lowHit = sortedByHit.slice(0, 10);
     renderTopTable($('#lowHitTable tbody'), lowHit, 'hit_rate');
 

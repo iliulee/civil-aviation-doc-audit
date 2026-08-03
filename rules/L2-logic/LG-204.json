@@ -6,8 +6,16 @@
   "category": "数量累计一致性",
   "description": "进场材料不会比实际使用少。矛盾表现：使用量 > 进场量（材料来源不明）。",
   "trigger_when": {
-    "doc_type": ["材料报审表", "材料进场记录", "检验批", "施工记录"],
-    "field_required": ["材料名称", "数量"]
+    "doc_type": [
+      "材料报审表",
+      "材料进场记录",
+      "检验批",
+      "施工记录"
+    ],
+    "field_required": [
+      "材料名称",
+      "数量"
+    ]
   },
   "check_expr": {
     "type": "aggregation",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.2.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

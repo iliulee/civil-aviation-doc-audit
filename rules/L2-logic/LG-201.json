@@ -6,8 +6,13 @@
   "category": "数量累计一致性",
   "description": "各检验批工程量加起来应等于分项工程总量。矛盾表现：差值 > 5%（允许施工误差）。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "分项工程质量验收记录"],
-    "field_required": ["工程量"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "分项工程质量验收记录"
+    ],
+    "field_required": [
+      "工程量"
+    ]
   },
   "check_expr": {
     "type": "aggregation",
@@ -24,7 +29,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +51,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.2.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,7 +6,14 @@
   "category": "数据质量-重复值",
   "description": "检测数据列中是否存在人为编造痕迹——表现为只有少数几个值循环出现。触发条件：数值列样本数 ≥ 4。判定标准：唯一值=2 且样本≥4 且存在交替模式=数据造假嫌疑（高）；唯一值=2 且样本≥4 但无交替（连续同值）=数据异常（中）；唯一值=1 且样本≥4=数据异常（中）；唯一值占比<30%=数据异常（中）",
   "trigger_when": {
-    "doc_type": ["碎石桩施工记录", "PHC管桩施工记录", "DDC桩施工记录", "检验批", "施工记录", "检测报告"],
+    "doc_type": [
+      "碎石桩施工记录",
+      "PHC管桩施工记录",
+      "DDC桩施工记录",
+      "检验批",
+      "施工记录",
+      "检测报告"
+    ],
     "field_required": []
   },
   "alignment": null,
@@ -25,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 data-quality-patterns.md 规则1（DQ-REPEAT）迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,16 @@
   "category": "因果一致性",
   "description": "验收提出问题 → 整改 → 复验 → 通过。矛盾表现：验收有未关闭问题但已签字。",
   "trigger_when": {
-    "doc_type": ["验收记录", "整改通知单", "复验记录"],
-    "field_required": ["验收编号", "问题清单", "签字"]
+    "doc_type": [
+      "验收记录",
+      "整改通知单",
+      "复验记录"
+    ],
+    "field_required": [
+      "验收编号",
+      "问题清单",
+      "签字"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

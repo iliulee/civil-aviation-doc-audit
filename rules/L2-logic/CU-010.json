@@ -2,7 +2,7 @@
   "rule_id": "CU-010",
   "name": "旁站通知提前量：施工日期 - 通知日期 ≥ 12小时",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "施工方书面通知监理的日期应不晚于施工日期，且提前量 ≥ 12 小时。通知日期与施工日期同日（未提前12小时），或通知日期晚于施工日期（先施工后通知）均为矛盾",
   "trigger_when": {
@@ -67,5 +67,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.9 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

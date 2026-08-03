@@ -6,8 +6,14 @@
   "category": "规范引用一致性",
   "description": "同一项目应使用统一的编号格式，如 MH/T 5078.1-2024 应统一（不要混用 MH/T5078.1-2024）。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "施工记录", "检测报告"],
-    "field_required": ["规范编号"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "施工记录",
+      "检测报告"
+    ],
+    "field_required": [
+      "规范编号"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.7.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

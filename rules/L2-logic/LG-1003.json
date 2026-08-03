@@ -6,8 +6,16 @@
   "category": "数据自洽",
   "description": "行数自洽校验：识别行数 = 实际行数，允许误差 0。不通过 → OCR 漏行（不是数据质量问题，但必须修正）。真实案例：大理机场碎石桩施工记录，实际 6 行，AI 初次识别 5 行（漏 Z415）→ 触发漏行警告，触发硬门槛拒绝进入下一步。",
   "trigger_when": {
-    "doc_type": ["碎石桩施工记录", "DDC桩施工记录", "PHC管桩施工记录", "检验批质量验收记录"],
-    "field_required": ["识别行数", "实际行数"]
+    "doc_type": [
+      "碎石桩施工记录",
+      "DDC桩施工记录",
+      "PHC管桩施工记录",
+      "检验批质量验收记录"
+    ],
+    "field_required": [
+      "识别行数",
+      "实际行数"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 data-quality-patterns.md DQ-SELF 行数自洽项迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

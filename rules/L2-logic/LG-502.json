@@ -6,8 +6,13 @@
   "category": "签字一致性",
   "description": "任何签字都应伴随日期。矛盾表现：签字但无日期。",
   "trigger_when": {
-    "doc_type": ["*"],
-    "field_required": ["签字人", "签字日期"]
+    "doc_type": [
+      "*"
+    ],
+    "field_required": [
+      "签字人",
+      "签字日期"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +29,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +51,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.5.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

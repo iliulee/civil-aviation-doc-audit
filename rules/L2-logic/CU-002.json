@@ -2,7 +2,7 @@
   "rule_id": "CU-002",
   "name": "开工令日期 ≥ 开工报审表日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "开工令日期应不早于开工报审表日期，流程顺序：报审→批复→开工令。施工单位《工程开工报审表》（B.10）申请开工日期 ≤ 监理签发《开工令》（A.6）日期",
   "trigger_when": {
@@ -66,5 +66,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,17 @@
   "category": "因果一致性",
   "description": "实长 < 设计桩长且差值 > 20% → 必须有持力层验收记录、设计变更或现场签证。矛盾表现：施工日志\"其他情况\"填\"无\"，但 90% 以上桩长不足设计值。",
   "trigger_when": {
-    "doc_type": ["桩基施工记录", "持力层验收记录", "设计变更通知单", "现场签证"],
-    "field_required": ["实长", "设计桩长", "其他情况"]
+    "doc_type": [
+      "桩基施工记录",
+      "持力层验收记录",
+      "设计变更通知单",
+      "现场签证"
+    ],
+    "field_required": [
+      "实长",
+      "设计桩长",
+      "其他情况"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,8 +33,12 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["01_场道工程"],
-    "subdivision_codes": ["01-03"]
+    "professional": [
+      "01_场道工程"
+    ],
+    "subdivision_codes": [
+      "01-03"
+    ]
   },
   "stats": {
     "total_hits": 0,
@@ -44,5 +57,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.5 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

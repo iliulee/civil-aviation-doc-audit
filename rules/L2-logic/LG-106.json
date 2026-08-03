@@ -6,8 +6,16 @@
   "category": "时间轴一致性",
   "description": "同一工序在不同资料中的日期应一致。矛盾表现：施工日志说\"今日浇筑混凝土\"，但当天检验批无记录，或监理日志无对应工序记录。",
   "trigger_when": {
-    "doc_type": ["施工日志", "检验批", "隐蔽工程验收记录", "监理日志"],
-    "field_required": ["日期", "工序名称"]
+    "doc_type": [
+      "施工日志",
+      "检验批",
+      "隐蔽工程验收记录",
+      "监理日志"
+    ],
+    "field_required": [
+      "日期",
+      "工序名称"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.6 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

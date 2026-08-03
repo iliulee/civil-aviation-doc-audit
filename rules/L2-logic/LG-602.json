@@ -6,8 +6,16 @@
   "category": "因果一致性",
   "description": "重大设计变更 → 施工方案变更 + 监理细则变更。矛盾表现：设计已变更但方案/细则未更新。",
   "trigger_when": {
-    "doc_type": ["设计变更通知单", "施工方案", "监理细则"],
-    "field_required": ["变更编号", "方案版本", "细则版本"]
+    "doc_type": [
+      "设计变更通知单",
+      "施工方案",
+      "监理细则"
+    ],
+    "field_required": [
+      "变更编号",
+      "方案版本",
+      "细则版本"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

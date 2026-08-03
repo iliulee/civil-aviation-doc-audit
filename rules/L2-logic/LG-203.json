@@ -6,8 +6,14 @@
   "category": "数量累计一致性",
   "description": "累计到单位工程应与合同/竣工图基本一致。差异 > 3% 应说明原因。",
   "trigger_when": {
-    "doc_type": ["分部工程质量验收记录", "单位工程质量验收记录", "竣工图"],
-    "field_required": ["工程量"]
+    "doc_type": [
+      "分部工程质量验收记录",
+      "单位工程质量验收记录",
+      "竣工图"
+    ],
+    "field_required": [
+      "工程量"
+    ]
   },
   "check_expr": {
     "type": "aggregation",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.2.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,15 @@
   "category": "规范引用一致性",
   "description": "同类资料应引用同一版本规范。矛盾表现：A检验批引 MH 5007-2017，B检验批引 MH 5007-2009。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "施工记录", "检测报告"],
-    "field_required": ["规范编号", "规范版本"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "施工记录",
+      "检测报告"
+    ],
+    "field_required": [
+      "规范编号",
+      "规范版本"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.7.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

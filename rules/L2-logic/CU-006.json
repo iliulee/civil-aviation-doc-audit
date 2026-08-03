@@ -2,7 +2,7 @@
   "rule_id": "CU-006",
   "name": "施工进度计划报审：编制日期 → 审查日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "施工进度计划报审流程：《施工进度计划报审表》（B.22）计划编制日期 ≤ 监理审查日期。计划中各节点的起止日期应在编制日期之后。跨单位核心校验为监理审查日期 ≥ 施工编制日期",
   "trigger_when": {
@@ -66,5 +66,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.5 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

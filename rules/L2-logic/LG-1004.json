@@ -6,8 +6,15 @@
   "category": "数据自洽",
   "description": "桩号连续性校验：桩号总数 = 设计总桩数（顺序按现场施工顺序，不强制连号），允许误差 0。不通过 → 缺桩或重号。",
   "trigger_when": {
-    "doc_type": ["碎石桩施工记录", "DDC桩施工记录", "PHC管桩施工记录"],
-    "field_required": ["桩号", "设计总桩数"]
+    "doc_type": [
+      "碎石桩施工记录",
+      "DDC桩施工记录",
+      "PHC管桩施工记录"
+    ],
+    "field_required": [
+      "桩号",
+      "设计总桩数"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,8 +31,12 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["01_场道工程"],
-    "subdivision_codes": ["01-03"]
+    "professional": [
+      "01_场道工程"
+    ],
+    "subdivision_codes": [
+      "01-03"
+    ]
   },
   "stats": {
     "total_hits": 0,
@@ -44,5 +55,6 @@
       "author": "system",
       "change": "从 data-quality-patterns.md DQ-SELF 桩号连续性项迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

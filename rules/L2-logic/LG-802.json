@@ -6,8 +6,14 @@
   "category": "试验检测一致性",
   "description": "规范要求检测的项目都应检测。矛盾表现：规范要求 8 项，报告只检 5 项。",
   "trigger_when": {
-    "doc_type": ["试验检测报告", "规范要求清单"],
-    "field_required": ["检测项目", "规范要求项目"]
+    "doc_type": [
+      "试验检测报告",
+      "规范要求清单"
+    ],
+    "field_required": [
+      "检测项目",
+      "规范要求项目"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.8.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

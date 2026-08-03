@@ -407,7 +407,7 @@ class SingleDocChecker:
         violations: List[Violation] = []
         if rule.scope != SCOPE_SINGLE_DOC:
             return violations
-        rows = doc_data.get("rows", []) if isinstance(doc_data, dict) else []
+        rows = (doc_data.get("structured_rows") or doc_data.get("rows", [])) if isinstance(doc_data, dict) else []
         if not isinstance(rows, list):
             return violations
         expr = rule.check_expr.get("expr", "")
@@ -530,7 +530,7 @@ class CrossDocChecker:
         for doc in docs_data:
             if not isinstance(doc, dict):
                 continue
-            for row in doc.get("rows", []) or []:
+            for row in (doc.get("structured_rows") or doc.get("rows", [])) or []:
                 if isinstance(row, dict):
                     all_rows.append(row)
 
@@ -605,8 +605,8 @@ class CrossUnitChecker:
         if not join_keys or not field_a or not field_b:
             return violations
 
-        a_rows = party_a_data.get("rows", []) if isinstance(party_a_data, dict) else []
-        b_rows = party_b_data.get("rows", []) if isinstance(party_b_data, dict) else []
+        a_rows = (party_a_data.get("structured_rows") or party_a_data.get("rows", [])) if isinstance(party_a_data, dict) else []
+        b_rows = (party_b_data.get("structured_rows") or party_b_data.get("rows", [])) if isinstance(party_b_data, dict) else []
 
         # E-2.1 按 join_key 建立乙方哈希索引（一对多：{key_str: [row1, row2, ...]}）
         b_index: Dict[str, List[Dict[str, Any]]] = self._build_index(b_rows, join_keys)

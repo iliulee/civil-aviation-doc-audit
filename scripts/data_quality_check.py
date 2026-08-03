@@ -25,10 +25,31 @@ import math
 from pathlib import Path
 from typing import Any, Optional
 
-# ========== 豁免列配置 ==========
+# ========== 字段名归一化（英文→中文）==========
+# 从 rule_engine 导入 FIELD_ALIAS_MAP，构建反向映射
+# 统一用中文字段名做阈值查表和豁免判断，消除双写
+_REVERSE_ALIAS_MAP: dict[str, str] = {}
+try:
+    try:
+        from rule_engine import FIELD_ALIAS_MAP
+    except ImportError:
+        from .rule_engine import FIELD_ALIAS_MAP
+    for cn_name, en_slot in FIELD_ALIAS_MAP.items():
+        # 多个中文名映射到同一英文槽位时，保留第一个（最常用）
+        if en_slot not in _REVERSE_ALIAS_MAP:
+            _REVERSE_ALIAS_MAP[en_slot] = cn_name
+except ImportError:
+    pass
+
+
+def _normalize_col_name(name: str) -> str:
+    """将英文字段名映射回中文，未命中则原样返回"""
+    return _REVERSE_ALIAS_MAP.get(name, name)
+
+
+# ========== 豁免列配置（仅中文，英文通过归一化自动覆盖）==========
 EXEMPT_COLUMNS_DEFAULT = {
     "桩径", "设计桩长", "密实电流", "表格代号", "工程名称",
-    "diameter", "design_length", "current",
 }
 EXEMPT_COLUMNS_BY_DOC = {
     "碎石桩施工记录": {"桩径", "设计桩长", "密实电流"},
@@ -37,18 +58,13 @@ EXEMPT_COLUMNS_BY_DOC = {
     "检验批质量验收记录": {"检验批编号"},
 }
 
-# ========== 突变阈值 ==========
+# ========== 突变阈值（仅中文，英文通过归一化自动覆盖）==========
 JUMP_THRESHOLDS = {
     "实长": 0.30,
     "灌入量": 0.30,
     "反插次数": 0.30,
     "充盈系数": 0.20,
     "竖直度": 0.20,
-    "actual_length": 0.30,
-    "volume": 0.30,
-    "re_penetration": 0.30,
-    "filling_coeff": 0.20,
-    "verticality": 0.20,
 }
 
 
@@ -57,24 +73,26 @@ class DataQualityChecker:
 
     def __init__(self, data: dict):
         self.data = data
-        self.rows = data.get("rows", [])
+        # 优先读 structured_rows，回退到 rows（向后兼容）
+        self.rows = data.get("structured_rows") or data.get("rows", [])
         self.doc_type = data.get("doc_type", "")
         self.n_rows = len(self.rows)
         self.warnings: list[dict] = []
 
-        # 从 rows 中提取各列数据
+        # 从 rows 中提取各列数据（字段名归一化为中文）
         self.columns: dict[str, list] = {}
         self._build_columns()
 
     def _build_columns(self):
-        """从 rows 构建列数据"""
+        """从 rows 构建列数据，字段名统一归一化为中文"""
         if not self.rows:
             return
         for row in self.rows:
             for key, val in row.items():
-                if key not in self.columns:
-                    self.columns[key] = []
-                self.columns[key].append(val)
+                cn_key = _normalize_col_name(key)
+                if cn_key not in self.columns:
+                    self.columns[cn_key] = []
+                self.columns[cn_key].append(val)
 
     def _is_exempt(self, col_name: str) -> bool:
         """判断某列是否豁免"""
@@ -111,7 +129,7 @@ class DataQualityChecker:
     # ========== 2. 桩号总数校验（v2.0：不强制连号） ==========
     def check_pile_continuity(
         self,
-        col_name: str = "pile_no",
+        col_name: str = "桩号",
         expected_total: Optional[int] = None,
     ) -> list[dict]:
         """
@@ -346,7 +364,7 @@ class DataQualityChecker:
         return False
 
     # ========== 6. 突变检测（v2.0：含致岩豁免） ==========
-    def check_jump(self, remark_col: str = "remark") -> list[dict]:
+    def check_jump(self, remark_col: str = "备注") -> list[dict]:
         """检测数值列的突变
 
         v2.0 新增：
@@ -373,7 +391,7 @@ class DataQualityChecker:
         for col_name, values in self.columns.items():
             if self._is_exempt(col_name):
                 continue
-            if col_name in ("pile_no", remark_col):
+            if col_name in ("桩号", remark_col):
                 continue
 
             # 跳过已被交替模式标记的列
@@ -425,8 +443,8 @@ class DataQualityChecker:
     # ========== 7. 时间连续性 ==========
     def check_time_continuity(
         self,
-        start_time_col: str = "start_time",
-        end_time_col: str = "end_time",
+        start_time_col: str = "开始时间",
+        end_time_col: str = "结束时间",
     ) -> list[dict]:
         """检查后行开始时间 ≥ 前行结束时间"""
         w = []

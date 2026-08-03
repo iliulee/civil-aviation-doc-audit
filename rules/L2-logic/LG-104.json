@@ -6,8 +6,15 @@
   "category": "时间轴一致性",
   "description": "通知 → 整改 → 复核，闭环。矛盾表现：回复日期早于通知日期，或复核日期早于回复日期。",
   "trigger_when": {
-    "doc_type": ["监理通知单", "整改回复单", "整改复核记录"],
-    "field_required": ["日期", "通知单编号"]
+    "doc_type": [
+      "监理通知单",
+      "整改回复单",
+      "整改复核记录"
+    ],
+    "field_required": [
+      "日期",
+      "通知单编号"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

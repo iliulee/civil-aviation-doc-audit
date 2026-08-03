@@ -6,8 +6,14 @@
   "category": "数量累计一致性",
   "description": "每个检验批都应有对应的检测报告。矛盾表现：10个检验批只有5份检测报告。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "试验检测报告"],
-    "field_required": ["检验批编号", "报告编号"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "试验检测报告"
+    ],
+    "field_required": [
+      "检验批编号",
+      "报告编号"
+    ]
   },
   "check_expr": {
     "type": "aggregation",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.2.5 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

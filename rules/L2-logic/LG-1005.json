@@ -6,8 +6,16 @@
   "category": "数据自洽",
   "description": "时间连续性校验：后行开始时间 ≥ 前行结束时间，允许误差 0。不通过 → 时间倒挂。",
   "trigger_when": {
-    "doc_type": ["碎石桩施工记录", "DDC桩施工记录", "PHC管桩施工记录", "混凝土浇筑记录"],
-    "field_required": ["开始时间", "结束时间"]
+    "doc_type": [
+      "碎石桩施工记录",
+      "DDC桩施工记录",
+      "PHC管桩施工记录",
+      "混凝土浇筑记录"
+    ],
+    "field_required": [
+      "开始时间",
+      "结束时间"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 data-quality-patterns.md DQ-SELF 时间连续性项迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,15 @@
   "category": "人员一致性",
   "description": "签字人应在项目部组织架构内。矛盾表现：签字人不在岗或无此人。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "项目部组织架构", "考勤表"],
-    "field_required": ["签字人", "岗位"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "项目部组织架构",
+      "考勤表"
+    ],
+    "field_required": [
+      "签字人",
+      "岗位"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.3.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

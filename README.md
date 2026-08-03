@@ -14,7 +14,7 @@ civil-aviation-doc-audit/
 ├── SKILL.md                          # 主 Skill 文件（必读，v7.2）
 ├── README.md                         # 本文件
 ├── requirements.txt                  # Python 依赖
-├── install.ps1                       # 一键安装脚本（Python+PaddleOCR+Poppler+Tesseract）
+├── install.ps1                       # 一键安装脚本（Python+Tesseract，PDF转图由PyMuPDF处理）
 ├── audit.bat                         # Windows 快捷入口
 ├── .gitignore
 │
@@ -91,8 +91,7 @@ civil-aviation-doc-audit/
 │
 ├── audit_memory/                     # 【v6.0】审核记忆流日志
 │
-└── tools/
-    └── poppler/                      # PDF 转图工具
+└── tools/                              # 工具目录（poppler 已移除，PyMuPDF 替代）
 ```
 
 ---
@@ -187,7 +186,7 @@ python scripts/rule_admin.py --port 8765
 ### 1. 安装依赖
 
 ```powershell
-# 一键安装（Python 依赖 + Poppler + Tesseract）
+# 一键安装（Python 依赖 + Tesseract，PDF 转图由 PyMuPDF 处理）
 .\install.ps1
 ```
 
@@ -400,14 +399,33 @@ auto 模式自动检测可用引擎
    │
    ├─ 检测到 Vision API Key → 优先使用 Vision API（云端，按量付费）
    │   ├─ 7 家 Provider：doubao / qwen / glm / kimi / silicon / baidu / openai
-   │   └─ 推荐：Doubao Vision Pro（0.003 元/千 token，中文 OCR 最准最快）
+   │   ├─ 推荐：Doubao Vision Pro（0.003 元/千 token，中文 OCR 最准最快）
+   │   └─ ⚠️ 使用前自动列出可用 Provider 供参考
    │
    ├─ 无 API Key → 降级为 PaddleOCR（本地，零成本）
+   │   ├─ ⚠️ 需 Python 3.12 及以下（PaddlePaddle 最高支持 Python 3.12）
    │   ├─ PP-OCRv4 模型，enable_mkldnn=True, cpu_threads=10
    │   └─ 桩号列检测 + Z/2 混淆自动修正
    │
-   └─ 无 PaddleOCR → 降级为 Tesseract（本地，需安装）
+   ├─ 无 PaddleOCR → 降级为 Tesseract（本地，需安装）
+   │
+   └─ 无 Tesseract → 降级为 AGENT 内置 Vision 模型（最终兜底）
+       ├─ 通过 TRAE Read 工具直接读取图片，用 AI 自身 Vision 能力识别
+       ├─ 适用于单页或少页 OCR 复核，速度较慢但零依赖
+       └─ 不适于大批量 OCR（>10 页建议用 Vision API 或 PaddleOCR）
 ```
+
+Vision API 支持以下 7 家 Provider：
+
+| Provider | 名称 | 环境变量 | 默认模型 | 价格（元/千token） |
+|:---:|:---|:---|:---|:---:|
+| doubao | 豆包（推荐） | `ARK_API_KEY` | doubao-vision-pro-32k | **0.003** |
+| silicon | 硅基流动 | `SILICONFLOW_API_KEY` | Qwen2-VL-72B-Instruct | 0.004 |
+| qwen | 通义千问 | `DASHSCOPE_API_KEY` | qwen-vl-max | 0.008 |
+| baidu | 百度千帆 | `BAIDU_API_KEY` | ernie-4.5-vl-preview | 0.008 |
+| glm | 智谱 | `ZHIPU_API_KEY` | glm-4v-plus | 0.010 |
+| kimi | Kimi | `MOONSHOT_API_KEY` | moonshot-v1-8k-vision | 0.012 |
+| openai | OpenAI | `OPENAI_API_KEY` | gpt-4o | 0.015 |
 
 首次使用 Vision API：
 ```powershell
@@ -416,6 +434,16 @@ $env:ARK_API_KEY = "你的火山引擎 API Key"
 
 # 验证可用 Provider
 python scripts/vision_providers.py --list
+```
+
+> **使用 Vision API 前会提醒**：系统自动执行 `python scripts/vision_providers.py --list`，列出当前可用的 Provider 及其价格，供用户参考选择。无可用 Provider 时自动降级本地引擎。
+
+### 离线场景：安装 PaddleOCR
+
+> ⚠️ **PaddlePaddle 最高支持 Python 3.12**。如果当前 Python 版本 ≥ 3.13，需要先降级 Python 到 3.12。
+
+```powershell
+python3.12 -m pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 ```
 
 ---

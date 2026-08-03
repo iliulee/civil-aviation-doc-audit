@@ -6,8 +6,16 @@
   "category": "状态描述一致性",
   "description": "检验批、隐蔽记录、监理日志、影像中描述应一致。矛盾表现：检验批说\"合格\"，但监理日志说\"局部返工\"。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "隐蔽工程验收记录", "监理日志", "影像资料"],
-    "field_required": ["检验批编号", "质量状态"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "隐蔽工程验收记录",
+      "监理日志",
+      "影像资料"
+    ],
+    "field_required": [
+      "检验批编号",
+      "质量状态"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.4.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

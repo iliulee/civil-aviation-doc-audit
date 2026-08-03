@@ -6,8 +6,14 @@
   "category": "试验检测一致性",
   "description": "见证记录编号 = 试验报告编号。矛盾表现：见证记录显示取样 3 组，报告只出 2 份。",
   "trigger_when": {
-    "doc_type": ["见证取样记录", "试验检测报告"],
-    "field_required": ["见证编号", "报告编号"]
+    "doc_type": [
+      "见证取样记录",
+      "试验检测报告"
+    ],
+    "field_required": [
+      "见证编号",
+      "报告编号"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.8.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

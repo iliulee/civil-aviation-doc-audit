@@ -6,8 +6,14 @@
   "category": "签字一致性",
   "description": "代签本身不合规，授权代签需有书面授权。矛盾表现：明显代签但无授权。",
   "trigger_when": {
-    "doc_type": ["*"],
-    "field_required": ["签字人", "签字图像", "授权委托书"]
+    "doc_type": [
+      "*"
+    ],
+    "field_required": [
+      "签字人",
+      "签字图像",
+      "授权委托书"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.5.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

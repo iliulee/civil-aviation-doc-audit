@@ -6,8 +6,16 @@
   "category": "因果一致性",
   "description": "出现问题 → 整改/加固/变更/返工。矛盾表现：记录中提到质量问题，无后续处理。",
   "trigger_when": {
-    "doc_type": ["质量问题记录", "整改通知单", "整改回复单", "复验记录"],
-    "field_required": ["质量问题编号", "处理状态"]
+    "doc_type": [
+      "质量问题记录",
+      "整改通知单",
+      "整改回复单",
+      "复验记录"
+    ],
+    "field_required": [
+      "质量问题编号",
+      "处理状态"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

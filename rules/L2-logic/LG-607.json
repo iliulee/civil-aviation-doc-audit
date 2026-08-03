@@ -6,8 +6,15 @@
   "category": "因果一致性",
   "description": "施工日志/汇总表有合计值，但原始施工记录无合计行 → 合计值来源不明。矛盾表现：DOC-C 记录\"33根，489.9m\"，但 DOC-B 6页全部缺合计行。结果：合计值无原始记录支撑，无法确认真实性。",
   "trigger_when": {
-    "doc_type": ["施工日志", "施工记录", "汇总表"],
-    "field_required": ["合计值", "合计行"]
+    "doc_type": [
+      "施工日志",
+      "施工记录",
+      "汇总表"
+    ],
+    "field_required": [
+      "合计值",
+      "合计行"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.7 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

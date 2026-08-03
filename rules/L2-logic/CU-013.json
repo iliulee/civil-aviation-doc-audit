@@ -2,7 +2,7 @@
   "rule_id": "CU-013",
   "name": "工程试验段：施工 → 记录 → 总结审批",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "工程试验段流程：试验段施工日期 ≤ 工艺参数记录日期 ≤ 总结报告编制日期 ≤ 审批日期。总结报告日期早于施工日期，或审批日期早于编制日期均为矛盾。跨单位核心校验为监理审批日期 ≥ 施工方施工日期",
   "trigger_when": {
@@ -67,5 +67,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.12 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

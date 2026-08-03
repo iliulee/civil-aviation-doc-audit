@@ -6,8 +6,15 @@
   "category": "签字一致性",
   "description": "设计变更、关键工序验收、竣工验收应有执业印章。矛盾表现：关键文件仅有签字无印章。",
   "trigger_when": {
-    "doc_type": ["设计变更通知单", "关键工序验收记录", "竣工验收记录"],
-    "field_required": ["签字人", "执业印章"]
+    "doc_type": [
+      "设计变更通知单",
+      "关键工序验收记录",
+      "竣工验收记录"
+    ],
+    "field_required": [
+      "签字人",
+      "执业印章"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.5.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

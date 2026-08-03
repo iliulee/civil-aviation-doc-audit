@@ -6,8 +6,15 @@
   "category": "人员一致性",
   "description": "设计变更应由原设计单位相应专业负责人签字。矛盾表现：非本专业或非本单位人员签字。",
   "trigger_when": {
-    "doc_type": ["设计变更通知单", "设计单位人员名单"],
-    "field_required": ["签字人", "专业", "设计单位"]
+    "doc_type": [
+      "设计变更通知单",
+      "设计单位人员名单"
+    ],
+    "field_required": [
+      "签字人",
+      "专业",
+      "设计单位"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.3.5 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

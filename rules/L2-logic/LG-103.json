@@ -6,8 +6,14 @@
   "category": "时间轴一致性",
   "description": "验收顺序：分项 → 分部 → 单位，时间应顺向，不能跳跃。矛盾表现：分部验收日期早于分项验收日期，或单位工程验收日期早于分部验收日期。",
   "trigger_when": {
-    "doc_type": ["分项工程质量验收记录", "分部工程质量验收记录", "单位工程质量验收记录"],
-    "field_required": ["验收日期"]
+    "doc_type": [
+      "分项工程质量验收记录",
+      "分部工程质量验收记录",
+      "单位工程质量验收记录"
+    ],
+    "field_required": [
+      "验收日期"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

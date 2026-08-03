@@ -2,7 +2,7 @@
   "rule_id": "CU-001",
   "name": "监理-施工方混凝土量偏差校验",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位数量对照",
   "description": "同一桩号下，监理旁站记录的混凝土灌入量与施工方施工记录的灌入量偏差不得超过 5%",
   "trigger_when": {
@@ -60,5 +60,6 @@
       "author": "system",
       "change": "初始版本，从 9.10 监理-施工方对照规则迁移并结构化"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -30,6 +30,18 @@ crops/
 测试/
 测试2/
 测试3/
+测试4/
+
+# 根目录测试脚本（以下划线开头的测试文件）
+/_check_*.py
+/_ocr_*.txt
+/_process_*.py
+/_test_*.py
+/_verify_*.py
+/_paddle_*.py
+/experiment_*.py
+/python-*.exe
+/体检报告_*.md
 
 # 仪表盘和报告
 gravel-pile-*/
@@ -68,8 +80,8 @@ reports/
 /pdf.min.js
 /pdf.worker.min.js
 
-# 开发文档
-PROJECT_SPEC.md
+# PP-StructureV3 实验隔离环境
+.venv_ppstructure_v3_experiment/
 
 # 操作系统
 Thumbs.db

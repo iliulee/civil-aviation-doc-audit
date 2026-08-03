@@ -2,7 +2,7 @@
   "rule_id": "CU-003",
   "name": "复工令日期 ≥ 复工报审表日期 ≥ 暂停令签发日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "复工流程闭环：暂停令（A.11）签发日期 ≤ 施工单位《复工报审表》（B.26）申请日期 ≤ 监理签发《复工令》（A.15）日期。跨单位核心校验为复工令日期 ≥ 复工报审表日期",
   "trigger_when": {
@@ -66,5 +66,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

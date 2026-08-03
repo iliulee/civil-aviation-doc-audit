@@ -6,8 +6,13 @@
   "category": "时间轴一致性",
   "description": "节假日有施工记录但无加班审批。矛盾表现：国庆、春节有施工记录但无任何说明或加班审批。人工检查要点：识别国庆、春节、元旦等法定节假日，核查当天是否有施工记录，若有则需对应加班审批或调休说明。",
   "trigger_when": {
-    "doc_type": ["施工日志", "加班审批表"],
-    "field_required": ["日期"]
+    "doc_type": [
+      "施工日志",
+      "加班审批表"
+    ],
+    "field_required": [
+      "日期"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +29,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +51,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.8 迁移"
     }
-  ]
+  ],
+  "is_placeholder": true
 }

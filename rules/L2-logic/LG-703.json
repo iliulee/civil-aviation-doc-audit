@@ -6,8 +6,15 @@
   "category": "规范引用一致性",
   "description": "引用的规范条款应与资料内容相关。矛盾表现：路基资料引用桥梁规范。",
   "trigger_when": {
-    "doc_type": ["检验批质量验收记录", "施工记录", "检测报告"],
-    "field_required": ["规范编号", "资料内容分类"]
+    "doc_type": [
+      "检验批质量验收记录",
+      "施工记录",
+      "检测报告"
+    ],
+    "field_required": [
+      "规范编号",
+      "资料内容分类"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.7.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

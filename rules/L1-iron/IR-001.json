@@ -48,5 +48,6 @@
       "author": "system",
       "change": "从 SKILL.md 铁律 R-01 迁移"
     }
-  ]
+  ],
+  "is_placeholder": true
 }

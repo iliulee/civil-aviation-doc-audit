@@ -6,8 +6,15 @@
   "category": "数量累计一致性",
   "description": "三个清单的工程量应逻辑一致。矛盾表现：合同工程量与结算差异巨大，无变更依据。",
   "trigger_when": {
-    "doc_type": ["工程量清单", "合同清单", "结算清单"],
-    "field_required": ["项目编码", "工程量"]
+    "doc_type": [
+      "工程量清单",
+      "合同清单",
+      "结算清单"
+    ],
+    "field_required": [
+      "项目编码",
+      "工程量"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.2.6 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,15 @@
   "category": "时间轴一致性",
   "description": "设计变更必须先审批后实施。矛盾表现：已按变更施工但变更手续未下发，或施工实施日期早于变更审批日期。",
   "trigger_when": {
-    "doc_type": ["设计变更通知单", "施工记录"],
-    "field_required": ["变更编号", "审批日期", "实施日期"]
+    "doc_type": [
+      "设计变更通知单",
+      "施工记录"
+    ],
+    "field_required": [
+      "变更编号",
+      "审批日期",
+      "实施日期"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +31,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.5 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

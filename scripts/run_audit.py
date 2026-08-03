@@ -47,12 +47,6 @@ try:
 except ImportError:
     HAS_PYMUPDF = False
 
-try:
-    from pdf2image import convert_from_path
-    HAS_PDF2IMAGE = True
-except ImportError:
-    HAS_PDF2IMAGE = False
-
 
 # ========== 1. 资料格式识别 ==========
 def sniff_document(file_path: str) -> dict:
@@ -937,12 +931,15 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
 
     # 生成发现详情行（仅显示非pass项，限制100条）
     BADGE = {"pass": "✅", "fail": "❌", "suspicious": "⚠️", "needs_ai": "🤖", "not_applicable": "➖"}
-    SEV_BADGE = {"high": "🔴", "medium": "🟡", "low": "⚪"}
-    
+    SEV_BADGE = {"high": "🔴", "medium": "🟡", "low": "⚪", "suspicious": "⚠️", "fatal": "🔴"}
+    SEV_LABEL = {"fatal": "严重", "high": "高", "medium": "中", "low": "低", "suspicious": "存疑",
+                 "Fatal": "严重", "Sanity Check": "存疑", "Best Practice": "提示"}
+
     non_pass_findings = [f for f in findings if f.get("result") != "pass" and f.get("result") != "not_applicable"]
     finding_rows = ""
     for f in non_pass_findings[:100]:
         sev = f.get("severity", "low")
+        sev_cn = SEV_LABEL.get(sev, sev)
         result = f.get("result", "")
         doc_id = f.get("doc_id", "")
         fname = doc_id_to_file.get(doc_id, doc_id)
@@ -950,7 +947,7 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
         finding_rows += f"""
         <tr>
           <td>{BADGE.get(result, '')}</td>
-          <td>{SEV_BADGE.get(sev, '')} {sev}</td>
+          <td>{SEV_BADGE.get(sev, '')} {sev_cn}</td>
           <td>{f.get('checklist_id', '')}</td>
           <td>{f.get('category', '')}</td>
           <td>{f.get('check_item', '')}</td>

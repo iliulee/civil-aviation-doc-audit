@@ -27,10 +27,17 @@ Vision API 支持 7 家 Provider（详见 vision_providers.py）：
     python scripts/ocr_image.py <文件> --engine tesseract --out <输出>  # Tesseract
 
 前置依赖：
-    pip install Pillow pdf2image requests opencv-python
+    pip install Pillow PyMuPDF requests opencv-python
     # API 模式：只需设置环境变量，无需安装 PaddleOCR
     # 本地模式（--engine paddle）：需额外 pip install paddleocr==2.8.1 paddlepaddle==2.6.2
 """
+
+import os as _os
+# 必须在 PaddlePaddle 加载前设置，防止 C++ 层内存/指令集崩溃
+_os.environ.setdefault("FLAGS_use_mkldnn", "0")
+_os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+_os.environ.setdefault("FLAGS_allocator_strategy", "naive_best_fit")
+del _os
 
 import sys
 import argparse
@@ -54,9 +61,10 @@ try:
 except ImportError:
     HAS_PADDLEOCR = False
 
+from PIL import Image  # PIL 是强依赖，独立导入
+
 try:
     import pytesseract
-    from PIL import Image
     HAS_TESSERACT_DEPS = True
 except ImportError:
     HAS_TESSERACT_DEPS = False
@@ -75,10 +83,10 @@ if HAS_TESSERACT_DEPS:
             break
 
 try:
-    from pdf2image import convert_from_path, pdfinfo_from_path
-    HAS_PDF2IMAGE = True
+    import fitz  # PyMuPDF — PDF 文字提取 + PDF 转图片统一引擎
+    HAS_PYMUPDF = True
 except ImportError:
-    HAS_PDF2IMAGE = False
+    HAS_PYMUPDF = False
 
 
 # ═══════════════════════════════════════════════════
@@ -244,7 +252,7 @@ def _get_paddleocr_engine():
                 ocr_version="PP-OCRv4",       # release/2.8 官方默认模型，精度最优
                 use_gpu=False,                # CPU 运行
                 show_log=False,               # 减少日志噪声
-                enable_mkldnn=True,           # Intel MKL-DNN 加速（CPU 关键优化，whl 包必须显式 True）
+                enable_mkldnn=False,          # 禁用 oneDNN（此 CPU 上 2.6.2 报 "could not create a primitive"）
                 cpu_threads=10,               # 官方默认线程数
                 # 检测模型参数
                 det_max_side_len=1920,        # 最大边长从 960 提升到 1920，适配扫描件
@@ -254,10 +262,10 @@ def _get_paddleocr_engine():
                 use_dilation=False,           # 官方默认值
                 # 识别模型参数
                 drop_score=0.35,              # 从 0.5 降到 0.35，保留低分手写结果
-                rec_batch_num=6,              # 调低官方默认 30，降低峰值内存与卡顿
+                rec_batch_num=2,              # 从 6 降到 2，避免 "could not create a memory object"
                 max_text_length=25,           # 最大文字长度
                 # 分类器参数
-                cls_batch_num=6,              # 调低官方默认 30，降低峰值内存与卡顿
+                cls_batch_num=2,              # 从 6 降到 2，避免 "could not create a memory object"
             )
             print("  [OK] PaddleOCR 初始化完成", file=sys.stderr)
         except Exception as e:
@@ -266,60 +274,62 @@ def _get_paddleocr_engine():
     return _paddleocr_engine
 
 
-def _get_poppler_path():
-    # 1. 先检查 skill 自带目录
-    p = Path(__file__).parent.parent / "tools" / "poppler"
-    if p.exists():
-        for bin_dir in p.rglob("pdftoppm.exe"):
-            return str(bin_dir.parent)
-    # 2. 再检查系统 PATH（pdf2image 传 None 时会自动调用系统 PATH）
-    import shutil
-    if shutil.which("pdftoppm"):
-        return None
-    # 3. 都没有才返回 None（表示真的没装）
-    return None
+# ═══════════════════════════════════════════════════
+# PDF 转图片（PyMuPDF 引擎 — 替代 poppler/pdf2image）
+# ═══════════════════════════════════════════════════
+
+def _pdf_page_count(pdf_path: str) -> int:
+    """用 PyMuPDF 获取 PDF 页数（替代 pdfinfo_from_path）。"""
+    if not HAS_PYMUPDF:
+        return 1
+    doc = fitz.open(pdf_path)
+    try:
+        return len(doc)
+    finally:
+        doc.close()
 
 
-# ═══════════════════════════════════════════════════
-# PDF 安全转换
-# ═══════════════════════════════════════════════════
-def _safe_convert_pdf(
+def _pdf_to_images_pymupdf(
     pdf_path: str,
     dpi: int = 200,
     first_page: Optional[int] = None,
     last_page: Optional[int] = None,
     preprocess_mode: str = "default",
 ):
-    has_non_ascii = bool(re.search(r'[^\x00-\x7F]', str(pdf_path)))
-    poppler_path = _get_poppler_path()
-    kwargs = {"dpi": dpi}
-    if poppler_path:
-        kwargs["poppler_path"] = poppler_path
-    if first_page:
-        kwargs["first_page"] = first_page
-    if last_page:
-        kwargs["last_page"] = last_page
+    """用 PyMuPDF 将 PDF 指定页渲染为 PIL Image 列表（替代 _safe_convert_pdf）。
 
-    source = pdf_path
-    tmp_pdf = None
-    if has_non_ascii:
-        tmp_dir = Path(tempfile.gettempdir()) / "trae_ocr_tmp"
-        tmp_dir.mkdir(exist_ok=True)
-        tmp_pdf = tmp_dir / "input.pdf"
-        shutil.copy2(pdf_path, tmp_pdf)
-        source = str(tmp_pdf)
+    优势：
+    - 内存内直接渲染，零进程开销（比 poppler 快 3-5x）
+    - 原生支持中文路径（无需临时文件拷贝）
+    - 一次打开逐页渲染
+    """
+    if not HAS_PYMUPDF:
+        print("  [!] PyMuPDF 未安装，无法转换 PDF", file=sys.stderr)
+        return []
 
+    zoom = dpi / 72.0  # PDF 默认 72 DPI
+    matrix = fitz.Matrix(zoom, zoom)
+
+    doc = fitz.open(pdf_path)
     try:
-        images = convert_from_path(source, **kwargs)
+        total = len(doc)
+        start = (first_page - 1) if first_page else 0
+        end = last_page if last_page else total
+        page_indices = range(max(0, start), min(end, total))
+
+        images = []
+        for idx in page_indices:
+            page = doc[idx]
+            pix = page.get_pixmap(matrix=matrix)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            images.append(img)
+            page = None  # 释放
+
         if preprocess_mode != "raw":
             images = [_preprocess_for_ocr(img, mode=preprocess_mode) for img in images]
         return images
     finally:
-        if tmp_pdf and Path(tmp_pdf).exists():
-            try:
-                Path(tmp_pdf).unlink()
-            except Exception:
-                pass
+        doc.close()
 
 
 # ═══════════════════════════════════════════════════
@@ -1182,42 +1192,46 @@ def ocr_pdf_paddleocr(
     all_items = []
     all_scores = []
 
-    info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path() or None)
-    total_pages = info.get("Pages", 1)
+    info_total = _pdf_page_count(pdf_path)
 
     if page is not None:
         page_nums = [page]
     else:
-        page_nums = range(1, total_pages + 1)
+        page_nums = range(1, info_total + 1)
 
     total_pages = len(page_nums)
     for idx, page_num in enumerate(page_nums):
         print(f"  [i] OCR 第 {page_num} 页 / 共 {total_pages} 页 ...", file=sys.stderr)
-        images = _safe_convert_pdf(
-            pdf_path, dpi=dpi, first_page=page_num, last_page=page_num,
-            preprocess_mode="raw",
-        )
-        if not images:
-            print(f"  [!] 第 {page_num} 页 PDF 转图失败", file=sys.stderr)
-            continue
-        img = _preprocess_for_ocr(images[0], mode="paddle")
-        density = _detect_text_density(img)
+        img = None
+        images = None
         try:
+            images = _pdf_to_images_pymupdf(
+                pdf_path, dpi=dpi, first_page=page_num, last_page=page_num,
+                preprocess_mode="raw",
+            )
+            if not images:
+                print(f"  [!] 第 {page_num} 页 PDF 转图失败", file=sys.stderr)
+                continue
+            img = _preprocess_for_ocr(images[0], mode="paddle")
+            density = _detect_text_density(img)
             items = _ocr_single_image_paddleocr(img, engine, page=page_num)
 
             # 空页但文本密度高：尝试 300 DPI 重跑
             if not items and density > 0.02:
                 print(f"  [!] 第 {page_num} 页 PaddleOCR 未检出文本且密度较高，尝试 300 DPI 重跑...", file=sys.stderr)
-                retry_images = _safe_convert_pdf(
-                    pdf_path, dpi=300, first_page=page_num, last_page=page_num,
-                    preprocess_mode="raw",
-                )
-                if retry_images:
-                    retry_img = _preprocess_for_ocr(retry_images[0], mode="paddle")
-                    items = _ocr_single_image_paddleocr(retry_img, engine, page=page_num)
-                    for it in items:
-                        it["dpi"] = 300
-                    del retry_img, retry_images
+                try:
+                    retry_images = _pdf_to_images_pymupdf(
+                        pdf_path, dpi=300, first_page=page_num, last_page=page_num,
+                        preprocess_mode="raw",
+                    )
+                    if retry_images:
+                        retry_img = _preprocess_for_ocr(retry_images[0], mode="paddle")
+                        items = _ocr_single_image_paddleocr(retry_img, engine, page=page_num)
+                        for it in items:
+                            it["dpi"] = 300
+                        del retry_img, retry_images
+                except Exception as retry_e:
+                    print(f"  [!] 第 {page_num} 页 300 DPI 重试失败: {retry_e}", file=sys.stderr)
 
             all_items.extend(items)
             if items:
@@ -1227,7 +1241,10 @@ def ocr_pdf_paddleocr(
             print(f"  [!] PaddleOCR 第 {page_num} 页失败: {e}", file=sys.stderr)
             traceback.print_exc()
         finally:
-            del img, images
+            if img is not None:
+                del img
+            if images is not None:
+                del images
             gc.collect()
 
     avg_score = sum(all_scores) / len(all_scores) if all_scores else 0.0
@@ -1244,12 +1261,11 @@ def ocr_image_tesseract(image_path: str, lang: str = "chi_sim+eng") -> str:
 
 
 def ocr_pdf_tesseract(pdf_path: str, lang: str = "chi_sim+eng", dpi: int = 200) -> str:
-    info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path() or None)
-    total_pages = info.get("Pages", 1)
+    total_pages = _pdf_page_count(pdf_path)
 
     parts = []
     for page_num in range(1, total_pages + 1):
-        images = _safe_convert_pdf(
+        images = _pdf_to_images_pymupdf(
             pdf_path, dpi=dpi, first_page=page_num, last_page=page_num,
             preprocess_mode="enhance",
         )
@@ -1438,8 +1454,8 @@ def ocr_pdf(
     engine_used = "none"
     score = 0.0
 
-    if not HAS_PDF2IMAGE:
-        return {"text": "", "engine": "none", "confidence": 0.0, "items": [], "error": "pdf2image 未安装"}
+    if not HAS_PYMUPDF:
+        return {"text": "", "engine": "none", "confidence": 0.0, "items": [], "error": "PyMuPDF 未安装"}
 
     if engine == "auto":
         if _has_api_provider():
@@ -1481,11 +1497,10 @@ def ocr_pdf(
 
     if engine == "vision":
         try:
-            info = pdfinfo_from_path(pdf_path, poppler_path=_get_poppler_path() or None)
-            total_pages = info.get("Pages", 1)
+            total_pages = _pdf_page_count(pdf_path)
             parts = []
             for page_num in range(1, total_pages + 1):
-                images = _safe_convert_pdf(
+                images = _pdf_to_images_pymupdf(
                     pdf_path, dpi=dpi, first_page=page_num, last_page=page_num,
                     preprocess_mode="raw",
                 )
@@ -1576,7 +1591,7 @@ def main():
     if not engines:
         print(
             "❌ 未安装任何 OCR 引擎。请运行：\n"
-            "   pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python Pillow pdf2image requests\n"
+            "   pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python Pillow PyMuPDF requests\n"
             "   或设置 Vision API 环境变量（详见 vision_providers.py）",
             file=sys.stderr,
         )

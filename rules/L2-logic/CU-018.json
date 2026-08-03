@@ -2,7 +2,7 @@
   "rule_id": "CU-018",
   "name": "监理例会/专题会议：会议日期 vs 议定事项时限",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "监理例会/专题会议流程：会议纪要日期 ≤ 议定事项完成时限。议定事项应有完成状态记录（已完成/进行中/未启动）。议定事项完成时限早于会议日期，或已过时限但无完成记录均为矛盾",
   "trigger_when": {
@@ -68,5 +68,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.17 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

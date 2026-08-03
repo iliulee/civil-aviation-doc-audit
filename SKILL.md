@@ -3,7 +3,7 @@ name: "civil-aviation-doc-audit"
 description: "民航建设施工资料合规审核大师。审核资料是否符合MH/T 5078等民航行业规范、验证结构运算是否符合运算规范、支持OCR识别扫描件、多Agent并行批量审核、三级输出格式（Fatal/Sanity Check/Best Practice）、知识分区红线防幻觉、可自动生成审核报告和整改通知。专门针对民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业的施工资料合规性审核场景。当用户要求审核民航施工资料、检查资料合规性、验证运算规范、识别扫描件资料、生成审核报告或整改通知时触发。"
 ---
 
-# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v7.0
+# 民航建设施工资料合规审核大师（civil-aviation-doc-audit）v7.2
 
 > 面向民航运输机场专业工程建设项目，基于 MH/T 5078.1~5078.6-2024 资料管理规程体系，提供"建数据底座 → 人工核对 → 正式审核 → 生成报告"四阶段流水线审核能力，集成 OCR 扫描件识别、跨资料逻辑一致性检查、多 Agent 并行审核（按专业/分部/分项三级粒度拆分）、Web 数据编辑器、项目总览仪表盘等能力。五大专业全覆盖，每条审核意见有据可查。
 
@@ -13,7 +13,7 @@ description: "民航建设施工资料合规审核大师。审核资料是否符
 |------|------|
 | 英文名 | `civil-aviation-doc-audit` |
 | 中文名 | 民航建设施工资料合规审核大师 |
-| 版本 | v7.0（三层JSON数据底座 + 文档关联图谱 + 签字一致性检测） |
+| 版本 | v7.2（三层JSON数据底座 + 文档关联图谱 + 签字一致性检测 + 通用表格提取） |
 | 适用领域 | 民航运输机场专业工程（场道/空管/助航/弱电/供油）五大专业全覆盖 |
 | 核心规范 | MH/T 5078.1~5078.6-2024 系列 + 各专业技术规范（MH 5004/5007/5012/5034/4006 等） |
 | 知识库 | 主引擎：`references/` 专项审核文件（16 个，已固化条款+参数阈值）；增强源：Obsidian（`H:\Obsidian notes\溜哥笔记\wiki\sources\`），按需查询原文，非硬依赖 |
@@ -70,12 +70,12 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 | 步骤 | 内容 | 说明 |
 |------|------|------|
-| 1 | Python 依赖 | `pip install -r requirements.txt`（含 PyMuPDF、pdf2image、python-docx、openpyxl、requests） |
-| 2 | Poppler | 自动下载 Windows 便携版（~30MB）到 `tools/poppler/` |
-| 3 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（显式备选引擎） |
-| 4 | PaddleOCR | 自动安装 `paddleocr==2.8.1` + `paddlepaddle==2.6.2` + `opencv-python>=4.8.0` |
-| 5 | 系统 PATH | 自动配置，无需手动 |
-| 6 | 验证 | 逐一检查所有组件可用 |
+| 1 | Python 依赖 | `pip install -r requirements.txt`（含 PyMuPDF、python-docx、openpyxl、requests） |
+| 2 | Tesseract OCR | 自动下载安装（~50MB），含中文语言包（显式备选引擎） |
+| 3 | PaddleOCR | 自动安装 `paddleocr==2.8.1` + `paddlepaddle==2.6.2` + `opencv-python>=4.8.0` |
+| 4 | 验证 | 逐一检查所有组件可用 |
+
+> **v5.1 变更**：PDF 转图片由 PyMuPDF 统一引擎在内存中完成，不再依赖 Poppler/pdf2image 外部进程。安装步骤从 6 步缩减为 4 步，减少 ~30MB 下载量。
 
 安装完成后直接可用，无需任何手动操作。如果组件已安装则自动跳过。
 
@@ -83,22 +83,19 @@ Skill 首次加载时，自动执行一次 `obsidian search query="MH/T 5078" li
 
 Skill 首次加载时（无论用户是否说"安装"），自动执行以下快速检测：
 
-1. `python --version` → 确认 Python 可用
-2. `python -c "import fitz; import openpyxl; import pdf2image"` → 确认核心依赖
-3. `python -c "import shutil; print(shutil.which('pdftoppm'))"` 或检查 `tools/poppler/` → 确认 Poppler 可用
-4. `python scripts/vision_providers.py --list` → 确认至少一个 Vision API Provider 可用（环境变量已设置）
+1. `python --version` → 确认 Python 可用，**PaddleOCR 需 Python 3.12 及以下**
+2. `python -c "import fitz; import openpyxl"` → 确认核心依赖（PyMuPDF 同时承担 PDF 文字提取和 PDF 转图片）
+3. `python scripts/vision_providers.py --list` → 确认至少一个 Vision API Provider 可用（环境变量已设置）
 
 **输出格式**：
 
 ```
-✅ 民航建设施工资料合规审核大师 v7.0 已加载
+✅ 民航建设施工资料合规审核大师 v7.2 已加载
 
 环境检测：
-  Python：3.11.4 ✅
-  PyMuPDF：1.24.5 ✅
+  Python：3.12.4 ✅（PaddleOCR 兼容 ✓）
+  PyMuPDF：1.24.5 ✅（PDF 文字提取 + PDF 转图片统一引擎）
   openpyxl：3.1.2 ✅
-  pdf2image：1.17.0 ✅
-  Poppler：C:\...\pdftoppm.exe ✅（系统 PATH）
   Vision API：豆包 Vision Pro ✅ / 可用 Providers：doubao, qwen, glm
 
 连接检测：
@@ -117,13 +114,15 @@ Skill 首次加载时（无论用户是否说"安装"），自动执行以下快
   5. 说"出报告" → 生成 HTML 审核报告
 ```
 
+> **Python 版本注意**：PaddleOCR 依赖 PaddlePaddle，Windows 最高支持 Python 3.12。如果检测到 Python ≥ 3.13，系统会提示降级或使用 Vision API 替代。详见下方 OCR 引擎策略。
+
 任一检测失败时，输出：
 
 ```
 ⚠️ 检测到依赖缺失，建议运行 install.ps1 完成安装。
 缺失项：
   - openpyxl 未安装
-  - Poppler 未检测到
+  - PyMuPDF 未安装
 是否现在安装？（确认后执行 install.ps1）
 ```
 
@@ -131,7 +130,7 @@ Skill 首次加载时（无论用户是否说"安装"），自动执行以下快
 
 ## OCR 引擎策略（v5.0 API-First）
 
-v5.0 全面重构为 **API-First 策略**：Vision API 优先 → PaddleOCR 本地备选 → Tesseract 兜底。
+v5.0 全面重构为 **API-First 策略**：Vision API 优先 → PaddleOCR 本地备选 → Tesseract 兜底 → AGENT 内置 Vision 模型最终兜底。
 默认 auto 模式自动选择最佳可用引擎，无需手动选择。
 
 ```
@@ -144,15 +143,22 @@ auto 模式自动检测可用引擎
    │   ├─ 自动选择最便宜可用 Provider（Doubao > SiliconFlow > Qwen > ...）
    │   ├─ 支持 7 家：doubao / qwen / glm / kimi / silicon / baidu / openai
    │   ├─ 设置任一环境变量即可使用（详见 vision_providers.py）
-   │   └─ 推荐：Doubao Vision Pro（0.003元/千token，中文OCR最准最快）
+   │   ├─ 推荐：Doubao Vision Pro（0.003元/千token，中文OCR最准最快）
+   │   └─ ⚠️ 使用 Vision API 前，系统会自动列出当前可用 Provider 供参考
    │
    ├─ 无 API Key → 降级为 PaddleOCR（本地，零成本）
+   │   ├─ ⚠️ 需 Python 3.12 及以下（PaddlePaddle 最高支持 Python 3.12）
    │   ├─ PP-OCRv4 模型，需安装 paddleocr + paddlepaddle
    │   ├─ enable_mkldnn=True, cpu_threads=10
    │   ├─ 桩号列检测 + Z/2 混淆自动修正
    │   └─ 桩号序列推断：按同行有效桩号趋势补全漏识别
    │
-   └─ 无 PaddleOCR → 降级为 Tesseract（本地，需安装）
+   ├─ 无 PaddleOCR → 降级为 Tesseract（本地，需安装）
+   │
+   └─ 无 Tesseract → 降级为 AGENT 内置 Vision 模型（最终兜底）
+       ├─ 通过 TRAE Read 工具直接读取图片，用 AI 自身 Vision 能力识别
+       ├─ 适用于单页或少页 OCR 复核，速度较慢但零依赖
+       └─ 不适于大批量 OCR（>10 页建议用 Vision API 或 PaddleOCR）
 ```
 
 ### 引擎选择指南
@@ -163,9 +169,24 @@ auto 模式自动检测可用引擎
 | 纯 API，不装本地依赖 | vision | `ocr_image.py "<文件>" --engine vision --out out.txt` |
 | 离线/内网，零成本 | paddle | `ocr_image.py "<文件>" --engine paddle --out out.txt` |
 | 关键数据复核（不惜成本） | vision | `ocr_image.py "<文件>" --engine vision --out out.txt` |
+| 单页快速复核（零依赖） | agent | 使用 AGENT 内置 Vision 能力读图识别 |
 | 一键审核（默认 API 优先） | auto | `run_audit.py audit "<文件>" --data <JSON> --out <目录>` |
 
 ### 首次使用：设置 API Key
+
+Vision API 支持以下 7 家 Provider，设置任一环境变量即可使用：
+
+| Provider | 名称 | 环境变量 | 默认模型 | 价格（元/千token） |
+|:---:|:---|:---|:---|:---:|
+| doubao | 豆包（推荐） | `ARK_API_KEY` | doubao-vision-pro-32k | **0.003** |
+| silicon | 硅基流动 | `SILICONFLOW_API_KEY` | Qwen2-VL-72B-Instruct | 0.004 |
+| qwen | 通义千问 | `DASHSCOPE_API_KEY` | qwen-vl-max | 0.008 |
+| baidu | 百度千帆 | `BAIDU_API_KEY` | ernie-4.5-vl-preview | 0.008 |
+| glm | 智谱 | `ZHIPU_API_KEY` | glm-4v-plus | 0.010 |
+| kimi | Kimi | `MOONSHOT_API_KEY` | moonshot-v1-8k-vision | 0.012 |
+| openai | OpenAI | `OPENAI_API_KEY` | gpt-4o | 0.015 |
+
+> **使用 Vision API 前会提醒**：系统自动执行 `python scripts/vision_providers.py --list`，列出当前可用的 Provider 及其价格，供用户参考选择。无可用 Provider 时自动降级本地引擎。
 
 ```powershell
 # 推荐：豆包 Vision Pro（最便宜，中文OCR最准）
@@ -183,9 +204,11 @@ python scripts/vision_providers.py --list
 
 ### 离线场景：安装 PaddleOCR
 
+> ⚠️ **PaddlePaddle 最高支持 Python 3.12**。如果当前 Python 版本 ≥ 3.13，需要先降级 Python 到 3.12 才能安装 PaddleOCR。建议方案：使用 `python-3.12.10-amd64.exe` 安装 Python 3.12，然后通过 `python3.12 -m pip install paddleocr==2.8.1 paddlepaddle==2.6.2` 安装。
+
 ```powershell
-# 如果需要在无网络环境使用，手动安装 PaddleOCR
-pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
+# 降级 Python 到 3.12 后安装 PaddleOCR
+python3.12 -m pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 # 首次运行会自动下载 PP-OCRv4 模型（~30MB）
 ```
 
@@ -201,7 +224,7 @@ pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │ 阶段 1：建数据底座（全自动）                                    │
-│   输入：项目文件夹路径 + 5 项前置信息                           │
+│   输入：项目文件夹路径 + 6 项前置信息                           │
 │   处理：文件扫描分类 → OCR 提取 → 三层结构化 JSON → 质量检测 →   │
 │         混淆检测 → 断档检测 → index.json 总索引 → 复制 Web 模板 │
 │   输出：数据底座/（JSON 三层结构 + index.json + 质量告警 + 混淆  │
@@ -296,7 +319,7 @@ python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹路径>" \
     --expected-rows "<预期行数JSON文件路径>"
 ```
 
-**`--preconditions` JSON 文件格式**（5 项前置信息）：
+**`--preconditions` JSON 文件格式**（6 项前置信息）：
 ```json
 {
   "stage": "分部分项验收",
@@ -304,6 +327,7 @@ python {SKILL_DIR}/scripts/run_audit.py build "<项目文件夹路径>" \
   "scope": "全量审核",
   "ocr_engine": "PaddleOCR",
   "special_notes": "电子版与扫描件为同一份资料的不同版本",
+  "check_signatures": true,
   "excluded_files": ["测试文档.pdf"],
   "expected_rows": {"碎石桩施工记录": 33}
 }
@@ -692,7 +716,7 @@ python {SKILL_DIR}/scripts/rule_admin.py --port 8765
 
 ### 阶段 1 执行规则（建数据底座）
 
-1. **必须先收集 5 项前置信息**（铁律 v1.7+）：阶段、性质、审核范围、OCR 引擎、特殊说明
+1. **必须先收集 6 项前置信息**（铁律 v1.7+）：阶段、性质、审核范围、OCR 引擎、特殊说明、签字检查
 2. **必须先做文件分类确认**：列出所有文件，分为被审核资料/依据文件/排除文件，请用户确认
 3. **前置信息和文件分类可合并为一次确认**（减少打断）
 4. 用户确认后，执行 `run_audit.py build` 命令
@@ -1444,7 +1468,7 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 3. 实际只生成了 HTML 报告，SKILL 要求的审核日志 JSON、中间产物等未生成
 
 **升级内容**：
-- **新增第 0 步**：审核前收集 5 项前置信息（阶段/性质/依据/范围/特殊说明），动态调整判定标准
+- **新增第 0 步**：审核前收集 6 项前置信息（阶段/性质/依据/范围/特殊说明/签字检查），动态调整判定标准
 - **新增铁律 20**：OCR 存疑项人工核实机制——低置信度项不下确定性结论，汇总为"待核实清单"
 - **第 8 步重构**：统一交付物改为 HTML（三合一），补全必存独立文件和中间产物清单，新增输出完整性自检清单
 - **铁律从 19 条增至 20 条**
@@ -1544,7 +1568,7 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 | 6 | **签字检查** | 启用 / 不启用（默认关闭） | 启用后系统提取所有文档中的签字图像，使用 pHash + SSIM 算法比对同一人在不同文档中的签字一致性。仅在"全要素审核"时建议开启 |
 
 **执行规则**：
-1. **必须全部展示**：5 项问题必须全部列出，每个选项必须完整呈现，`<font color=red>`严禁使用默认值跳过 `</font>`
+1. **必须全部展示**：6 项问题必须全部列出，每个选项必须完整呈现，`<font color=red>`严禁使用默认值跳过 `</font>`
 2. **用户必须逐项回复**：不能"全部默认"，必须对每一项给出明确选择
 3. **信息记录**：收集结果写入审核日志的"前置信息"字段
 4. **判定标准调整**：根据阶段和性质动态调整判定标准——
@@ -1558,7 +1582,7 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 6. **输出**：`{被审资料列表, 依据文件列表, 排除文件列表, 阶段, 性质, 审核范围, OCR引擎, 特殊说明}`
 
 **典型场景**：
-- 用户说"审一下这份施工日志" → 先弹出文件分类确认框，再问 5 项前置信息（全部列出，不跳过）
+- 用户说"审一下这份施工日志" → 先弹出文件分类确认框，再问 6 项前置信息（全部列出，不跳过）
 - 用户提供的电子版和扫描件是同一份资料的不同版本 → 用户在第 5 项说明，避免被误判为"两份矛盾资料"
 
 ---
@@ -1568,7 +1592,7 @@ python {SKILL_DIR}/scripts/run_audit.py report "D:\机场扩建项目"
 **输入**：用户提供的资料（文件路径或文字描述）
 **处理**：
 1. 判断文件格式：Word(.docx) / Excel(.xlsx) / PDF(电子档) / PDF(扫描件) / 图片 / 文字
-2. 若是 PDF，使用 `pdf2image` 抽样检测是否含文本层：
+2. 若是 PDF，使用 PyMuPDF (`fitz`) 抽样检测是否含文本层：
    - 有文本层 → 电子档
    - 无文本层 → 扫描件（需 OCR）
 3. **识别工程类别**（五大专业分流）：

@@ -114,8 +114,11 @@ def save_json(path: Path, data: Any) -> None:
 
 
 def severity_label(level: str) -> str:
-    """严重程度中文标签。"""
-    return {"fatal": "严重", "high": "高", "medium": "中", "low": "低", "suspicious": "存疑"}.get(level, level)
+    """严重程度中文标签。覆盖审核清单和规则引擎所有 severity 值。"""
+    return {
+        "fatal": "严重", "high": "高", "medium": "中", "low": "低", "suspicious": "存疑",
+        "Fatal": "严重", "Sanity Check": "存疑", "Best Practice": "提示",
+    }.get(level, level)
 
 
 # ========== v7.2 C4：文档级置信度存疑降级 ==========
@@ -324,7 +327,7 @@ def audit_checklist_item(
     }
 
     item_id = item["id"]
-    rows = doc_data.get("rows", [])
+    rows = doc_data.get("structured_rows") or doc_data.get("rows", [])
     doc_type = doc_meta.get("doc_type", "")
 
     # ===== 通用检查项 =====
@@ -520,6 +523,92 @@ def audit_document(
     return findings
 
 
+# ========== 逻辑一致性检查辅助函数 ==========
+import re as _re
+from datetime import datetime as _dt
+
+_DATE_PATTERNS = [
+    _re.compile(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})'),
+    _re.compile(r'(\d{4})(\d{2})(\d{2})'),
+]
+
+
+def _parse_date(s: str) -> Optional[str]:
+    """从字符串中提取日期，返回 YYYY-MM-DD 格式，失败返回 None"""
+    if not s or not isinstance(s, str):
+        return None
+    for pat in _DATE_PATTERNS:
+        m = pat.search(s)
+        if m:
+            y, mo, d = m.group(1), m.group(2), m.group(3)
+            try:
+                mo_i, d_i = int(mo), int(d)
+                if 1 <= mo_i <= 12 and 1 <= d_i <= 31:
+                    return f"{y}-{mo_i:02d}-{d_i:02d}"
+            except (ValueError, IndexError):
+                continue
+    return None
+
+
+def _extract_doc_date(doc_meta: Dict[str, Any], doc_data: Dict[str, Any]) -> Optional[str]:
+    """从文档元数据和结构化数据中提取日期，返回 YYYY-MM-DD 格式。
+
+    策略：
+    1. 从 structured_rows/rows 中查找日期列（列名含"日期"/"时间"/"date"）
+    2. 从 full_text 中搜索日期模式
+    3. 从 source_file 文件名中搜索日期模式
+    """
+    # 策略 1: 从行数据中找日期列
+    rows = doc_data.get("structured_rows") or doc_data.get("rows", [])
+    if rows:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            for key, val in row.items():
+                if val is None:
+                    continue
+                key_lower = str(key).lower()
+                if any(kw in key_lower for kw in ("日期", "时间", "date", "time")):
+                    d = _parse_date(str(val))
+                    if d:
+                        return d
+    # 策略 2: 从 full_text 中找日期
+    full_text = doc_data.get("full_text", "")
+    if full_text:
+        d = _parse_date(full_text[:500])
+        if d:
+            return d
+    # 策略 3: 从文件名中找日期
+    source_file = doc_meta.get("original_file", "")
+    if source_file:
+        d = _parse_date(source_file)
+        if d:
+            return d
+    return None
+
+
+def _classify_date_role(doc_meta: Dict[str, Any]) -> Optional[str]:
+    """根据文档类型判断其在日期序列中的角色。
+
+    返回值: "报审" / "进场" / "检验批" / "隐蔽" / "施工记录" / None
+    """
+    doc_type = doc_meta.get("doc_type", "")
+    subcategory = doc_meta.get("subcategory", "")
+    combined = f"{doc_type} {subcategory}"
+
+    if "报审" in combined and "材料" in combined:
+        return "报审"
+    if "进场" in combined and "材料" in combined:
+        return "进场"
+    if "检验批" in combined:
+        return "检验批"
+    if "隐蔽" in combined:
+        return "隐蔽"
+    if "施工记录" in combined or "施工日志" in combined:
+        return "施工记录"
+    return None
+
+
 # ========== 逻辑一致性检查 ==========
 def audit_logic_consistency(
     all_docs: List[Dict[str, Any]],
@@ -527,6 +616,9 @@ def audit_logic_consistency(
 ) -> List[Dict[str, Any]]:
     """
     跨文档逻辑一致性检查（10 子项，铁律 R-09）。
+
+    L-01 和 L-02 已实现自动日期提取和比较。
+    L-03 至 L-10 保留 needs_ai 占位。
 
     Args:
         all_docs: index.json 中所有文档的元数据列表
@@ -537,6 +629,15 @@ def audit_logic_consistency(
     """
     findings: List[Dict[str, Any]] = []
 
+    # 预处理：为每个文档提取日期和角色分类
+    doc_dates: Dict[str, Optional[str]] = {}
+    doc_roles: Dict[str, Optional[str]] = {}
+    for doc in all_docs:
+        doc_id = doc.get("id", "")
+        data = all_data.get(doc_id, {})
+        doc_dates[doc_id] = _extract_doc_date(doc, data)
+        doc_roles[doc_id] = _classify_date_role(doc)
+
     for check in LOGIC_CONSISTENCY_CHECKS:
         finding = {
             "checklist_id": check["id"],
@@ -546,7 +647,7 @@ def audit_logic_consistency(
             "spec": "MH/T 5078.1（逻辑一致性铁律）",
             "doc_id": "ALL",
             "doc_file": "跨文档检查",
-            "severity": "high",
+            "severity": "medium",
             "result": "needs_ai",
             "finding": "跨文档逻辑一致性检查需 AI 综合判断",
             "evidence": "",
@@ -557,12 +658,112 @@ def audit_logic_consistency(
 
         # L-01: 材料报审日期 ≤ 材料进场日期 ≤ 检验批日期
         if check_id == "L-01":
-            finding["finding"] = "需检查材料报审→进场→使用的日期顺序，确保时间顺向"
-            finding["evidence"] = f"共 {len(all_docs)} 份文档参与交叉验证"
+            # 收集各角色文档的日期
+            report_dates = []  # 报审日期
+            entry_dates = []   # 进场日期
+            inspection_dates = []  # 检验批日期
+            for doc in all_docs:
+                doc_id = doc.get("id", "")
+                role = doc_roles.get(doc_id)
+                date = doc_dates.get(doc_id)
+                if not date:
+                    continue
+                if role == "报审":
+                    report_dates.append((doc_id, doc.get("original_file", ""), date))
+                elif role == "进场":
+                    entry_dates.append((doc_id, doc.get("original_file", ""), date))
+                elif role == "检验批":
+                    inspection_dates.append((doc_id, doc.get("original_file", ""), date))
+
+            if not (report_dates or entry_dates or inspection_dates):
+                finding["result"] = "not_applicable"
+                finding["severity"] = "low"
+                finding["finding"] = "未找到含日期字段的材料报审/进场/检验批文档，本项不适用"
+                finding["evidence"] = f"已扫描 {len(all_docs)} 份文档，无匹配的日期数据"
+            else:
+                violations = []
+                evidence_parts = []
+                # 检查 报审 ≤ 进场
+                if report_dates and entry_dates:
+                    for r_id, r_file, r_date in report_dates:
+                        for e_id, e_file, e_date in entry_dates:
+                            if r_date > e_date:
+                                violations.append(
+                                    f"材料报审「{r_file}」报审日期 {r_date} > "
+                                    f"材料进场「{e_file}」进场日期 {e_date}"
+                                )
+                    evidence_parts.append(f"报审文档 {len(report_dates)} 份、进场文档 {len(entry_dates)} 份")
+                # 检查 进场 ≤ 检验批
+                if entry_dates and inspection_dates:
+                    for e_id, e_file, e_date in entry_dates:
+                        for i_id, i_file, i_date in inspection_dates:
+                            if e_date > i_date:
+                                violations.append(
+                                    f"材料进场「{e_file}」进场日期 {e_date} > "
+                                    f"检验批「{i_file}」日期 {i_date}"
+                                )
+                    evidence_parts.append(f"进场文档 {len(entry_dates)} 份、检验批文档 {len(inspection_dates)} 份")
+
+                if violations:
+                    finding["result"] = "fail"
+                    finding["severity"] = "high"
+                    finding["finding"] = "；".join(violations[:5])
+                    finding["evidence"] = "；".join(evidence_parts) if evidence_parts else ""
+                else:
+                    finding["result"] = "pass"
+                    finding["severity"] = "low"
+                    if evidence_parts:
+                        finding["finding"] = f"日期顺序正常，{'，'.join(evidence_parts)}"
+                        finding["evidence"] = "所有材料报审≤进场≤检验批日期关系均满足"
+                    else:
+                        finding["finding"] = "已检查可用日期数据，未发现时间倒挂"
+                        finding["evidence"] = f"报审 {len(report_dates)} 份、进场 {len(entry_dates)} 份、检验批 {len(inspection_dates)} 份"
 
         # L-02: 隐蔽工程验收日期 ≤ 下道工序开工日期
         elif check_id == "L-02":
-            finding["finding"] = "需检查隐蔽工程验收记录与下道工序开工日期，确保先验收后覆盖"
+            hidden_dates = []  # 隐蔽工程验收日期
+            construction_dates = []  # 施工记录日期
+            for doc in all_docs:
+                doc_id = doc.get("id", "")
+                role = doc_roles.get(doc_id)
+                date = doc_dates.get(doc_id)
+                if not date:
+                    continue
+                if role == "隐蔽":
+                    hidden_dates.append((doc_id, doc.get("original_file", ""), date))
+                elif role == "施工记录":
+                    construction_dates.append((doc_id, doc.get("original_file", ""), date))
+
+            if not hidden_dates:
+                finding["result"] = "not_applicable"
+                finding["severity"] = "low"
+                finding["finding"] = "未找到含日期字段的隐蔽工程验收文档，本项不适用"
+                finding["evidence"] = f"已扫描 {len(all_docs)} 份文档，无隐蔽工程验收记录"
+            elif not construction_dates:
+                finding["result"] = "not_applicable"
+                finding["severity"] = "low"
+                finding["finding"] = f"找到 {len(hidden_dates)} 份隐蔽工程验收文档，但无后续施工记录可比较"
+                finding["evidence"] = "缺少施工记录类文档用于交叉验证"
+            else:
+                violations = []
+                for h_id, h_file, h_date in hidden_dates:
+                    for c_id, c_file, c_date in construction_dates:
+                        # 隐蔽验收日期应 ≤ 后续施工日期（允许同年同月同日）
+                        if h_date > c_date:
+                            violations.append(
+                                f"隐蔽工程验收「{h_file}」日期 {h_date} > "
+                                f"后续施工记录「{c_file}」日期 {c_date}，可能先覆盖后验收"
+                            )
+                if violations:
+                    finding["result"] = "fail"
+                    finding["severity"] = "high"
+                    finding["finding"] = "；".join(violations[:5])
+                    finding["evidence"] = f"隐蔽工程文档 {len(hidden_dates)} 份、施工记录文档 {len(construction_dates)} 份"
+                else:
+                    finding["result"] = "pass"
+                    finding["severity"] = "low"
+                    finding["finding"] = f"隐蔽工程验收日期均 ≤ 后续施工记录日期（隐蔽 {len(hidden_dates)} 份、施工记录 {len(construction_dates)} 份）"
+                    finding["evidence"] = "所有隐蔽验收≤施工记录日期关系均满足"
 
         # L-03: 分项 ≤ 分部 ≤ 单位工程验收日期
         elif check_id == "L-03":
@@ -583,7 +784,7 @@ def audit_logic_consistency(
         # L-07: 检验批工程量累计 = 分项工程工程量
         elif check_id == "L-07":
             # 尝试自动计算（如果有数量字段）
-            total_rows = sum(len(data.get("rows", [])) for data in all_data.values())
+            total_rows = sum(len(data.get("structured_rows") or data.get("rows", [])) for data in all_data.values())
             finding["finding"] = f"需核对检验批工程量累计与分项工程量是否一致（共 {total_rows} 行数据）"
             finding["evidence"] = f"共 {len(all_docs)} 份文档参与累计计算"
 
@@ -668,7 +869,7 @@ def run_rule_engine(
         doc_data = {
             "doc_type": doc_type,
             "professional": doc.get("professional", ""),
-            "rows": data.get("rows", []) if isinstance(data, dict) else [],
+            "rows": (data.get("structured_rows") or data.get("rows", [])) if isinstance(data, dict) else [],
         }
         for rule in matched_rules:
             violations = single_checker.check(rule, doc_data)
@@ -720,14 +921,14 @@ def run_rule_engine(
                 a_doc_data = {
                     "doc_type": doc_type_a,
                     "professional": a_doc.get("professional", ""),
-                    "rows": a_data.get("rows", []) if isinstance(a_data, dict) else [],
+                    "rows": (a_data.get("structured_rows") or a_data.get("rows", [])) if isinstance(a_data, dict) else [],
                 }
                 for b_doc in party_b_docs:
                     b_data = all_data.get(b_doc.get("id", ""), {})
                     b_doc_data = {
                         "doc_type": doc_type_b,
                         "professional": b_doc.get("professional", ""),
-                        "rows": b_data.get("rows", []) if isinstance(b_data, dict) else [],
+                        "rows": (b_data.get("structured_rows") or b_data.get("rows", [])) if isinstance(b_data, dict) else [],
                     }
                     violations = cross_unit_checker.check(rule, a_doc_data, b_doc_data)
                     # v7.2 C4：CROSS_UNIT 无单一文档上下文，不应用降级（空 dict 占位）
@@ -1451,7 +1652,8 @@ def run_review(
         print(f"   ⚠️  OCR 低置信度降级: {ocr_review_count} 项（已写入 R-20 待核实清单）", file=sys.stderr)
         print(f"       {summary.get('ocr_review_notice', '')}", file=sys.stderr)
     print(f"\n   总体结论: {audit_log['conclusion']['overall']}", file=sys.stderr)
-    print(f"   审核日志: {audit_log_dir / f'{audit_log['audit_id']}.json'}", file=sys.stderr)
+    _log_path = audit_log_dir / f"{audit_log['audit_id']}.json"
+    print(f"   审核日志: {_log_path}", file=sys.stderr)
 
     for rec in audit_log["conclusion"]["recommendations"]:
         print(f"   💡 {rec}", file=sys.stderr)

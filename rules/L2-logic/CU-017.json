@@ -2,7 +2,7 @@
   "rule_id": "CU-017",
   "name": "第一次工地会议纪要日期 ≤ 开工日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "第一次工地会议召开日期 ≤ 工程开工日期。会议纪要日期标志着监理工作正式启动，应在开工之前。开工日期早于第一次工地会议日期（先开工后开会）为矛盾",
   "trigger_when": {
@@ -66,5 +66,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.16 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

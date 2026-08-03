@@ -6,8 +6,14 @@
   "category": "签字一致性",
   "description": "同一签字人在不同时间的笔迹应稳定，可通过 OCR 文字提取 + 视觉对比。矛盾表现：同一人签字笔迹差异显著，疑似代签。",
   "trigger_when": {
-    "doc_type": ["*"],
-    "field_required": ["签字人", "签字日期", "签字图像"]
+    "doc_type": [
+      "*"
+    ],
+    "field_required": [
+      "签字人",
+      "签字日期",
+      "签字图像"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.5.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -23,5 +23,12 @@
       "weak": ["阀门", "泵站", "法兰"]
     }
   },
+  "reference_keywords": ["变更", "设计变更", "变更通知", "变更图纸"],
+  "generic_keywords": {
+    "施工日志": {"professional": "通用资料", "subdivision": "施工日志", "doc_type": "施工日志"},
+    "监理": {"professional": "通用资料", "subdivision": "监理文件", "doc_type": "监理文件"},
+    "会议纪要": {"professional": "通用资料", "subdivision": "会议纪要", "doc_type": "会议纪要"},
+    "联系单": {"professional": "通用资料", "subdivision": "工程联系单", "doc_type": "工程联系单"}
+  },
   "candidates": []
 }

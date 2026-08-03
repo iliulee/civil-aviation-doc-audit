@@ -6,8 +6,13 @@
   "category": "人员一致性",
   "description": "笔迹特征稳定（可通过 OCR + 视觉对比）。矛盾表现：明显不同笔迹的\"同一人签字\"，存在代签嫌疑。",
   "trigger_when": {
-    "doc_type": ["*"],
-    "field_required": ["签字人", "签字图像"]
+    "doc_type": [
+      "*"
+    ],
+    "field_required": [
+      "签字人",
+      "签字图像"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +29,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +51,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.3.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

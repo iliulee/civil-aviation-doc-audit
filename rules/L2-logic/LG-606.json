@@ -6,8 +6,15 @@
   "category": "因果一致性",
   "description": "同一桩号/同一条目在多份资料中数据不一致 → 至少有一份数据错误。矛盾表现：DOC-A 中 Z418 实长 13.2m，DOC-B 中同一桩号实长 9.0m。此时应同时做单表自洽校验（铁律 12），自洽通过的值更可信。",
   "trigger_when": {
-    "doc_type": ["桩基施工记录", "施工日志", "检验批"],
-    "field_required": ["桩号", "实长"]
+    "doc_type": [
+      "桩基施工记录",
+      "施工日志",
+      "检验批"
+    ],
+    "field_required": [
+      "桩号",
+      "实长"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,8 +31,12 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["01_场道工程"],
-    "subdivision_codes": ["01-03"]
+    "professional": [
+      "01_场道工程"
+    ],
+    "subdivision_codes": [
+      "01-03"
+    ]
   },
   "stats": {
     "total_hits": 0,
@@ -44,5 +55,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.6 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,8 +6,13 @@
   "category": "时间轴一致性",
   "description": "隐蔽工程必须先验收再覆盖。矛盾表现：下道工序已开工但隐蔽工程验收记录未形成，或下道工序开工日期早于隐蔽验收日期。",
   "trigger_when": {
-    "doc_type": ["隐蔽工程验收记录", "下道工序施工记录"],
-    "field_required": ["日期"]
+    "doc_type": [
+      "隐蔽工程验收记录",
+      "下道工序施工记录"
+    ],
+    "field_required": [
+      "日期"
+    ]
   },
   "check_expr": {
     "type": "expression",
@@ -24,7 +29,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +51,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.1.2 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -1204,6 +1204,7 @@ class RuleAdminServer(BaseHTTPRequestHandler):
         by_level: Dict[str, int] = {}
         by_scope: Dict[str, int] = {}
         by_status: Dict[str, int] = {}
+        by_type: Dict[str, int] = {"substantive": 0, "placeholder": 0}
         for _fp, data in all_rules:
             lvl = data.get("level", "UNKNOWN")
             scp = data.get("scope", "UNKNOWN")
@@ -1211,11 +1212,16 @@ class RuleAdminServer(BaseHTTPRequestHandler):
             by_level[lvl] = by_level.get(lvl, 0) + 1
             by_scope[scp] = by_scope.get(scp, 0) + 1
             by_status[stt] = by_status.get(stt, 0) + 1
+            if data.get("is_placeholder"):
+                by_type["placeholder"] += 1
+            else:
+                by_type["substantive"] += 1
         self._ok({
             "total_rules": len(all_rules),
             "by_level": by_level,
             "by_scope": by_scope,
             "by_status": by_status,
+            "by_type": by_type,
         }, "查询成功")
 
     # ===== API: GET /api/feedbacks（列表筛选）=====

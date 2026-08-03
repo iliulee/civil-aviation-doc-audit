@@ -1,8 +1,9 @@
-﻿<#
+<#
 .SYNOPSIS
     民航建设施工资料合规审核大师 - 一键安装脚本
 .DESCRIPTION
-    自动完成 Python 依赖、Poppler、Tesseract OCR 的安装和配置。
+    自动完成 Python 依赖、Tesseract OCR 的安装和配置。
+    PDF 转图片由 PyMuPDF 统一引擎处理（无需 Poppler）。
     PaddleOCR 为可选本地备选引擎，仅在离线场景需要。
     支持一键安装、卸载、静默模式。
     安装完成后无需任何手动操作即可使用。
@@ -33,12 +34,6 @@ $SKILL_VERSION = "v5.0-api"
 # 向上 3 级回到 workspace 根目录
 $WORKSPACE = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $SKILL_DIR))
 $AUDIT_OUT = Join-Path $WORKSPACE "audit_output"
-
-# ── Poppler 配置 ──
-$POPPLER_DIR = Join-Path $TOOLS_DIR "poppler"
-$POPPLER_BIN = Join-Path $POPPLER_DIR "Library\bin"
-$POPPLER_URL = "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip"
-$POPPLER_ZIP = Join-Path $env:TEMP "poppler-release.zip"
 
 # ── Tesseract 配置 ──
 $TESSERACT_INSTALLER = "tesseract-ocr-w64-setup-5.5.0.20241111.exe"
@@ -95,7 +90,7 @@ if ($Uninstall) {
     # 移除 PATH
     $cp = [Environment]::GetEnvironmentVariable("Path", "Machine")
     if ($cp -and $cp.Contains($SKILL_DIR)) {
-        $np = ($cp -split ";") | Where-Object { $_ -ne $SKILL_DIR -and $_ -ne $SCRIPTS_DIR -and $_ -ne $POPPLER_BIN }
+        $np = ($cp -split ";") | Where-Object { $_ -ne $SKILL_DIR -and $_ -ne $SCRIPTS_DIR }
         $np = $np -join ";"
         [Environment]::SetEnvironmentVariable("Path", $np, "Machine")
         Write-Success "已从系统 PATH 移除"
@@ -139,12 +134,25 @@ if (-not $isAdmin) {
 }
 
 # ────────────────────────────────────────────────
-# 1. 检查 Python
+# 1. 检查 Python 版本（PaddleOCR 需 Python 3.12 及以下）
 # ────────────────────────────────────────────────
-Write-Step "1/7 检查 Python 环境"
+Write-Step "1/6 检查 Python 环境"
 try {
     $pv = python --version 2>&1
     Write-Success "Python: $($pv.Trim())"
+
+    # 提取主版本号
+    $verMatch = [regex]::Match($pv, "(\d+)\.(\d+)")
+    if ($verMatch.Success) {
+        $major = [int]$verMatch.Groups[1].Value
+        $minor = [int]$verMatch.Groups[2].Value
+        if ($major -ge 3 -and $minor -ge 13) {
+            Write-Warn "Python $major.$minor 检测到 — PaddlePaddle（PaddleOCR 依赖）最高仅支持 Python 3.12"
+            Write-Warn "方案 A：使用 Vision API（推荐，设置环境变量即可）"
+            Write-Warn "方案 B：降级 Python 到 3.12 后安装 PaddleOCR（离线场景）"
+            Write-Warn "  运行: python3.12 -m pip install paddleocr==2.8.1 paddlepaddle==2.6.2"
+        }
+    }
 } catch {
     Write-ErrorMsg "Python 未安装。请先安装 Python 3.9+ 并添加到 PATH"
     Write-ErrorMsg "下载: https://www.python.org/downloads/"
@@ -154,8 +162,8 @@ try {
 # ────────────────────────────────────────────────
 # 2. Python 依赖（核心 + OCR 引擎）
 # ────────────────────────────────────────────────
-Write-Step "2/7 安装 Python 核心依赖"
-$coreDeps = @("PyMuPDF", "opencv-python", "pytesseract", "pdf2image", "Pillow", "python-docx", "requests")
+Write-Step "2/6 安装 Python 核心依赖"
+$coreDeps = @("PyMuPDF", "opencv-python", "pytesseract", "Pillow", "python-docx", "requests")
 $missing = @()
 foreach ($dep in $coreDeps) {
     pip show $dep 2>&1 | Out-Null
@@ -176,65 +184,33 @@ if ($missing.Count -gt 0) {
 }
 
 # PaddleOCR 为可选本地备选引擎（仅离线场景需要）
-Write-Step "2b/7 检查 PaddleOCR（可选本地引擎）"
+Write-Step "2b/6 检查 PaddleOCR（可选本地引擎）"
 try {
     python -c "from paddleocr import PaddleOCR" 2>&1 | Out-Null
     Write-Success "PaddleOCR 已安装（本地备选引擎可用）"
 } catch {
     Write-Warn "PaddleOCR 未安装（默认使用 Vision API，无需 PaddleOCR）"
-    Write-Info "如需离线使用，运行: pip install paddleocr==2.8.1 paddlepaddle==2.6.2"
-}
-
-# ────────────────────────────────────────────────
-# 3. Poppler（自动下载便携版）
-# ────────────────────────────────────────────────
-Write-Step "3/7 安装 Poppler（PDF 处理引擎）"
-
-$popplerReady = $false
-
-# 先检查是否已存在
-if (Test-Path (Join-Path $POPPLER_BIN "pdftotext.exe")) {
-    Write-Success "Poppler 已存在: $POPPLER_BIN"
-    $popplerReady = $true
-}
-# 再检查系统 PATH 中是否有
-elseif (Test-CommandExists "pdftotext") {
-    Write-Success "Poppler 已在系统 PATH 中"
-    $popplerReady = $true
-}
-else {
-    Write-Info "Poppler 未安装，开始自动下载（~30MB）..."
-    Write-Info "来源: $POPPLER_URL"
-
-    if (-not (Test-Path $POPPLER_DIR)) {
-        New-Item -ItemType Directory -Path $POPPLER_DIR -Force | Out-Null
-    }
-
-    if (Invoke-Download -Url $POPPLER_URL -OutFile $POPPLER_ZIP -Description "Poppler 便携版") {
-        Write-Step "解压 Poppler ..."
-        try {
-            Expand-Archive -Path $POPPLER_ZIP -DestinationPath $POPPLER_DIR -Force
-            Remove-Item $POPPLER_ZIP -Force -ErrorAction SilentlyContinue
-
-            # 解压后查找 bin 目录（Release-24.08.0-0 解压后结构不同）
-            $foundBin = Get-ChildItem -Path $POPPLER_DIR -Recurse -Filter "pdftotext.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($foundBin) {
-                $POPPLER_BIN = $foundBin.DirectoryName
-                Write-Success "Poppler 安装完成: $POPPLER_BIN"
-                $popplerReady = $true
-            } else {
-                Write-ErrorMsg "Poppler 解压成功但未找到 pdftotext.exe，请手动检查 $POPPLER_DIR"
-            }
-        } catch {
-            Write-ErrorMsg "Poppler 解压失败: $_"
+    Write-Info "如需离线使用:"
+    # 检查 Python 版本
+    $pv = python --version 2>&1
+    $verMatch = [regex]::Match($pv, "(\d+)\.(\d+)")
+    if ($verMatch.Success) {
+        $major = [int]$verMatch.Groups[1].Value
+        $minor = [int]$verMatch.Groups[2].Value
+        if ($major -ge 3 -and $minor -le 12) {
+            Write-Info "  运行: pip install paddleocr==2.8.1 paddlepaddle==2.6.2"
+        } else {
+            Write-Info "  ⚠️ 当前 Python $major.$minor 与 PaddlePaddle 不兼容"
+            Write-Info "  方案 A：降级 Python 到 3.12: python3.12 -m pip install paddleocr==2.8.1 paddlepaddle==2.6.2"
+            Write-Info "  方案 B：使用 Vision API（设置环境变量，推荐）"
         }
     }
 }
 
 # ────────────────────────────────────────────────
-# 4. Tesseract OCR（自动下载安装）
+# 3. Tesseract OCR（自动下载安装）
 # ────────────────────────────────────────────────
-Write-Step "4/7 安装 Tesseract OCR（扫描件识别引擎）"
+Write-Step "3/6 安装 Tesseract OCR（扫描件识别引擎）"
 
 $tesseractReady = $false
 
@@ -314,7 +290,7 @@ if ($tesseractReady) {
 # ────────────────────────────────────────────────
 # 5. 创建输出目录
 # ────────────────────────────────────────────────
-Write-Step "5/7 创建输出目录"
+Write-Step "4/6 创建输出目录"
 foreach ($sub in @("reports","notices","checklists","logs","intermediate","audit_history")) {
     $d = Join-Path $AUDIT_OUT $sub
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
@@ -322,37 +298,18 @@ foreach ($sub in @("reports","notices","checklists","logs","intermediate","audit
 Write-Success "输出目录: $AUDIT_OUT"
 
 # ────────────────────────────────────────────────
-# 6. 配置系统 PATH
+# 5. 配置系统 PATH
 # ────────────────────────────────────────────────
-Write-Step "6/7 配置系统 PATH"
+Write-Step "5/6 配置系统 PATH"
 
-$pathsToAdd = @()
-if ($popplerReady -and $POPPLER_BIN) { $pathsToAdd += $POPPLER_BIN }
-
-foreach ($p in $pathsToAdd) {
-    if ($isAdmin) {
-        $cp = [Environment]::GetEnvironmentVariable("Path", "Machine")
-        if ($cp -notlike "*$p*") {
-            [Environment]::SetEnvironmentVariable("Path", "$cp;$p", "Machine")
-            Write-Success "已添加: $p"
-        } else {
-            Write-Success "已在 PATH 中: $p"
-        }
-    } else {
-        $cp = [Environment]::GetEnvironmentVariable("Path", "User")
-        if ($cp -notlike "*$p*") {
-            [Environment]::SetEnvironmentVariable("Path", "$cp;$p", "User")
-            Write-Success "已添加（用户级）: $p"
-        } else {
-            Write-Success "已在 PATH 中: $p"
-        }
-    }
-}
+# Poppler 已移除，PDF 转图片由 PyMuPDF 在内存中完成，无需 PATH 配置
+# Tesseract 安装程序自带 PATH 配置，此处无需额外操作
+Write-Success "PDF 转图片由 PyMuPDF 处理，无需 PATH 配置"
 
 # ────────────────────────────────────────────────
-# 7. 验证所有组件
+# 6. 验证所有组件
 # ────────────────────────────────────────────────
-Write-Step "7/7 验证所有组件"
+Write-Step "6/6 验证所有组件"
 
 $allPassed = $true
 $results = @()
@@ -361,7 +318,7 @@ $results = @()
 try { python -c "print('OK')" 2>&1 | Out-Null; $results += "Python: OK" }
 catch { $results += "Python: FAIL"; $allPassed = $false }
 
-# PyMuPDF
+# PyMuPDF（PDF 文字提取 + PDF 转图片统一引擎）
 try { python -c "import fitz" 2>&1 | Out-Null; $results += "PyMuPDF: OK" }
 catch { $results += "PyMuPDF: FAIL"; $allPassed = $false }
 
@@ -388,17 +345,6 @@ catch { $results += "OpenCV: FAIL"; $allPassed = $false }
 # pytesseract
 try { python -c "import pytesseract" 2>&1 | Out-Null; $results += "pytesseract: OK" }
 catch { $results += "pytesseract: FAIL"; $allPassed = $false }
-
-# pdf2image
-try { python -c "import pdf2image" 2>&1 | Out-Null; $results += "pdf2image: OK" }
-catch { $results += "pdf2image: FAIL（Poppler 缺失时可能失败）" }
-
-# Poppler
-if ($popplerReady) {
-    $results += "Poppler: OK"
-} else {
-    $results += "Poppler: 未安装（PDF 转图片功能不可用）"
-}
 
 # Tesseract
 if ($tesseractReady) {

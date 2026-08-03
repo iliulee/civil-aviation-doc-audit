@@ -2,7 +2,7 @@
   "rule_id": "CU-011",
   "name": "巡视记录日期连续性 vs 施工日志",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "《巡视记录》（A.9）应覆盖施工日志中有施工活动的日期。施工日志有施工记录但当天无巡视记录，或巡视记录日期无对应施工活动均为矛盾",
   "trigger_when": {
@@ -67,5 +67,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.10 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

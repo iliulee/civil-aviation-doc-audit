@@ -6,8 +6,16 @@
   "category": "状态描述一致性",
   "description": "评为\"优良\"应数据支撑；评为\"合格\"应无主控项目不合格。矛盾表现：评为\"优良\"但合格率低。",
   "trigger_when": {
-    "doc_type": ["质量评估报告", "检验批质量验收记录", "检测报告"],
-    "field_required": ["评估等级", "合格率", "主控项目"]
+    "doc_type": [
+      "质量评估报告",
+      "检验批质量验收记录",
+      "检测报告"
+    ],
+    "field_required": [
+      "评估等级",
+      "合格率",
+      "主控项目"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.4.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

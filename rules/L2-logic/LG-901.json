@@ -6,8 +6,16 @@
   "category": "跨资料合计值反向验证",
   "description": "施工日志有合计值（如\"33根，489.9m\"）→ 必须与施工记录逐页核对。矛盾表现：施工日志有精确合计值，但施工记录无合计行 → 合计值来源不明。",
   "trigger_when": {
-    "doc_type": ["施工日志", "施工记录"],
-    "field_required": ["合计值", "合计行", "桩数", "总米数"]
+    "doc_type": [
+      "施工日志",
+      "施工记录"
+    ],
+    "field_required": [
+      "合计值",
+      "合计行",
+      "桩数",
+      "总米数"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.9.1 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

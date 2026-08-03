@@ -54,6 +54,13 @@ DQ_CHECK_PY = SCRIPT_DIR / "data_quality_check.py"
 CONFUSION_CHECK_PY = SCRIPT_DIR / "ocr_confusion_check.py"
 TEMPLATES_DIR = SKILL_DIR / "templates"
 
+# ========== 直接导入 OCR 函数（避免子进程崩溃） ==========
+try:
+    from ocr_image import ocr_pdf as _ocr_pdf_direct
+    _OCR_DIRECT_AVAILABLE = True
+except ImportError:
+    _OCR_DIRECT_AVAILABLE = False
+
 # 页面平均行数（用于未提供 expected-rows 时的推断）
 DEFAULT_ROWS_PER_PDF_PAGE = 20
 DEFAULT_ROWS_PER_IMAGE_PAGE = 15
@@ -72,14 +79,24 @@ DEFAULT_ALLOWED_EXTENSIONS = {
 # v7.2 C1: PROFESSIONAL_RULES 硬编码表已删除，改为运行时聚合三真相源
 # 真相源：references/classification-terms.json + rules trigger_when.doc_type + FIELD_ALIAS_MAP
 # 聚合函数见 aggregate_classification_terms()，在 classify_file 中调用
+# v7.2 P1-02: REFERENCE_KEYWORDS/GENERIC_KEYWORDS 迁移到 classification-terms.json
 
-REFERENCE_KEYWORDS = ["变更", "设计变更", "变更通知", "变更图纸"]
-GENERIC_KEYWORDS = {
-    "施工日志": ("通用资料", "施工日志", "施工日志"),
-    "监理": ("通用资料", "监理文件", "监理文件"),
-    "会议纪要": ("通用资料", "会议纪要", "会议纪要"),
-    "联系单": ("通用资料", "工程联系单", "工程联系单"),
-}
+def _load_reference_keywords() -> list:
+    """从 classification-terms.json 加载依据文件关键词"""
+    terms_file = SKILL_DIR / "references" / "classification-terms.json"
+    terms_data = load_json(terms_file) or {}
+    return terms_data.get("reference_keywords", [])
+
+def _load_generic_keywords() -> dict:
+    """从 classification-terms.json 加载通用资料关键词"""
+    terms_file = SKILL_DIR / "references" / "classification-terms.json"
+    terms_data = load_json(terms_file) or {}
+    raw = terms_data.get("generic_keywords", {})
+    # 转换为 (prof, sub, doc) 元组格式，保持向后兼容
+    result = {}
+    for kw, info in raw.items():
+        result[kw] = (info.get("professional", ""), info.get("subdivision", ""), info.get("doc_type", ""))
+    return result
 
 # v7.2 C5: 桩基表头关键词——从 FIELD_ALIAS_MAP 反向聚合（单一真相源）
 # 额外的 OCR 专用别名（FIELD_ALIAS_MAP 中没有的）在此补充
@@ -255,7 +272,7 @@ def scan_files(
     返回文件相对 Path 列表。
     """
     files: List[Path] = []
-    output_root_files = {"data-editor.html", "项目总览.html", "审核报告.html"}
+    output_root_files = {"data-editor.html", "项目总览.html", "审核报告.html", "tokens.css"}
     # 排除任意层级的输出目录：用户指定的 out_name 以及默认的"数据底座"
     output_dir_names = {out_name, "数据底座"}
     for p in project_path.rglob("*"):
@@ -430,12 +447,12 @@ def classify_file(
         return "excluded_files", None, None, None, "excluded", 1.0
 
     # 2. 依据文件（设计变更类）
-    for kw in REFERENCE_KEYWORDS:
+    for kw in _load_reference_keywords():
         if kw in name:
             return "reference_files", "依据文件", "设计依据", "设计变更文件", "reference_keywords", 1.0
 
     # 3. 通用资料
-    for kw, (prof, sub, doc) in GENERIC_KEYWORDS.items():
+    for kw, (prof, sub, doc) in _load_generic_keywords().items():
         if kw in name:
             if kw == "施工日志" and has_formal_records:
                 return "reference_files", "依据文件", "施工日志", "施工日志", "generic_keywords", 1.0
@@ -655,25 +672,53 @@ def call_ocr_image(
     preprocess: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    调用 ocr_image.py 对扫描件 PDF / 图片做 OCR。
+    调用 OCR 对扫描件 PDF / 图片做 OCR。
+    优先使用直接导入调用（避免子进程内存崩溃），降级为子进程。
     返回 {"text", "engine", "confidence", "items"}，失败时 confidence 为 0。
     """
+    result: Dict[str, Any] = {"text": "", "engine": engine, "confidence": 0.0, "items": []}
+
+    # 优先使用直接调用
+    if _OCR_DIRECT_AVAILABLE and file_path.suffix.lower() == ".pdf":
+        print(f"  [i] OCR 直接调用: engine={engine}, preprocess={preprocess or 'default'}", file=sys.stderr)
+        try:
+            ocr_result = _ocr_pdf_direct(
+                str(file_path),
+                dpi=72,
+                engine=engine,
+            )
+            result["text"] = ocr_result.get("text", "")
+            result["engine"] = ocr_result.get("engine", engine)
+            result["confidence"] = ocr_result.get("confidence", 0.0)
+            result["items"] = ocr_result.get("items", [])
+
+            # 保存输出文件
+            text_out.write_text(result["text"], encoding="utf-8")
+            json_out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+            print(f"✅ OCR 完成，输出 {len(result['text'])} 字符", file=sys.stderr)
+            return result
+        except Exception as e:
+            print(f"  [!] OCR 直接调用失败: {e}，降级为子进程", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+
+    # 降级：子进程方式
+    print(f"  [i] 调用 OCR: engine={engine}, preprocess={preprocess or 'default'}", file=sys.stderr)
     cmd = [
         sys.executable, str(OCR_IMAGE_PY),
         str(file_path),
         "--engine", engine,
         "--out", str(text_out),
         "--json-out", str(json_out),
+        "--dpi", "72",
     ]
     if preprocess:
         cmd.extend(["--preprocess", preprocess])
 
-    print(f"  [i] 调用 OCR: engine={engine}, preprocess={preprocess or 'default'}", file=sys.stderr)
     rc, stdout, stderr = run_subprocess(cmd)
     if stderr:
         print(stderr, file=sys.stderr)
 
-    result: Dict[str, Any] = {"text": "", "engine": engine, "confidence": 0.0, "items": []}
     if rc == 0 and json_out.exists():
         try:
             raw = json.loads(json_out.read_text(encoding="utf-8"))
@@ -1068,12 +1113,21 @@ def _infer_missing_slots_by_math_chain(
                         continue
                     matches = sum(
                         1 for k in range(n)
-                        if abs((vals_i[k] - vals_j[k]) - target[k]) <= 0.1 + 1e-9
+                        if vals_i[k] is not None and vals_j[k] is not None and target[k] is not None
+                        and abs((vals_i[k] - vals_j[k]) - target[k]) <= 0.1 + 1e-9
                     )
                     if matches / n < 0.8:
                         continue
+                    # 过滤 None 计算均值
+                    valid_vals_i = [v for v in vals_i[:n] if v is not None]
+                    valid_vals_j = [v for v in vals_j[:n] if v is not None]
+                    valid_target = [v for v in target[:n] if v is not None]
+                    nv = min(len(valid_vals_i), len(valid_vals_j), len(valid_target))
+                    if nv < 3:
+                        continue
                     mean_err = abs(
-                        (sum(vals_i[:n]) - sum(vals_j[:n])) / n - sum(target[:n]) / n
+                        (sum(valid_vals_i[:nv]) - sum(valid_vals_j[:nv])) / nv
+                        - sum(valid_target[:nv]) / nv
                     )
                     if best_pair_err is None or mean_err < best_pair_err:
                         best_pair_err = mean_err
@@ -1128,6 +1182,21 @@ def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
     lower = doc_type.lower()
     is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
     if not is_pile:
+        # v7.2 通用表格：检测表头并记录，支持 data-editor 表头映射 Tab 展示与人工核对
+        generic = detect_generic_header_from_text(text)
+        if generic:
+            conf = generic["header_confidence"]
+            return {
+                "raw_headers": generic["raw_headers"],
+                "header_mapping": generic["header_mapping"],
+                "header_source": "generic",
+                "header_confidence": conf,
+                "math_chain_verified": True,   # 通用表格不适用数学链
+                "math_chain_failures": [],
+                "math_chain_inferred": [],
+                "column_feature_issues": {},
+                "needs_human_confirm": conf < 0.7,
+            }
         return {
             "raw_headers": [],
             "header_mapping": {},
@@ -1347,12 +1416,242 @@ def parse_generic_rows(text: str, start_line_no: int = 1) -> List[Dict[str, Any]
     return rows
 
 
+# ========== v7.2 通用表格提取（非桩基类文档结构化）==========
+# 通用表头关键词加成词表（命中越多越可能是表头行）
+_GENERIC_HEADER_KEYWORDS = {
+    "编号", "序号", "项目", "名称", "规格", "型号", "单位", "数量", "日期",
+    "时间", "桩号", "高程", "直径", "实长", "灌入量", "充盈系数", "垂直度",
+    "备注", "签字", "施工", "监理", "检查", "允许偏差", "实测", "检验",
+    "结果", "设计", "实际", "标准", "规定", "依据", "部位", "里程", "标段",
+    "项目名称", "分项工程", "分部工程", "施工单位", "建设", "设计值",
+    "允许值", "质量情况", "评定", "等级", "结论", "频率", "批次",
+}
+
+
+def _is_text_token(tok: str) -> bool:
+    """判断 token 是否为文本型（表头候选）。
+
+    判定规则：
+      - 含中文 → 文本（表头主体）
+      - 纯字母（无数字）→ 文本（如 Item/Date/No）
+      - 字母+数字混合（如 Z420/H-001）→ 非文本（代码/标识符，属数据值）
+      - 纯数字/日期/时间 → 非文本
+    """
+    s = tok.strip()
+    if not s:
+        return False
+    # 纯数字（含小数、千分位）
+    if re.match(r"^[\d\.\,\-]+$", s):
+        return False
+    # 时间格式 HH:MM
+    if re.match(r"^\d{1,2}:\d{2}$", s):
+        return False
+    # 日期格式
+    if re.match(r"^\d{4}[-/年]\d{1,2}", s):
+        return False
+    # 含中文 → 文本
+    if re.search(r"[\u4e00-\u9fa5]", s):
+        return True
+    # 纯字母（无数字）→ 文本
+    if re.match(r"^[a-zA-Z]+$", s):
+        return True
+    # 字母+数字混合 → 非文本（代码/标识符）
+    return False
+
+
+def _normalize_col_name(tok: str) -> str:
+    """归一化列名：去空白、去尾部冒号/星号/换行符。"""
+    s = tok.strip()
+    s = s.rstrip(":：*＊\n\r")
+    return s.strip()
+
+
+def _coerce_generic_value(raw: str) -> Any:
+    """通用表格单元格值类型转换：数字→int/float，否则字符串。"""
+    s = raw.strip()
+    if s == "":
+        return ""
+    # 占位符保留为字符串
+    if s in ("-", "/", "—", "--", "/"):
+        return s
+    # 纯整数
+    if re.match(r"^-?\d+$", s):
+        try:
+            return int(s)
+        except ValueError:
+            return s
+    # 小数
+    if re.match(r"^-?\d+\.\d+$", s):
+        try:
+            return float(s)
+        except ValueError:
+            return s
+    return s
+
+
+def detect_generic_header(line: str) -> Optional[Tuple[Dict[int, str], List[str], float]]:
+    """通用表格表头检测：识别文本主导的多列行作为表头。
+
+    判定规则：
+      1. 分词后 token 数 ≥ 3
+      2. 文本型 token 占比 ≥ 50% 且文本型 token 数 ≥ 2
+      3. 有效列名数 ≥ 3（去重后）
+
+    返回: (col_idx → col_name 映射, 原始 tokens, 置信度) 或 None。
+    """
+    tokens = _tokenize_table_line(line)
+    if len(tokens) < 3:
+        return None
+
+    text_tokens = [t for t in tokens if _is_text_token(t)]
+    text_ratio = len(text_tokens) / len(tokens)
+    if text_ratio < 0.5 or len(text_tokens) < 2:
+        return None
+
+    # 关键词加成
+    kw_hits = sum(1 for t in tokens if any(kw in t for kw in _GENERIC_HEADER_KEYWORDS))
+    confidence = 0.6 + 0.3 * min(text_ratio, 1.0) - 0.1
+    if kw_hits >= 2:
+        confidence = min(confidence + 0.15, 0.95)
+    elif kw_hits >= 1:
+        confidence = min(confidence + 0.08, 0.95)
+
+    # 构建列映射（列名去重）
+    seen_names: Dict[str, int] = {}
+    header_map: Dict[int, str] = {}
+    for idx, tok in enumerate(tokens):
+        name = _normalize_col_name(tok)
+        if not name:
+            continue
+        if name in seen_names:
+            seen_names[name] += 1
+            name = f"{name}_{seen_names[name]}"
+        else:
+            seen_names[name] = 1
+        header_map[idx] = name
+
+    if len(header_map) < 3:
+        return None
+
+    return header_map, tokens, round(confidence, 3)
+
+
+def parse_generic_table(text: str, start_line_no: int = 1) -> List[Dict[str, Any]]:
+    """从文本中提取通用表格结构化行。
+
+    检测表头行 + 列边界，按表头列名提取结构化字段。
+    适用于检验批、隐蔽工程记录、混凝土施工记录等非桩基类表格文档。
+
+    流程：
+      1. 逐行扫描，遇页分隔符翻页并重置表头
+      2. 首个通过 detect_generic_header 的行作为表头
+      3. 后续行按表头列映射解析为结构化记录
+      4. 跳过空行和全空数据行
+      5. 数据行 < 2 行视为非表格，返回空列表（由调用方回退到 parse_generic_rows）
+
+    返回: 结构化行列表，每行含 row_index/page/line_no + 列名字段。
+          未检测到表头或数据行不足时返回空列表。
+    """
+    rows: List[Dict[str, Any]] = []
+    page = 1
+    line_no = start_line_no
+    row_index = 0
+    header_map: Optional[Dict[int, str]] = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        # 页分隔符：翻页重置表头
+        m = re.match(r"===\s*第\s*(\d+)\s*页\s*===", line)
+        if m:
+            page = int(m.group(1))
+            header_map = None
+            continue
+
+        # 表头检测
+        if header_map is None:
+            detected = detect_generic_header(line)
+            if detected:
+                header_map, _tokens, _conf = detected
+                continue
+            # 未检测到表头则跳过（不把前置文本当数据）
+            continue
+
+        # 数据行解析
+        tokens = _tokenize_table_line(line)
+        if len(tokens) < 2:
+            continue
+
+        record: Dict[str, Any] = {
+            "row_index": row_index + 1,
+            "page": page,
+            "line_no": line_no,
+        }
+        all_empty = True
+        for idx, col_name in header_map.items():
+            if idx < len(tokens):
+                val = _coerce_generic_value(tokens[idx])
+                record[col_name] = val
+                if val not in (None, ""):
+                    all_empty = False
+            else:
+                record[col_name] = None
+
+        if all_empty:
+            continue
+
+        rows.append(record)
+        row_index += 1
+        line_no += 1
+
+    # 数据行不足 2 行视为非表格，回退纯文本
+    if len(rows) < 2:
+        return []
+
+    return rows
+
+
+def detect_generic_header_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """扫描全文，返回首个通用表头信息。供 extract_header_info 使用。
+
+    返回: {"raw_headers": [...], "header_mapping": {...}, "header_confidence": float} 或 None。
+    """
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        m = re.match(r"===\s*第\s*(\d+)\s*页\s*===", line)
+        if m:
+            continue
+        detected = detect_generic_header(line)
+        if detected:
+            header_map, tokens, confidence = detected
+            return {
+                "raw_headers": tokens,
+                "header_mapping": {str(k): v for k, v in header_map.items()},
+                "header_confidence": confidence,
+            }
+    return None
+
+
 def build_rows(text: str, doc_type: str) -> List[Dict[str, Any]]:
-    """根据 doc_type 选择解析策略。"""
+    """根据 doc_type 选择解析策略。
+
+    - 桩基类文档（碎石桩/CFG/桩）→ parse_pile_rows（表头三路融合 + 数学链约束）
+    - 非桩基类文档 → 先尝试 parse_generic_table（通用表格提取）
+      - 检测到表头且数据行≥2 → 返回结构化行
+      - 否则回退 parse_generic_rows（纯文本行 page/line_no/raw_text）
+    """
     lower = doc_type.lower()
     is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
     if is_pile:
         return parse_pile_rows(text)
+    # 通用表格提取：先尝试结构化表格，失败回退纯文本行
+    rows = parse_generic_table(text)
+    if rows:
+        return rows
     return parse_generic_rows(text)
 
 
@@ -1553,6 +1852,7 @@ def copy_web_templates(project_path: Path) -> None:
     template_files = [
         ("data-editor.html", "data-editor.html", "数据编辑器"),
         ("project-dashboard.html", "项目总览.html", "项目总览仪表盘"),
+        ("tokens.css", "tokens.css", "统一设计令牌"),
         ("pdf.min.js", "pdf.min.js", "PDF.js 主库（离线）"),
         ("pdf.worker.min.js", "pdf.worker.min.js", "PDF.js Worker（离线）"),
     ]

@@ -6,8 +6,16 @@
   "category": "状态描述一致性",
   "description": "进度计划、实际进度、月报、监理评估应一致。矛盾表现：进度计划说\"完成 80%\"，月报说\"完成 50%\"。",
   "trigger_when": {
-    "doc_type": ["进度计划", "实际进度记录", "月报", "监理评估报告"],
-    "field_required": ["完成百分比", "统计日期"]
+    "doc_type": [
+      "进度计划",
+      "实际进度记录",
+      "月报",
+      "监理评估报告"
+    ],
+    "field_required": [
+      "完成百分比",
+      "统计日期"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +54,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.4.4 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

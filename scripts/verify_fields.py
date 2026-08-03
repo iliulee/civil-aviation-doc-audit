@@ -50,6 +50,7 @@ import argparse
 import tempfile
 from pathlib import Path
 from typing import Optional
+from PIL import Image
 
 
 # ========== 路径选择逻辑 ==========
@@ -90,35 +91,19 @@ def select_verify_path(
 
 # ========== 图片裁剪 ==========
 
-def _get_poppler_path():
-    """定位 Skill 自带的 poppler bin 目录。"""
-    p = Path(__file__).parent.parent / "tools" / "poppler"
-    if p.exists():
-        for bin_dir in p.rglob("pdftoppm.exe"):
-            return str(bin_dir.parent)
-    return None
-
-
 def _safe_convert_pdf_page(pdf_path: str, page_num: int, dpi: int = 300):
-    """转换 PDF 指定页为 PIL 图片（处理中文路径）。"""
-    import re
-    from pdf2image import convert_from_path
-    import shutil as _shutil
+    """用 PyMuPDF 转换 PDF 指定页为 PIL 图片（替代 poppler/pdf2image）。"""
+    import fitz
 
-    has_non_ascii = bool(re.search(r'[^\x00-\x7F]', str(pdf_path)))
-    poppler_path = _get_poppler_path()
-    kwargs = {"dpi": dpi, "first_page": page_num, "last_page": page_num}
-    if poppler_path:
-        kwargs["poppler_path"] = poppler_path
-
-    if not has_non_ascii:
-        return convert_from_path(pdf_path, **kwargs)[0]
-
-    tmp_dir = Path(tempfile.gettempdir()) / "trae_verify_tmp"
-    tmp_dir.mkdir(exist_ok=True)
-    tmp_pdf = tmp_dir / "input.pdf"
-    _shutil.copy2(pdf_path, tmp_pdf)
-    return convert_from_path(str(tmp_pdf), **kwargs)[0]
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    doc = fitz.open(pdf_path)
+    try:
+        page = doc[page_num - 1]  # 0-based index
+        pix = page.get_pixmap(matrix=matrix)
+        return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    finally:
+        doc.close()
 
 
 def crop_field_region(

@@ -6,8 +6,17 @@
   "category": "因果一致性",
   "description": "暂停指令 → 复工报审 → 后续施工。矛盾表现：停工指令无复工报审就继续施工。",
   "trigger_when": {
-    "doc_type": ["工程暂停令", "复工报审表", "复工令", "施工记录"],
-    "field_required": ["暂停令编号", "暂停日期", "复工日期"]
+    "doc_type": [
+      "工程暂停令",
+      "复工报审表",
+      "复工令",
+      "施工记录"
+    ],
+    "field_required": [
+      "暂停令编号",
+      "暂停日期",
+      "复工日期"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +33,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +55,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.6.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

@@ -6,7 +6,14 @@
   "category": "数据质量-突变",
   "description": "检测连续数据中是否存在断崖式变化——相邻行数据跳变超过合理阈值。触发条件：数值列 ≥ 3 行，且该列不是设计固定值。判定标准：变化率≥30%（桩长/灌入量/反插次数）=突变（高）；变化率≥50%（桩长/灌入量）=严重突变（高）；变化率≥20%（充盈系数/竖直度）=异常波动（中）。豁免：桩号递减、时间序列、密实电流、入岩桩、设计变更",
   "trigger_when": {
-    "doc_type": ["碎石桩施工记录", "PHC管桩施工记录", "DDC桩施工记录", "混凝土浇筑记录", "施工记录", "检验批"],
+    "doc_type": [
+      "碎石桩施工记录",
+      "PHC管桩施工记录",
+      "DDC桩施工记录",
+      "混凝土浇筑记录",
+      "施工记录",
+      "检验批"
+    ],
     "field_required": []
   },
   "alignment": null,
@@ -25,7 +32,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +53,6 @@
       "author": "system",
       "change": "从 data-quality-patterns.md 规则2（DQ-JUMP）迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

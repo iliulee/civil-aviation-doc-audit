@@ -6,8 +6,14 @@
   "category": "人员一致性",
   "description": "监理签字应有该人员在本项目的授权。矛盾表现：签字人未在本项目监理机构。",
   "trigger_when": {
-    "doc_type": ["监理签字资料", "监理机构派驻名单"],
-    "field_required": ["签字人", "监理岗位"]
+    "doc_type": [
+      "监理签字资料",
+      "监理机构派驻名单"
+    ],
+    "field_required": [
+      "签字人",
+      "监理岗位"
+    ]
   },
   "check_expr": {
     "type": "cross_compare",
@@ -24,7 +30,9 @@
   "updated_at": "2026-07-30T10:00:00",
   "owner": "system",
   "applies_to": {
-    "professional": ["*"],
+    "professional": [
+      "*"
+    ],
     "subdivision_codes": []
   },
   "stats": {
@@ -44,5 +52,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.3.3 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }

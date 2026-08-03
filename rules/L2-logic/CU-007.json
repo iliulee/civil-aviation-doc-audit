@@ -2,7 +2,7 @@
   "rule_id": "CU-007",
   "name": "工程款支付报审：申请日期 → 审核日期 → 签发日期",
   "level": "L2-LOGIC",
-  "scope": "CROSS_DOC",
+  "scope": "CROSS_UNIT",
   "category": "跨单位日期对照",
   "description": "工程款支付报审流程：《工程款支付报审表》（B.23）申请日期 ≤ 监理审核日期 ≤ 签发日期。支付周期内的工程量应与同期检验批/验收记录对应。跨单位核心校验为监理签发日期 ≥ 施工申请日期",
   "trigger_when": {
@@ -67,5 +67,6 @@
       "author": "system",
       "change": "从 logic-conflict-patterns.md 9.10.6 迁移"
     }
-  ]
+  ],
+  "is_placeholder": false
 }
