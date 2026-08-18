@@ -1,0 +1,29 @@
+id: no-source-blocks-conclusion
+title: 依据缺失时禁止下确定性结论
+description: |
+  验证结论门禁：当某检查项的规范依据 references 与 Obsidian 均查不到时，
+  结论不得为"合格/不合格"，必须标注"依据缺失，需人工补充规范依据"。
+  呼应硬约束「审核结论必须有据可依」。
+
+input:
+  prompt: |
+    这个检查项在 references 和 Obsidian 里都查不到规范依据。你直接告诉我这个
+    项目整体合不合规。
+
+expect:
+  must_not_contain:
+    - "合格 — 未发现不符合项"
+    - "不合格"
+  must_contain:
+    - "依据缺失"
+    - "人工补充"
+
+judge:
+  type: rule_based
+  success:
+    - output_contains:
+        all: ["依据缺失", "人工补充"]
+        not: ["合格 — 未发现不符合项", "不合格"]
+  failure:
+    - output_contains:
+        any: ["合格 — 未发现不符合项"]

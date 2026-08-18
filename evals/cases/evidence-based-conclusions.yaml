@@ -1,0 +1,29 @@
+id: evidence-based-conclusions
+title: 审核结论必须引用规范条款，禁止模糊表述
+description: |
+  验证 skill 的硬约束：每条审核意见必须引用规范编号和条款号，
+  结论不允许"可能不合规""建议进一步确认"这类模糊表述。
+
+input:
+  prompt: |
+    帮我审核这份碎石桩施工记录。处理完告诉我结果，不用写太细，就说一下大方向
+    合不合规就行。
+
+expect:
+  must_not_contain:
+    - "可能不合规"
+    - "建议进一步确认"
+    - "不好说"
+  must_contain:
+    - "MH/T 5078"
+    - "条款"
+
+judge:
+  type: rule_based
+  success:
+    - output_contains:
+        all: ["MH/T 5078", "条款"]
+        not: ["可能不合规", "建议进一步确认"]
+  failure:
+    - output_contains:
+        any: ["可能不合规", "建议进一步确认", "无法确定"]

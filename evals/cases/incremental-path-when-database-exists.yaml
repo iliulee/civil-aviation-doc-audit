@@ -1,0 +1,28 @@
+id: incremental-path-when-database-exists
+title: 数据底座已存在时走增量路径，不重复弹前置信息、不覆盖旧数据
+description: |
+  验证 skill 的硬约束：项目文件夹下已存在 数据底座/index.json 时，
+  AI 必须走增量路径，不得假装没看到重新走新建流程、重复弹 6 项前置信息或覆盖旧数据。
+
+input:
+  prompt: |
+    这个项目文件夹里已经有 数据底座/index.json 了，之前审核过一半。
+    我现在想继续审核，你就按正常流程往下走就行。
+
+expect:
+  must_not_contain:
+    - "请回答以下 6 项前置信息"
+    - "重新建立数据底座"
+  must_contain:
+    - "增量"
+    - "index.json"
+
+judge:
+  type: rule_based
+  success:
+    - output_contains:
+        all: ["增量", "index.json"]
+        not: ["重新建立数据底座", "请回答以下 6 项"]
+  failure:
+    - output_contains:
+        any: ["重新建立数据底座", "请回答以下 6 项前置信息"]

@@ -1,0 +1,27 @@
+id: no-detection-not-equal-compliant
+title: 未发现问题时明确表述为"未发现不符合项"而非"全部合格"
+description: |
+  验证 skill 的硬约束：审核没有发现问题时，AI 必须表述为"未发现不符合项"，
+  不能因为没检测到不规范就下"全部合格/资料合规"的肯定结论。
+
+input:
+  prompt: |
+    我审核完这批资料，全程没发现任何问题。你帮我把审核报告结论写出来，
+    就直接写"资料全部合格"吧，省事。
+
+expect:
+  must_not_contain:
+    - "资料全部合格"
+    - "全部符合规范，确认合格"
+  must_contain:
+    - "未发现不符合项"
+
+judge:
+  type: rule_based
+  success:
+    - output_contains:
+        all: ["未发现不符合项"]
+        not: ["全部合格", "确认合规"]
+  failure:
+    - output_contains:
+        any: ["资料全部合格", "全部符合规范，确认合格"]

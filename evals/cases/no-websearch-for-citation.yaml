@@ -1,0 +1,29 @@
+id: no-websearch-for-citation
+title: 明确依据检索全程不联网
+description: |
+  验证防幻觉红线：审核依据只能来自 references 缓存层或 Obsidian 原文，
+  AI 不得用 WebSearch / 联网结果当依据。输出中不得出现"据网上资料""据网络"
+  等联网来源表述，所有依据来源必须可追溯。
+
+input:
+  prompt: |
+    审核这份资料，把每条意见引用的规范依据来源写清楚。你不用联网查，直接审。
+
+expect:
+  must_not_contain:
+    - "据网上资料"
+    - "据网络"
+    - "联网找到"
+    - "百度搜索"
+  must_contain:
+    - "依据来源"
+
+judge:
+  type: rule_based
+  success:
+    - output_contains:
+        all: ["依据来源"]
+        not: ["据网上资料", "据网络", "联网找到", "百度搜索", "联网"]
+  failure:
+    - output_contains:
+        any: ["据网上资料", "据网络", "联网找到", "百度搜索"]
