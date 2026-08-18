@@ -22,6 +22,7 @@ import sys
 import json
 import argparse
 import math
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -78,6 +79,14 @@ class DataQualityChecker:
         self.doc_type = data.get("doc_type", "")
         self.n_rows = len(self.rows)
         self.warnings: list[dict] = []
+
+        # 数据契约感知（v9.5）：schema_status + 未解析行统计，供领域检查开关
+        self.schema_status = data.get("schema_status", "")
+        self._unparsed_count = 0
+        for r in self.rows:
+            if isinstance(r, dict) and r.get("parsed") is False:
+                self._unparsed_count += 1
+        self._consumable_rows = [r for r in self.rows if isinstance(r, dict) and r.get("parsed") is not False]
 
         # 从 rows 中提取各列数据（字段名归一化为中文）
         self.columns: dict[str, list] = {}
@@ -227,6 +236,92 @@ class DataQualityChecker:
                     "calculated": round(calculated, 2),
                     "diff": round(diff, 2),
                 })
+        return w
+
+    # ========== 3.5 列错位兜底校验（v8.9） ==========
+    def check_column_shift(
+        self,
+        numeric_columns: tuple = ("桩径", "桩底高程", "桩顶高程", "实长", "密实电流", "反插次数", "灌入量", "充盈系数", "竖直度"),
+        time_columns: tuple = ("沉管时间", "拔管时间", "开始时间", "结束时间"),
+        tolerance: float = 0.1,
+    ) -> list[dict]:
+        """审核阶段列级兜底校验。
+
+        对每行检查:
+          - 数值列必须为数值（空值不算，因可能确实缺项）
+          - 时间列必须为时间格式（HH:MM / HH.MM / HH;MM / HH-MM）
+          - 数学链：实长 ≈ 桩顶高程 - 桩底高程
+        返回整表列错位告警（含错位率汇总），与 build_foundation 的
+        validate_structured_rows 形成双保险。
+        """
+        w = []
+        if not self.rows:
+            return w
+
+        def _is_num(v) -> bool:
+            return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+        def _is_time_str(v) -> bool:
+            return (
+                isinstance(v, str)
+                and re.match(r"^\d{1,2}[:;.\-]\d{2}", v.strip()) is not None
+            )
+
+        def _col_val(col: str, i: int):
+            vals = self.columns.get(col, [])
+            return vals[i] if i < len(vals) else None
+
+        suspect_rows: list[int] = []
+        for i in range(len(self.rows)):
+            row_issues: list[str] = []
+            # 数值列
+            for col in numeric_columns:
+                v = _col_val(col, i)
+                if v is None:
+                    continue
+                if not _is_num(v):
+                    row_issues.append(f"{col}={v!r} 非数值")
+            # 时间列
+            for col in time_columns:
+                v = _col_val(col, i)
+                if v is not None and not _is_time_str(v):
+                    row_issues.append(f"{col}={v!r} 非时间格式")
+            # 数学链：实长 = 顶高程 - 底高程
+            actual, top, bottom = (_col_val("实长", i), _col_val("桩顶高程", i),
+                                   _col_val("桩底高程", i))
+            if all(_is_num(x) for x in (actual, top, bottom)):
+                if abs(actual - (top - bottom)) > tolerance:
+                    row_issues.append(f"实长={actual} 与 顶高程-底高程={top - bottom:.2f} 偏差>0.1")
+
+            if row_issues:
+                suspect_rows.append(i + 1)
+                w.append({
+                    "code": "DQ-SHIFT-01",
+                    "severity": "high",
+                    "message": f"第 {i+1} 行列错位：{'；'.join(row_issues)}",
+                    "detail": "列值类型不符或数学链断裂，疑似 OCR 列错位，需人工复核",
+                    "row": i + 1,
+                    "issues": row_issues,
+                })
+
+        total = len(self.rows)
+        ratio = len(suspect_rows) / total if total else 0
+        if suspect_rows:
+            # v9.2: 错位率高风险阈值收紧至 5%（用户要求），≥5% 即强制人工复核
+            risk = "high" if ratio >= 0.05 else ("medium" if ratio >= 0.02 else "low")
+            w.append({
+                "code": "DQ-SHIFT-SUM",
+                "severity": "high" if risk == "high" else "warning",
+                "message": (
+                    f"整表列错位风险 {risk}：{len(suspect_rows)}/{total} 行错位"
+                    f"（{ratio:.0%}）"
+                ),
+                "detail": "错位率 ≥5% 应强制 needs_review 并人工复核",
+                "suspect_rows": suspect_rows,
+                "total_rows": total,
+                "ratio": round(ratio, 2),
+                "risk": risk,
+            })
         return w
 
     # ========== 4. 充盈系数自洽 ==========
@@ -473,6 +568,204 @@ class DataQualityChecker:
                 pass
         return w
 
+    # ========== 8. 行级推断规则加载 ==========
+    def _load_inference_rules(self) -> list[dict]:
+        """从 inference_rules.json 加载推断规则配置"""
+        skill_dir = Path(__file__).resolve().parent.parent
+        rules_path = skill_dir / "rules" / "inference_rules.json"
+        if not rules_path.exists():
+            return []
+        try:
+            with open(rules_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            return config.get("rules", [])
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    # ========== 9. 单条推断规则应用（动态计算） ==========
+    def _apply_rule(self, rule: dict, row: dict, row_idx: int,
+                    current_inferred: dict) -> dict | None:
+        """根据规则配置动态计算推断值，支持 cascade_penalty 级联扣减。
+
+        Args:
+            rule: 规则配置 dict（含 id, formula, base_confidence, cascade_penalty 等）
+            row: 当前行数据 dict
+            row_idx: 行号（1-based），仅用于错误日志
+            current_inferred: 当前行已推断的字段 dict（用于检测级联）
+
+        Returns:
+            { field_name: { value, confidence, source, reason } } 或 None
+        """
+        formula = rule.get("formula", "")
+        if "=" not in formula:
+            return None
+
+        target = formula.split("=", 1)[0].strip()
+        expr = formula.split("=", 1)[1].strip()
+
+        # 目标字段已有值，跳过
+        if row.get(target) is not None:
+            return None
+
+        # 已知字段名集合，用于从公式中提取源字段
+        KNOWN_FIELDS = {
+            "actual_length", "top_elev", "bottom_elev", "filling_coeff",
+            "volume", "diameter", "duration", "sink_time", "pull_time",
+            "thickness",
+        }
+
+        # 提取源字段（出现在表达式中且不等于目标字段）
+        source_fields = [f for f in KNOWN_FIELDS if f in expr and f != target]
+        if not source_fields:
+            return None
+
+        # 合并行内已有推断值 + 当前运行已推断值（用于级联检测和取值）
+        row_inferred: dict = {}
+        row_inferred_field = row.get("inferred")
+        if isinstance(row_inferred_field, dict):
+            row_inferred.update(row_inferred_field)
+        row_inferred.update(current_inferred)
+
+        # 检查所有源字段均为非空数值（支持从 row_inferred 取级联值）
+        source_values: dict[str, float] = {}
+        for f in source_fields:
+            v = row.get(f)
+            if v is None and f in row_inferred:
+                # 级联场景：取行内已推断的值
+                v = row_inferred[f].get("value") if isinstance(row_inferred[f], dict) else None
+            if v is None or not isinstance(v, (int, float)):
+                return None
+            source_values[f] = v
+
+        # 根据公式模式计算推断值
+        try:
+            if "π" in expr:
+                # 含 π 的公式：充盈系数 / 灌入量计算
+                r = source_values.get("diameter", 0) / 2.0
+                theory = math.pi * r * r * source_values.get("actual_length", 0)
+                if theory == 0:
+                    return None
+                if target == "filling_coeff":
+                    value = round(source_values["volume"] / theory, 2)
+                elif target == "volume":
+                    value = round(source_values["filling_coeff"] * theory, 2)
+                else:
+                    return None
+            elif "+" in expr:
+                # 加法公式
+                value = round(sum(source_values.values()), 2)
+            elif "-" in expr:
+                # 减法公式：按字段在表达式中的出现顺序确定先后
+                field_positions = [(expr.index(f), f) for f in source_fields]
+                field_positions.sort()
+                ordered = [f for _, f in field_positions]
+                if len(ordered) == 2:
+                    value = round(source_values[ordered[0]] - source_values[ordered[1]], 2)
+                else:
+                    return None
+            else:
+                return None
+        except (TypeError, ValueError, ZeroDivisionError, KeyError):
+            return None
+
+        # 判断是否级联推断（源字段中混有行内已有推断值或当前运行已推断的值）
+        has_cascade = any(f in row_inferred for f in source_fields)
+        base_conf = rule.get("base_confidence", 0.85)
+        cascade_penalty = rule.get("cascade_penalty", 0.30)
+        confidence = base_conf - (cascade_penalty if has_cascade else 0)
+        confidence = max(0.0, min(1.0, round(confidence, 2)))
+
+        # 构建中文描述
+        def _cn(field: str) -> str:
+            return _REVERSE_ALIAS_MAP.get(field, field)
+
+        source_desc = "、".join(
+            f"{_cn(f)}({source_values[f]})" for f in source_fields
+        )
+
+        # 生成 reason
+        reason = f"{_cn(target)}缺失，由{source_desc}推算为{value}"
+        if has_cascade:
+            reason += "（含级联推断）"
+
+        return {
+            target: {
+                "value": value,
+                "confidence": confidence,
+                "source": formula,
+                "reason": reason,
+            }
+        }
+
+    # ========== 10. 行级推断建议值生成 ==========
+    def infer_values(self) -> dict:
+        """对缺失值做数学关系推断，返回行级 inferred 建议值。
+
+        推断规则（按优先级）：
+          1. actual_length = top_elev - bottom_elev（桩顶-桩底→实长）
+          2. top_elev = bottom_elev + actual_length（桩底+实长→桩顶）
+          3. bottom_elev = top_elev - actual_length（桩顶-实长→桩底）
+          4. filling_coeff = volume / (π × (diameter/2)² × actual_length)（灌入量→充盈系数）
+          5. volume = filling_coeff × π × (diameter/2)² × actual_length（充盈系数→灌入量）
+
+        置信度标定：
+          - ≥0.95: 源字段均为确认值（非推断值），数学关系直接
+          - 0.80-0.94: 源字段均为确认值，但涉及 π/平方等含入误差
+          - 0.50-0.79: 源字段包含推断值（级联推断），仅供参考
+          - <0.50: 不输出
+
+        输出格式：
+          {
+            "row_inferred": {                # 行号(1-based) → 推断字段 dict
+              "row_index": {
+                "field_name": {
+                  "value": <推断值>,
+                  "confidence": <0~1>,
+                  "source": "桩顶高程 - 桩底高程",
+                  "reason": "实长缺失，由桩顶高程(2103.72) - 桩底高程(2089.98) 推算"
+                }
+              }
+            },
+            "summary": {
+              "total_rows": N,
+              "rows_with_inferred": N,
+              "total_inferred_fields": N
+            }
+          }
+        """
+        # 加载 inference_rules.json 规则配置
+        rules = self._load_inference_rules()
+
+        result: dict[str, dict] = {}
+        total_inferred = 0
+        rows_with_inferred = 0
+
+        for i, row in enumerate(self.rows):
+            if not isinstance(row, dict):
+                continue
+            inferred: dict[str, dict] = {}
+            row_idx = i + 1  # 1-based
+
+            # 按顺序应用每条规则
+            for rule in rules:
+                rule_result = self._apply_rule(rule, row, row_idx, inferred)
+                if rule_result is not None:
+                    inferred.update(rule_result)
+
+            if inferred:
+                result[str(row_idx)] = inferred
+                total_inferred += len(inferred)
+                rows_with_inferred += 1
+
+        return {
+            "row_inferred": result,
+            "summary": {
+                "total_rows": len(self.rows),
+                "rows_with_inferred": rows_with_inferred,
+                "total_inferred_fields": total_inferred,
+            },
+        }
+
     # ========== 主入口 ==========
     def run_all(
         self,
@@ -496,13 +789,25 @@ class DataQualityChecker:
         if has_row_error:
             return self._build_result()
 
-        # 2. 桩号总数校验（v2.0：不强制连号，只查总数和重复号）
-        self.warnings.extend(self.check_pile_continuity(expected_total=expected_pile_total))
+        # 数据契约感知：unknown_domain / 未解析行 → 仅执行通用检查，并显式提示
+        if self.schema_status == "unknown_domain" or self._unparsed_count == self.n_rows:
+            self.warnings.append({
+                "code": "DQ-SCHEMA-UNKNOWN",
+                "severity": "warning",
+                "message": "表格 schema 未确认（unknown_domain）或全部为未解析行，跳过领域自洽检查",
+                "detail": "请人工确认列语义后复用 table-schemas.json，再执行完整性审核",
+            })
+        else:
+            # 2. 桩号总数校验（v2.0：不强制连号，只查总数和重复号）
+            self.warnings.extend(self.check_pile_continuity(expected_total=expected_pile_total))
 
-        # 3. 数据自洽
-        self.warnings.extend(self.check_length_consistency())
-        self.warnings.extend(self.check_filling_coeff_consistency())
-        self.warnings.extend(self.check_time_continuity())
+            # 3. 数据自洽
+            self.warnings.extend(self.check_length_consistency())
+            self.warnings.extend(self.check_filling_coeff_consistency())
+            self.warnings.extend(self.check_time_continuity())
+
+        # 3.5 列错位兜底校验（v8.9）
+        self.warnings.extend(self.check_column_shift())
 
         # 4. 重复值模式
         self.warnings.extend(self.check_repeat_pattern())
@@ -541,6 +846,12 @@ def check(
     """便捷函数：一步完成检测"""
     checker = DataQualityChecker(data)
     return checker.run_all(expected_rows, expected_pile_total)
+
+
+def infer_values(data: dict) -> dict:
+    """便捷函数：一步完成行级推断建议值生成"""
+    checker = DataQualityChecker(data)
+    return checker.infer_values()
 
 
 # ========== CLI ==========
@@ -585,6 +896,10 @@ def main():
         "--pretty", action="store_true",
         help="美化输出（带缩进）",
     )
+    parser.add_argument(
+        "--infer", action="store_true",
+        help="生成行级推断建议值（inferred field），输出推断结果 JSON",
+    )
     args = parser.parse_args()
 
     # 读取输入
@@ -596,7 +911,11 @@ def main():
     data = json.loads(raw)
 
     # 运行检测
-    result = check(data, args.expected_rows, args.expected_pile_total)
+    if args.infer:
+        checker = DataQualityChecker(data)
+        result = checker.infer_values()
+    else:
+        result = check(data, args.expected_rows, args.expected_pile_total)
 
     # 输出
     indent = 2 if args.pretty else None

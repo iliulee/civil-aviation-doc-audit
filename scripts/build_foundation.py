@@ -8,11 +8,20 @@ Phase 1 核心脚本：扫描项目文件夹 → 文件分类 → OCR/PDF 提取
 
 用法：
     python scripts/build_foundation.py <项目文件夹路径> \
-        --engine <auto|vision|paddle> \
+        --engine <auto|vision|rapidocr|agent> \
+        --handwritten \
         --incremental \
         --out <数据底座目录名，默认"数据底座"> \
         --preconditions <前置信息JSON文件路径> \
         --expected-rows <预期行数JSON文件路径，可选>
+
+引擎路由（v9.4）：
+    --engine auto 时，印刷体自动走 RapidOCR（本地零 token），手写体走 Vision/Agent。
+    --engine rapidocr 时，强制所有文件走本地 RapidOCR（不触发 AI 读图）。
+    --engine vision 时，强制走 VLM 云端 API（需配置 API Key）。
+    --engine agent 时，跳过本地 OCR，由 AI 内置 Vision 逐页读图。
+    手写体判定优先级：--handwritten 全局标记 > 前置信息 config.is_handwritten > 文件名启发式（文件名含"手写/笔记/草稿/note/handwritten"自动判定）。
+    环境变量：DISABLE_HANDWRITING_ROUTE=1 禁用 VLM 路由（全部走本地 OCR）。
 
 约束：
     - 不进入正式审核（Phase 1 结束后停止）。
@@ -37,6 +46,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# v14: 结构化解析层统一入口（值格式锚点 + 物理约束门禁）
+from table_struct import build_rows_from_items as _ts_build_rows_from_items  # noqa: E402
+from table_struct import build_rows_from_table as _ts_build_rows_from_table  # noqa: E402
+from table_struct import validate_rows as _ts_validate_rows  # noqa: E402
+
 from run_audit import sniff_document  # noqa: E402
 from audit_config import assign_subdivision_to_document, get_subdivision_info  # noqa: E402
 
@@ -57,16 +71,86 @@ TEMPLATES_DIR = SKILL_DIR / "templates"
 # ========== 直接导入 OCR 函数（避免子进程崩溃） ==========
 try:
     from ocr_image import ocr_pdf as _ocr_pdf_direct
+    from ocr_image import detect_is_handwritten as _detect_is_handwritten
+    from ocr_image import classify_handwriting_from_items as _classify_hw_items
+    from ocr_image import classify_handwriting_from_text as _classify_hw_text
     _OCR_DIRECT_AVAILABLE = True
 except ImportError:
     _OCR_DIRECT_AVAILABLE = False
 
 # 页面平均行数（用于未提供 expected-rows 时的推断）
+# v10.1 修复：桩基施工记录表每页实际仅 5~6 行数据，原 20 行/页高估约 4 倍，
+# 导致 49 页扫描件被推断出 980 行的"预期"，永远触发重试死循环（假卡死）。
+# 现按文档类型区分：桩基表按 6 行/页，通用表按 12 行/页，仅作粗略兜底。
 DEFAULT_ROWS_PER_PDF_PAGE = 20
 DEFAULT_ROWS_PER_IMAGE_PAGE = 15
+DEFAULT_ROWS_PILE_PER_PDF_PAGE = 6
+DEFAULT_ROWS_PILE_PER_IMAGE_PAGE = 6
+DEFAULT_ROWS_GENERIC_PER_PDF_PAGE = 12
+DEFAULT_ROWS_GENERIC_PER_IMAGE_PAGE = 10
+
+# PDF 转图默认 DPI（200 DPI → 150 DPI，减小内存占用）
+DEFAULT_PDF_DPI = 150
 
 # 行数校验阈值：实际行数低于预期的 80% 时触发重试
 ROW_COUNT_THRESHOLD = 0.8
+
+
+# ========== Python 解释器路径（动态检测当前解释器，不再硬编码 3.14） ==========
+PYTHON_CMD = getattr(sys, "executable", r"C:\Python314\python.exe")
+
+
+def _check_rapidocr_available() -> bool:
+    """检测 RapidOCR 是否可用（本地主力引擎，rapidocr>=3.9 统一包）。"""
+    try:
+        import importlib.util
+        return importlib.util.find_spec("rapidocr") is not None
+    except Exception:
+        return False
+
+
+def _check_vision_api_available() -> bool:
+    """检测 Vision API 是否可用（任一 provider 有 key）。"""
+    try:
+        from vision_providers import detect_available_providers
+        return bool(detect_available_providers())
+    except ImportError:
+        return False
+
+
+def _check_tesseract_available() -> bool:
+    """检测 Tesseract 是否可用（备选引擎）。"""
+    try:
+        import importlib.util
+        if importlib.util.find_spec("pytesseract") is None:
+            return False
+        import shutil
+        return (
+            shutil.which("tesseract") is not None
+            or Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe").exists()
+        )
+    except Exception:
+        return False
+
+
+def _resolve_ocr_engine_auto(
+    is_handwritten: bool,
+    has_rapidocr: bool,
+    has_vision: bool,
+    has_tesseract: bool,
+) -> str:
+    """auto 模式路由：手写体 → vision(首选)/agent；印刷体 → rapidocr → vision → tesseract。"""
+    if is_handwritten:
+        if has_vision:
+            return "vision"
+        return "agent"
+    if has_rapidocr:
+        return "rapidocr"
+    if has_vision:
+        return "vision"
+    if has_tesseract:
+        return "tesseract"
+    return "none"
 
 # 默认纳入扫描的被审核资料扩展名（--include-all 可关闭此过滤）
 DEFAULT_ALLOWED_EXTENSIONS = {
@@ -201,6 +285,15 @@ def generate_default_preconditions(project_path: Path) -> Dict[str, Any]:
     }
 
 
+# nature 合法取值白名单（v9.5：新增「扫描转化电子文档」）
+NATURE_ALLOWED = {"电子版", "扫描件", "扫描转化电子文档", "混合", "图纸"}
+
+
+def is_valid_nature(nature: str) -> bool:
+    """校验 nature 是否在合法取值白名单内。"""
+    return (nature or "") in NATURE_ALLOWED
+
+
 def load_json(path: Path) -> Any:
     """读取 JSON 文件，不存在时返回 None。"""
     if not path.exists():
@@ -273,6 +366,9 @@ def scan_files(
     """
     files: List[Path] = []
     output_root_files = {"data-editor.html", "项目总览.html", "审核报告.html", "tokens.css"}
+    # 前端产物扩展名：无论是否 --include-all 都无条件忽略，不当资料处理、不报警
+    # （用户可能把 Web 模板/工具 html 复制进项目文件夹，绝非待审核资料）
+    web_artifact_exts = {".html", ".htm", ".css", ".js", ".svg", ".woff", ".woff2", ".map"}
     # 排除任意层级的输出目录：用户指定的 out_name 以及默认的"数据底座"
     output_dir_names = {out_name, "数据底座"}
     for p in project_path.rglob("*"):
@@ -284,6 +380,9 @@ def scan_files(
             continue
         # 排除 Web/报告产物（任意层级）
         if rel.name in output_root_files:
+            continue
+        # 排除前端产物文件（html/css/js/svg 等，无条件忽略）
+        if p.suffix.lower() in web_artifact_exts:
             continue
         if is_temp_or_hidden(rel):
             continue
@@ -670,27 +769,46 @@ def call_ocr_image(
     text_out: Path,
     json_out: Path,
     preprocess: Optional[str] = None,
+    is_handwritten: Optional[bool] = None,
+    use_table: bool = False,
 ) -> Dict[str, Any]:
     """
     调用 OCR 对扫描件 PDF / 图片做 OCR。
     优先使用直接导入调用（避免子进程内存崩溃），降级为子进程。
-    返回 {"text", "engine", "confidence", "items"}，失败时 confidence 为 0。
+    is_handwritten: None 则用文件名启发式判定；True/False 显式指定。
+    use_table: True 时启用表格结构感知（RapidTable(SLANetPlus)），OCR 结果额外带 table 字段。
+    返回 {"text", "engine", "confidence", "items", "table"}，失败时 confidence 为 0。
     """
-    result: Dict[str, Any] = {"text": "", "engine": engine, "confidence": 0.0, "items": []}
+    result: Dict[str, Any] = {"text": "", "engine": engine, "confidence": 0.0, "items": [], "table": None}
+
+    # 手写体判定：显式 > 文件名启发式
+    if is_handwritten is None:
+        is_handwritten = _detect_is_handwritten(file_path.name) if _OCR_DIRECT_AVAILABLE else False
+    result["is_handwritten"] = is_handwritten
 
     # 优先使用直接调用
     if _OCR_DIRECT_AVAILABLE and file_path.suffix.lower() == ".pdf":
-        print(f"  [i] OCR 直接调用: engine={engine}, preprocess={preprocess or 'default'}", file=sys.stderr)
+        print(f"  [i] OCR 直接调用: engine={engine}, preprocess={preprocess or 'default'}, is_handwritten={is_handwritten}, use_table={use_table}", file=sys.stderr)
         try:
+            # v10.0：RapidOCR 内部固定灰度化，preprocess 增强参数已无意义。
+            # 增强重试时若为 auto/rapidocr，改走 vision（VLM）兜底重新识别。
+            effective_engine = engine
+            if preprocess == "enhance" and engine in ("auto", "rapidocr"):
+                effective_engine = "vision" if _check_vision_api_available() else engine
+                if effective_engine != engine:
+                    print(f"  [i] 增强重试：engine {engine} → {effective_engine}", file=sys.stderr)
             ocr_result = _ocr_pdf_direct(
                 str(file_path),
-                dpi=72,
-                engine=engine,
+                dpi=200,
+                engine=effective_engine,
+                is_handwritten=is_handwritten,
+                use_table=use_table,
             )
             result["text"] = ocr_result.get("text", "")
             result["engine"] = ocr_result.get("engine", engine)
             result["confidence"] = ocr_result.get("confidence", 0.0)
             result["items"] = ocr_result.get("items", [])
+            result["table"] = ocr_result.get("table")
 
             # 保存输出文件
             text_out.write_text(result["text"], encoding="utf-8")
@@ -703,17 +821,21 @@ def call_ocr_image(
             traceback.print_exc()
 
     # 降级：子进程方式
-    print(f"  [i] 调用 OCR: engine={engine}, preprocess={preprocess or 'default'}", file=sys.stderr)
+    print(f"  [i] 调用 OCR: engine={engine}, preprocess={preprocess or 'default'}, is_handwritten={is_handwritten}, use_table={use_table}", file=sys.stderr)
     cmd = [
-        sys.executable, str(OCR_IMAGE_PY),
+        PYTHON_CMD, str(OCR_IMAGE_PY),
         str(file_path),
         "--engine", engine,
         "--out", str(text_out),
         "--json-out", str(json_out),
-        "--dpi", "72",
+        "--dpi", "200",
     ]
+    if is_handwritten:
+        cmd.append("--handwritten")
     if preprocess:
         cmd.extend(["--preprocess", preprocess])
+    if use_table:
+        cmd.append("--use-table")
 
     rc, stdout, stderr = run_subprocess(cmd)
     if stderr:
@@ -726,6 +848,7 @@ def call_ocr_image(
             result["engine"] = raw.get("engine", engine)
             result["confidence"] = raw.get("confidence", 0.0)
             result["items"] = raw.get("items", [])
+            result["table"] = raw.get("table")
         except Exception as e:
             print(f"  [!] 解析 OCR JSON 失败: {e}", file=sys.stderr)
     else:
@@ -739,7 +862,7 @@ def call_extract_pdf(file_path: Path, text_out: Path) -> Dict[str, Any]:
     调用 extract_pdf.py 提取电子档 PDF 文字。
     返回 {"text", "engine", "confidence", "items": []}。
     """
-    cmd = [sys.executable, str(EXTRACT_PDF_PY), str(file_path), "--out", str(text_out)]
+    cmd = [PYTHON_CMD, str(EXTRACT_PDF_PY), str(file_path), "--out", str(text_out)]
     print("  [i] 调用 PyMuPDF 提取电子档 PDF", file=sys.stderr)
     rc, stdout, stderr = run_subprocess(cmd)
     if stderr:
@@ -774,6 +897,51 @@ def call_extract_text(file_path: Path, text_out: Path) -> Dict[str, Any]:
     return {
         "text": text,
         "engine": "text",
+        "confidence": 1.0,
+        "items": [],
+    }
+
+
+def call_extract_docx(file_path: Path, text_out: Path) -> Dict[str, Any]:
+    """
+    v9.5：读取 Word(.docx) 电子文档的段落与表格（python-docx）。
+
+    用于 `nature=扫描转化电子文档`——用户用 WPS 把扫描件转成带真实表格的 .docx，
+    走电子表解析，识别准确率显著高于本地 OCR，且不触发 OCR 引擎。
+
+    表格按「行→单元格」还原为纯文本（每行以制表符分隔），供后续结构化解析。
+    返回 {"text", "engine", "confidence", "items": []}。
+    """
+    print("  [i] 读取 Word 电子文档（python-docx）", file=sys.stderr)
+    try:
+        from docx import Document
+    except ImportError as e:
+        print(f"  [!] docx 依赖未安装: pip install python-docx（{e}）", file=sys.stderr)
+        return {"text": "", "engine": "docx", "confidence": 0.0, "items": []}
+    try:
+        doc = Document(str(file_path))
+        parts: List[str] = []
+        # 段落
+        for p in doc.paragraphs:
+            t = p.text.strip()
+            if t:
+                parts.append(t)
+        # 表格（按行还原，单元格制表符分隔）
+        for ti, table in enumerate(doc.tables):
+            if parts:
+                parts.append(f"--- 表格 {ti + 1} ---")
+            for row in table.rows:
+                cells = [c.text.strip() for c in row.cells]
+                parts.append("\t".join(cells))
+        text = "\n".join(parts)
+    except Exception as e:
+        print(f"  [!] 读取 Word 文档失败: {e}", file=sys.stderr)
+        text = ""
+    if text_out:
+        text_out.write_text(text, encoding="utf-8")
+    return {
+        "text": text,
+        "engine": "docx",
         "confidence": 1.0,
         "items": [],
     }
@@ -850,8 +1018,14 @@ def _normalize_header_token(tok: str) -> str:
 
 
 def _tokenize_table_line(line: str) -> List[str]:
-    """表头行/数据行统一分词：优先多空格/制表符分隔，回退单空格。"""
-    tokens = re.split(r"[\t\s]{2,}", line.strip())
+    """表头行/数据行统一分词：优先制表符分隔，回退多空格，最后单空格。"""
+    # 优先按单个制表符分割（OCR 聚类输出用 \t 连接）
+    if "\t" in line:
+        tokens = [t.strip() for t in line.split("\t") if t.strip()]
+        if len(tokens) >= 2:
+            return tokens
+    # 回退多空格分隔
+    tokens = re.split(r"[\s]{2,}", line.strip())
     if len(tokens) < 3:
         tokens = line.strip().split()
     return tokens
@@ -1291,7 +1465,7 @@ def extract_header_info(text: str, doc_type: str) -> Dict[str, Any]:
 
 def parse_pile_data_line(line: str, header_map: Dict[int, str], page: int, line_no: int) -> Optional[Dict[str, Any]]:
     """按表头映射解析一行碎石桩/桩基数据。"""
-    tokens = re.split(r"[\t\s]{2,}", line.strip())
+    tokens = _tokenize_table_line(line)
     if len(tokens) < len(header_map):
         tokens += [""] * (len(header_map) - len(tokens))
 
@@ -1301,7 +1475,12 @@ def parse_pile_data_line(line: str, header_map: Dict[int, str], page: int, line_
             record[field] = coerce_pile_value(field, tokens[idx])
 
     # 至少要有桩号列才认为是数据行
-    if not record.get("pile_no"):
+    pile_no = record.get("pile_no")
+    if not pile_no:
+        return None
+    # pile_no 格式验证：纯数字2-6位 或 #/Z/D开头+数字（过滤前置文字误判）
+    s = str(pile_no).strip()
+    if not (re.match(r"^#?\d{2,6}$", s) or re.match(r"^[ZDzd]\d{1,5}$", s)):
         return None
     return record
 
@@ -1361,29 +1540,139 @@ def heuristic_pile_row(line: str, page: int, line_no: int) -> Optional[Dict[str,
     return record
 
 
-def parse_pile_rows(text: str, start_line_no: int = 1) -> List[Dict[str, Any]]:
-    """从 OCR/PDF 文本中解析碎石桩类表格 rows。"""
+def load_table_template(doc_type: str) -> Optional[Dict[str, Any]]:
+    """按文档类型加载数据底座表格模板（由 template_miner.py 提炼）。
+
+    模板存放于 <SKILL_DIR>/templates/data_templates/<doc_type>.json。
+    找不到或格式非法时返回 None，调用方回退到启发式解析。
+    """
+    if not doc_type:
+        return None
+    tpl_dir = SKILL_DIR / "templates" / "data_templates"
+    cand = tpl_dir / f"{doc_type}.json"
+    try:
+        if not cand.exists():
+            return None
+        data = json.loads(cand.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("columns"), list):
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _template_to_header_map(template: Dict[str, Any]) -> Dict[int, str]:
+    """把提炼模板的 columns 转成 header_map（列索引0based → 字段槽位）。
+
+    优先级：锚点列（按值类型识别，可靠）> 表头合并槽位（可能错位）。
+    锚点列先写死，表头槽位只填空缺。
+    """
+    mapping: Dict[int, str] = {}
+    # 1) 锚点列（值类型识别，最可靠）—— 先写死
+    anchors = template.get("anchors") or {}
+    for field, col1 in anchors.items():
+        if col1 and isinstance(col1, int):
+            mapping[col1 - 1] = field
+    # 2) 表头合并槽位 —— 只填空缺，不覆盖锚点
+    cols = template.get("columns") or []
+    for c in cols:
+        slot = c.get("slot")
+        col = c.get("col")
+        if slot and isinstance(col, int) and (col - 1) not in mapping:
+            mapping[col - 1] = slot
+    return mapping
+
+
+def parse_pile_rows(text: str, start_line_no: int = 1,
+                    template: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """从 OCR/PDF 文本中解析碎石桩类表格 rows。
+
+    支持表头跨行：检测到表头后，紧接的1-2行如果也通过 detect_header，
+    视为表头续行，合并字段映射（新字段补充，冲突保留首个），跳过这些行。
+
+    跨页处理：翻页后重新检测表头（含续行跳过），如果整页未检测到表头
+    但遇到数据行格式，则继承首页表头。
+
+    模板兜底：当无法检测到表头（detect_header 失败）且已提供提炼模板时，
+    用模板列槽位作为 header_map，保证列名映射可用。
+    """
     rows: List[Dict[str, Any]] = []
     page = 1
     line_no = start_line_no
     header_map: Optional[Dict[int, str]] = None
+    first_page_header: Optional[Dict[int, str]] = None  # 首页表头（跨页继承用）
+    template_map = _template_to_header_map(template) if template else {}
+    # 预处理：去掉空行，保留页分隔符
+    all_lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
+    i = 0
+    while i < len(all_lines):
+        line = all_lines[i]
 
-        # 页分隔符
+        # 页分隔符：翻页后重置表头，重新检测
         m = re.match(r"===\s*第\s*(\d+)\s*页\s*===", line)
         if m:
             page = int(m.group(1))
             header_map = None
+            i += 1
             continue
 
         # 表头检测
         if header_map is None:
-            header_map = detect_header(line)
-            if header_map:
+            detected = detect_header(line)
+            if detected:
+                header_map = detected
+                if first_page_header is None:
+                    first_page_header = dict(header_map)
+                i += 1  # 先跳过表头行本身
+                # 检查紧接的1-2行是否也是表头（表头续行）
+                for _ in range(2):
+                    if i >= len(all_lines):
+                        break
+                    next_line = all_lines[i]
+                    if re.match(r"===\s*第\s*(\d+)\s*页\s*===", next_line):
+                        break
+                    next_header = detect_header(next_line)
+                    if next_header and len(next_header) >= 3:
+                        for idx, field in next_header.items():
+                            if idx not in header_map:
+                                header_map[idx] = field
+                        i += 1
+                    else:
+                        break
+                continue
+            # 未检测到表头：如果已有首页表头，且当前行像数据行，则继承
+            if first_page_header is not None:
+                tokens = _tokenize_table_line(line)
+                if len(tokens) >= 3:  # 数据行至少3个token
+                    first_token = str(tokens[0]).strip()
+                    # 桩号格式：纯数字2-6位 或 #/Z/D开头+数字
+                    if re.match(r"^#?\d{2,6}$", first_token) or re.match(r"^[ZDzd]\d{1,5}$", first_token):
+                        header_map = first_page_header  # 继承首页表头
+                        # 不continue，继续走数据行解析
+                    else:
+                        i += 1
+                        continue
+                else:
+                    i += 1
+                    continue
+            elif template_map:
+                # 模板兜底：整份文档始终没检测到表头时，用提炼模板的列槽位
+                tokens = _tokenize_table_line(line)
+                if len(tokens) >= 3:
+                    first_token = str(tokens[0]).strip()
+                    if re.match(r"^#?\d{2,6}$", first_token) or re.match(r"^[ZDzd]\d{1,5}$", first_token):
+                        header_map = dict(template_map)
+                        first_page_header = dict(template_map)
+                        # 不continue，继续走数据行解析
+                    else:
+                        i += 1
+                        continue
+                else:
+                    i += 1
+                    continue
+            else:
+                i += 1
                 continue
 
         if header_map:
@@ -1394,6 +1683,7 @@ def parse_pile_rows(text: str, start_line_no: int = 1) -> List[Dict[str, Any]]:
         if record:
             rows.append(record)
             line_no += 1
+        i += 1
 
     return rows
 
@@ -1411,7 +1701,8 @@ def parse_generic_rows(text: str, start_line_no: int = 1) -> List[Dict[str, Any]
         if m:
             page = int(m.group(1))
             continue
-        rows.append({"page": page, "line_no": line_no, "raw_text": line})
+        rows.append({"page": page, "line_no": line_no, "raw_text": line,
+                     "parsed": False, "unparsed_fields": ["*"]})
         line_no += 1
     return rows
 
@@ -1496,11 +1787,29 @@ def detect_generic_header(line: str) -> Optional[Tuple[Dict[int, str], List[str]
       1. 分词后 token 数 ≥ 3
       2. 文本型 token 占比 ≥ 50% 且文本型 token 数 ≥ 2
       3. 有效列名数 ≥ 3（去重后）
+      4. 关键词命中数 ≥ 2
+      5. 排除含超长 token（>10字符）的行 — 公司名/标题不是列名
+      6. 列名型关键词（序号/编号/桩号/日期/时间/高程等）至少命中1个
 
     返回: (col_idx → col_name 映射, 原始 tokens, 置信度) 或 None。
     """
+    # 列名型关键词 — 只有这些才是真正的列名
+    _COLUMN_NAME_KEYWORDS = {
+        "序号", "编号", "桩号", "日期", "时间", "高程", "直径", "实长",
+        "灌入量", "充盈系数", "垂直度", "竖直度", "备注", "签字",
+        "允许偏差", "实测", "检验", "结果", "设计", "实际",
+        "标准", "规定", "部位", "里程", "标段", "设计值",
+        "允许值", "质量情况", "评定", "等级", "结论", "频率", "批次",
+        "桩径", "桩长", "桩顶", "桩底", "沉管", "拔管", "反插",
+        "密实电流", "加水量", "复合地基",
+    }
+
     tokens = _tokenize_table_line(line)
     if len(tokens) < 3:
+        return None
+
+    # 排除含超长 token 的行（公司名/标题等）
+    if any(len(t) > 10 for t in tokens):
         return None
 
     text_tokens = [t for t in tokens if _is_text_token(t)]
@@ -1508,13 +1817,21 @@ def detect_generic_header(line: str) -> Optional[Tuple[Dict[int, str], List[str]
     if text_ratio < 0.5 or len(text_tokens) < 2:
         return None
 
-    # 关键词加成
+    # 通用关键词命中
     kw_hits = sum(1 for t in tokens if any(kw in t for kw in _GENERIC_HEADER_KEYWORDS))
+    if kw_hits < 2:
+        return None
+
+    # 列名型关键词命中（至少1个）
+    col_kw_hits = sum(1 for t in tokens if any(kw in t for kw in _COLUMN_NAME_KEYWORDS))
+    if col_kw_hits < 1:
+        return None
+
     confidence = 0.6 + 0.3 * min(text_ratio, 1.0) - 0.1
-    if kw_hits >= 2:
-        confidence = min(confidence + 0.15, 0.95)
-    elif kw_hits >= 1:
-        confidence = min(confidence + 0.08, 0.95)
+    if kw_hits >= 3:
+        confidence = min(confidence + 0.2, 0.95)
+    elif kw_hits >= 2:
+        confidence = min(confidence + 0.12, 0.95)
 
     # 构建列映射（列名去重）
     seen_names: Dict[str, int] = {}
@@ -1545,9 +1862,11 @@ def parse_generic_table(text: str, start_line_no: int = 1) -> List[Dict[str, Any
     流程：
       1. 逐行扫描，遇页分隔符翻页并重置表头
       2. 首个通过 detect_generic_header 的行作为表头
-      3. 后续行按表头列映射解析为结构化记录
-      4. 跳过空行和全空数据行
-      5. 数据行 < 2 行视为非表格，返回空列表（由调用方回退到 parse_generic_rows）
+      3. 表头跨行：紧接的1-2行如果也通过 detect_generic_header，合并列名并跳过
+      4. 后续行按表头列映射解析为结构化记录
+      5. 跳过空行和全空数据行
+      6. 数据行 < 2 行视为非表格，返回空列表（由调用方回退到 parse_generic_rows）
+      7. 跨页表头继承：翻页后优先继承首页表头
 
     返回: 结构化行列表，每行含 row_index/page/line_no + 列名字段。
           未检测到表头或数据行不足时返回空列表。
@@ -1557,17 +1876,20 @@ def parse_generic_table(text: str, start_line_no: int = 1) -> List[Dict[str, Any
     line_no = start_line_no
     row_index = 0
     header_map: Optional[Dict[int, str]] = None
+    first_page_header: Optional[Dict[int, str]] = None  # 跨页表头继承
+    # 预处理：去掉空行，保留页分隔符
+    all_lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
+    i = 0
+    while i < len(all_lines):
+        line = all_lines[i]
 
-        # 页分隔符：翻页重置表头
+        # 页分隔符：翻页后重置表头，重新检测
         m = re.match(r"===\s*第\s*(\d+)\s*页\s*===", line)
         if m:
             page = int(m.group(1))
-            header_map = None
+            header_map = None  # 翻页后重新检测表头
+            i += 1
             continue
 
         # 表头检测
@@ -1575,13 +1897,40 @@ def parse_generic_table(text: str, start_line_no: int = 1) -> List[Dict[str, Any
             detected = detect_generic_header(line)
             if detected:
                 header_map, _tokens, _conf = detected
+                if first_page_header is None:
+                    first_page_header = dict(header_map)  # 记住首页表头（副本）
+                i += 1  # 先跳过表头行本身
+                # 检查紧接的1-2行是否也是表头（表头续行）
+                for _ in range(2):
+                    if i >= len(all_lines):
+                        break
+                    next_line = all_lines[i]
+                    if re.match(r"===\s*第\s*(\d+)\s*页\s*===", next_line):
+                        break
+                    next_detected = detect_generic_header(next_line)
+                    if next_detected:
+                        next_header, _nt, _nc = next_detected
+                        # 合并表头：补充新列名（不覆盖已有列名）
+                        for idx, col_name in next_header.items():
+                            if idx not in header_map:
+                                header_map[idx] = col_name
+                        # 同步更新 first_page_header
+                        if first_page_header is not None:
+                            for idx, col_name in next_header.items():
+                                if idx not in first_page_header:
+                                    first_page_header[idx] = col_name
+                        i += 1  # 跳过表头续行
+                    else:
+                        break
                 continue
             # 未检测到表头则跳过（不把前置文本当数据）
+            i += 1
             continue
 
         # 数据行解析
         tokens = _tokenize_table_line(line)
         if len(tokens) < 2:
+            i += 1
             continue
 
         record: Dict[str, Any] = {
@@ -1599,12 +1948,11 @@ def parse_generic_table(text: str, start_line_no: int = 1) -> List[Dict[str, Any
             else:
                 record[col_name] = None
 
-        if all_empty:
-            continue
-
-        rows.append(record)
-        row_index += 1
-        line_no += 1
+        if not all_empty:
+            rows.append(record)
+            row_index += 1
+            line_no += 1
+        i += 1
 
     # 数据行不足 2 行视为非表格，回退纯文本
     if len(rows) < 2:
@@ -1636,23 +1984,207 @@ def detect_generic_header_from_text(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# ========== v8.9: OCR 空结果拦截 + 列错位检测 ==========
+_NUMERIC_CORE = {
+    "design_length", "diameter", "bottom_elev", "top_elev", "actual_length",
+    "current", "re_penetration", "volume", "filling_coeff", "verticality",
+}
+_TIME_CORE = {"sink_time", "pull_time", "start_time", "end_time"}
+
+
+def _is_number(v: Any) -> bool:
+    """判断是否为数值（排除 bool）。"""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _is_time_str(v: Any) -> bool:
+    """判断是否为时间格式字符串（HH:MM / HH.MM / HH;MM / HH-MM）。"""
+    return isinstance(v, str) and re.match(r"^\d{1,2}[:;\.\-]\d{2}", v.strip()) is not None
+
+
+def assess_ocr_result(result: Dict[str, Any]) -> Tuple[str, str]:
+    """v8.9: OCR 空结果拦截。
+
+    在 OCR 返回后立即检查：text 为空 且 items 为空 → 判定 needs_review，
+    禁止空数据进入结构化流程（避免空结果被标 completed 污染审核）。
+    返回 (状态, 说明)。
+    """
+    text = (result.get("text") or "").strip()
+    items = result.get("items") or []
+    if not text and not items:
+        return "needs_review", "OCR 未识别到任何文字/字段（空结果），禁止进入结构化流程"
+    return "completed", ""
+
+
+def validate_pile_row(row: Dict[str, Any]) -> List[str]:
+    """v8.9: 单行列错位校验。
+
+    对解析出的一行碎石桩/桩基数据做列级校验：
+      - 数值列（桩径/高程/实长/电流/反插/灌入/系数/竖直度）必须为数值
+      - 时间列（沉管/拔管/开始/结束）必须为时间格式
+      - 数学链：实长 ≈ 桩顶高程 - 桩底高程（±0.1m）
+    返回该行的问题列表（空 = 该行通过）。
+    """
+    issues: List[str] = []
+    for field in _NUMERIC_CORE:
+        v = row.get(field)
+        # 空值不算错位（可能为正常缺项）；仅"非空但非数值"才算列错位
+        if v is not None and not _is_number(v):
+            issues.append(f"列错位: 数值列 {field}={v!r} 非数值")
+    for field in _TIME_CORE:
+        v = row.get(field)
+        if v is not None and not _is_time_str(v):
+            issues.append(f"列错位: 时间列 {field}={v!r} 非时间格式")
+    # 数学链：实长 = 顶高程 - 底高程
+    top, bottom, actual = row.get("top_elev"), row.get("bottom_elev"), row.get("actual_length")
+    if all(_is_number(x) for x in (top, bottom, actual)):
+        if abs(actual - (top - bottom)) > 0.1:
+            issues.append(
+                f"数学链断裂: 实长={actual}, 顶高程-底高程={top - bottom:.2f}"
+            )
+    return issues
+
+
+def validate_structured_rows(
+    rows: List[Dict[str, Any]],
+    doc_type: str,
+) -> Dict[str, Any]:
+    """v8.9: 整表列校验——在 build_rows 之后立即执行。
+
+    对桩基类文档逐行做列校验，标记错位/数学链断裂行，聚合整表错位风险。
+    错位率 ≥30% → shift_risk="high"（强制 needs_review）；
+    ≥10% → "medium"；>0 → "low"；否则 "none"。
+
+    返回:
+        {"applied", "row_flags", "suspect_count", "total_rows", "shift_risk"}
+    """
+    lower = doc_type.lower()
+    is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
+    if not is_pile:
+        return {
+            "applied": False, "row_flags": [], "suspect_count": 0,
+            "total_rows": len(rows), "shift_risk": "none",
+        }
+    row_flags: List[Dict[str, Any]] = []
+    suspect_count = 0
+    for row in rows:
+        issues = validate_pile_row(row)
+        if issues:
+            suspect_count += 1
+            row_flags.append({
+                "page": row.get("page"),
+                "line_no": row.get("line_no"),
+                "pile_no": row.get("pile_no"),
+                "issues": issues,
+            })
+    total = len(rows)
+    ratio = suspect_count / total if total else 0
+    if ratio >= 0.3:
+        risk = "high"
+    elif ratio >= 0.1:
+        risk = "medium"
+    elif suspect_count > 0:
+        risk = "low"
+    else:
+        risk = "none"
+    return {
+        "applied": True, "row_flags": row_flags,
+        "suspect_count": suspect_count, "total_rows": total,
+        "shift_risk": risk,
+    }
+
+
 def build_rows(text: str, doc_type: str) -> List[Dict[str, Any]]:
-    """根据 doc_type 选择解析策略。
+    """根据 doc_type 和 OCR 文本内容选择解析策略。
 
     - 桩基类文档（碎石桩/CFG/桩）→ parse_pile_rows（表头三路融合 + 数学链约束）
+    - 内容感知：doc_type 未识别为桩基，但 OCR 文本含桩基表头关键词 → 也走 parse_pile_rows
+      （解决"扫描件.pdf"等通用文件名被误分类为"其他资料"的问题）
     - 非桩基类文档 → 先尝试 parse_generic_table（通用表格提取）
       - 检测到表头且数据行≥2 → 返回结构化行
       - 否则回退 parse_generic_rows（纯文本行 page/line_no/raw_text）
     """
     lower = doc_type.lower()
     is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
+
+    # 内容感知：OCR 文本含桩基表头关键词时自动切换到桩基解析
+    # 解决文件名通用（如"扫描件.pdf"）但实际是桩基施工记录的分类遗漏
+    if not is_pile:
+        _PILE_CONTENT_INDICATORS = [
+            "碎石桩", "沉管时间", "拔管时间", "充盈系数", "密实电流",
+            "反插", "桩底高程", "桩顶高程", "沉管开始", "拔管结束",
+        ]
+        pile_hits = sum(1 for kw in _PILE_CONTENT_INDICATORS if kw in text)
+        if pile_hits >= 2:
+            is_pile = True
+
     if is_pile:
-        return parse_pile_rows(text)
+        template = load_table_template(doc_type)
+        return parse_pile_rows(text, template=template)
     # 通用表格提取：先尝试结构化表格，失败回退纯文本行
     rows = parse_generic_table(text)
     if rows:
         return rows
     return parse_generic_rows(text)
+
+
+# ========== 几何网格重建解析（v11 治本：列对齐，告别"拍平文本猜列"） ==========
+# 旧链路 parse_pile_rows 把 OCR items 拍平成纯文本，再按 token 下标对列。
+# 空单元格（OCR 漏检）或合并单元格会让 token 数与表头列数不一致，导致整列错位。
+# 本函数改用 ocr_grid.reconstruct_document_grid：按 bbox 的 X 坐标把每个数据格
+# 归位到表头列区间，空单元格留空不错位，列数永远等于表头列数。
+from ocr_grid import reconstruct_document_grid  # noqa: E402
+
+
+def _header_text_to_field(header_text: str) -> Optional[str]:
+    """把几何网格某个表头列文字匹配到字段槽位。
+
+    复用 FIELD_ALIAS_MAP 的中文别名 + OCR 额外别名兜底。
+    返回英文字段名或 None（无法识别）。
+    """
+    t = header_text.strip()
+    if not t:
+        return None
+    # 去单位/括号后可匹配（如 "实长(m)" → "实长"）
+    norm = re.sub(r"[（(].*?[)）]", "", t)
+    # 精确匹配优先：先查 FIELD_ALIAS_MAP
+    try:
+        from rule_engine import FIELD_ALIAS_MAP
+        best_field, best_len = None, -1
+        for cn, en in FIELD_ALIAS_MAP.items():
+            if cn and cn in norm:
+                if len(cn) > best_len:
+                    best_field, best_len = en, len(cn)
+        if best_field:
+            return best_field
+    except ImportError:
+        pass
+    # OCR 额外别名兜底
+    for field, aliases in _OCR_EXTRA_ALIASES.items():
+        for a in aliases:
+            if a and a in norm:
+                return field
+    return None
+
+
+# v14: 最近一次结构化解析的门禁摘要（供 orchestrate_ocr 消费）
+_LAST_STRUCT_GATE: Dict[str, Any] = {}
+
+
+def build_rows_from_items(
+    items: List[Dict[str, Any]],
+    doc_type: str,
+    text: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """v14 统一入口：委托 table_struct 值格式锚点 + 物理约束门禁解析。
+
+    返回结构化 rows（每行含 issues）；门禁摘要由并肩返回的 _last_gate 提供，
+    供 orchestrate_ocr 判定 needs_review。
+    """
+    rows, _gate = _ts_build_rows_from_items(items or [], doc_type or "", text)
+    global _LAST_STRUCT_GATE
+    _LAST_STRUCT_GATE = _gate
+    return rows
 
 
 # ========== 行数校验 ==========
@@ -1661,18 +2193,27 @@ def get_expected_rows(
     pages: int,
     file_type: str,
     expected_map: Dict[str, int],
+    doc_type: str = "",
 ) -> Optional[int]:
-    """获取文件的期望行数。"""
+    """获取文件的期望行数。
+
+    v10.1 修复：预期行数按文档类型区分，避免桩基表被 20 行/页高估，
+    从而触发无谓的重试死循环（对 49 页扫描件反复重跑 OCR）。
+    """
     name = rel_path.name
-    # 1. 显式 expected-rows 配置
+    # 1. 显式 expected-rows 配置（最高优先级）
     for pattern, n in expected_map.items():
         if pattern in name:
             return n
-    # 2. 按页推断
+    # 2. 按页推断（区分桩基表 / 通用表）
     if pages and pages > 0:
+        lower = (doc_type or "").lower()
+        is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
         if file_type.upper() == "PDF":
-            return pages * DEFAULT_ROWS_PER_PDF_PAGE
-        return pages * DEFAULT_ROWS_PER_IMAGE_PAGE
+            per_page = DEFAULT_ROWS_PILE_PER_PDF_PAGE if is_pile else DEFAULT_ROWS_GENERIC_PER_PDF_PAGE
+        else:
+            per_page = DEFAULT_ROWS_PILE_PER_IMAGE_PAGE if is_pile else DEFAULT_ROWS_GENERIC_PER_IMAGE_PAGE
+        return pages * per_page
     return None
 
 
@@ -1682,6 +2223,162 @@ def check_row_count(actual: int, expected: Optional[int]) -> Tuple[bool, Optiona
         return True, None
     ratio = actual / expected
     return ratio >= ROW_COUNT_THRESHOLD, ratio
+
+
+# ========== OCR 编排（v12.0 重写：单次 OCR + 几何网格重建 + 一次列校验） ==========
+def orchestrate_ocr(
+    abs_path: Path,
+    engine: str,
+    doc_type: str,
+    pages: int,
+    file_type: str,
+    expected_map: Dict[str, int],
+    is_handwritten: Optional[bool],
+    text_file: Path,
+    ocr_raw_file: Path,
+    use_table: bool = False,
+) -> Dict[str, Any]:
+    """对单个扫描件执行 OCR 编排（v12.0 重写，删除多级重试病根）。
+
+    设计原则（对应"49 页假卡死"根因）：
+    - **单次 OCR**：只跑一次本地引擎，绝不因行数不足反复重跑 N 页。
+    - **几何网格重建**：直接用 items 的 bbox 做列对齐（build_rows_from_items），
+      空单元格留空不错位，列数恒等于表头列数。
+    - **一次空结果拦截 + 一次列校验**：质量不够 → 标记 needs_review 交给人工，
+      而不是自动切换引擎耗十几分钟重跑（对已识别的扫描件几乎无提升）。
+
+    返回:
+        {"ocr_text", "ocr_engine", "ocr_confidence", "ocr_status",
+         "rows", "shift_result", "retry_log", "reason"}
+    """
+    retry_log: List[Dict[str, Any]] = []
+    reason = ""
+
+    # agent 模式：Python 不做 OCR，由 AI（AGENT）内置 Vision 逐页读图识别
+    if engine == "agent":
+        print(f"  [i] agent 模式：跳过 Python OCR，由 AI 内置 Vision 逐页读图识别", file=sys.stderr)
+        return {
+            "ocr_text": "", "ocr_engine": "agent", "ocr_confidence": 0.0,
+            "ocr_status": "pending_agent", "rows": [], "shift_result": {},
+            "retry_log": [], "reason": "",
+        }
+
+    # 页面数过多且无 RapidOCR/Vision 时提示（不强限制，仅提醒）
+    if pages > 5 and not _check_rapidocr_available() and not _check_vision_api_available():
+        print(
+            f"  ⚠️ 检测到 {pages} 页扫描件，且未安装 RapidOCR 和 Vision API。",
+            file=sys.stderr,
+        )
+        print(
+            f"  → 建议安装 RapidOCR：pip install rapidocr opencv-python",
+            file=sys.stderr,
+        )
+
+    # ===== 0. 内容级手写体判定（根治"手写体被当印刷体送进 RapidOCR"） =====
+    # 仅 auto 模式且未显式指定手写体时启用：先抽样第 1 页做 RapidOCR，
+    # 用"数字串混淆率"判定是否手写体。判定为手写体 → 改走 vision/agent，
+    # 绝不把整份手写体硬塞给 RapidOCR 产垃圾。
+    effective_engine = engine
+    hw_verdict: Optional[bool] = is_handwritten
+    if effective_engine == "auto" and hw_verdict is None and _OCR_DIRECT_AVAILABLE:
+        try:
+            sample = _ocr_pdf_direct(
+                str(abs_path), dpi=200, engine="rapidocr", page=1,
+                is_handwritten=False,
+            )
+            sample_items = sample.get("items", [])
+            sample_text = sample.get("text", "")
+            content_hw = _classify_hw_items(sample_items)
+            if content_hw is None:
+                content_hw = _classify_hw_text(sample_text)
+            if content_hw is not None:
+                hw_verdict = content_hw
+            print(
+                f"  [内容判定] 手写体={hw_verdict}（抽样第1页，混淆项统计）",
+                file=sys.stderr,
+            )
+        except Exception as e:
+            print(f"  [!] 内容级手写体判定失败，回退文件名启发式: {e}", file=sys.stderr)
+            hw_verdict = _detect_is_handwritten(str(abs_path.name)) if _OCR_DIRECT_AVAILABLE else False
+
+    if effective_engine == "auto" and hw_verdict is not None:
+        effective_engine = _resolve_ocr_engine_auto(
+            hw_verdict,
+            _check_rapidocr_available(),
+            _check_vision_api_available(),
+            _check_tesseract_available(),
+        )
+        print(f"  [路由] 内容判定为{'手写体' if hw_verdict else '印刷体'} → 引擎={effective_engine}", file=sys.stderr)
+        if hw_verdict and effective_engine in ("vision", "agent"):
+            print(
+                f"  [⚠️] 判定为手写体，走 {effective_engine} 逐页读图（准确率高，但 {pages} 页较慢）",
+                file=sys.stderr,
+            )
+
+    # ===== 1. 单次 OCR（只跑一次，不重试） =====
+    result = call_ocr_image(abs_path, effective_engine, text_file, ocr_raw_file, is_handwritten=hw_verdict, use_table=use_table)
+    ocr_text = result.get("text", "")
+    ocr_engine = result.get("engine", effective_engine)
+    ocr_confidence = result.get("confidence", 0.0)
+
+    # ===== 2. 空结果拦截（v8.9 铁律：空结果禁止进结构化流程） =====
+    assess_status, assess_reason = assess_ocr_result(result)
+    if assess_status == "needs_review":
+        reason = assess_reason
+        retry_log.append({"attempt": "pre", "action": "mark_needs_review", "reason": reason})
+        print(f"  [⚠️] {reason}", file=sys.stderr)
+        return {
+            "ocr_text": ocr_text, "ocr_engine": ocr_engine, "ocr_confidence": ocr_confidence,
+            "ocr_status": "needs_review", "rows": [], "shift_result": {},
+            "retry_log": retry_log, "reason": reason,
+        }
+
+    # ===== 3. 几何网格重建 + 物理门禁（值格式锚点，治本） =====
+    # 优先使用 RapidTable(SLANetPlus) 表格结构（use_table），失败回退 items 几何网格
+    table_result = result.get("table")
+    rows: List[Dict[str, Any]] = []
+    gate = _LAST_STRUCT_GATE
+    if table_result and table_result.get("ok"):
+        rows, gate = _ts_build_rows_from_table(table_result, doc_type)
+        if rows:
+            print(f"  [table_struct] 用表格结构生成 {len(rows)} 行（{table_result.get('n_pages', 0)} 页）", file=sys.stderr)
+    if not rows:
+        rows = build_rows_from_items(result.get("items", []), doc_type, ocr_text)
+        gate = _LAST_STRUCT_GATE  # table_struct 并肩返回的门禁摘要
+
+    # ===== 3.5 六类数据验证闸门（行级，数据底座前） =====
+    # 覆盖式重算 issues（类型/格式/完整性/范围/跨字段数学链），并重新聚合门禁
+    rows, gate = _ts_validate_rows(rows, doc_type)
+
+    # ===== 4. 一次列校验 =====
+    shift_result = validate_structured_rows(rows, doc_type)
+
+    # ===== 5. 状态判定（单次，不重跑） =====
+    if not rows:
+        ocr_status = "needs_review"
+        reason = "未识别到任何数据行"
+    elif gate.get("applied") and gate.get("needs_review"):
+        ocr_status = "needs_review"
+        reason = gate.get("reason") or f"{gate.get('suspect_count')}/{gate.get('total_rows')} 行不可靠"
+    elif shift_result.get("applied") and shift_result.get("shift_risk") == "high":
+        ocr_status = "needs_review"
+        reason = (
+            f"列错位风险 {shift_result['shift_risk']}："
+            f"{shift_result['suspect_count']}/{shift_result['total_rows']} 行错位"
+        )
+    else:
+        ocr_status = "completed"
+
+    if ocr_status == "needs_review":
+        retry_log.append({"attempt": "final", "action": "mark_needs_review", "reason": reason})
+        print(f"  [⚠️] {reason}，标记为 needs_review（交人工核对，不重跑 {pages} 页）", file=sys.stderr)
+
+    return {
+        "ocr_text": ocr_text, "ocr_engine": ocr_engine, "ocr_confidence": ocr_confidence,
+        "ocr_status": ocr_status, "rows": rows, "shift_result": shift_result,
+        "retry_log": retry_log, "reason": reason,
+        "table": result.get("table"),
+    }
 
 
 # ========== MD 预览 ==========
@@ -1723,7 +2420,7 @@ def write_md_preview(
 # ========== 质量检测 / 混淆检测 ==========
 def call_data_quality_check(data_file: Path) -> Tuple[Dict[str, Any], int]:
     """调用 data_quality_check.py，返回结果字典与告警总数。"""
-    cmd = [sys.executable, str(DQ_CHECK_PY), str(data_file), "--pretty"]
+    cmd = [PYTHON_CMD, str(DQ_CHECK_PY), str(data_file), "--pretty"]
     rc, stdout, stderr = run_subprocess(cmd)
     if stderr:
         print(stderr, file=sys.stderr)
@@ -1739,9 +2436,25 @@ def call_data_quality_check(data_file: Path) -> Tuple[Dict[str, Any], int]:
         return {"status": "error", "summary": {"total_warnings": 0}, "warnings": []}, 0
 
 
+def call_inference(data_file: Path) -> Dict[str, Any]:
+    """调用 data_quality_check.py --infer，返回行级推断建议值。"""
+    cmd = [PYTHON_CMD, str(DQ_CHECK_PY), str(data_file), "--infer", "--pretty"]
+    rc, stdout, stderr = run_subprocess(cmd)
+    if stderr:
+        print(stderr, file=sys.stderr)
+    if rc != 0:
+        print(f"  [!] 推断建议值生成失败，退出码 {rc}", file=sys.stderr)
+        return {"row_inferred": {}, "summary": {"total_rows": 0, "rows_with_inferred": 0, "total_inferred_fields": 0}}
+    try:
+        return json.loads(stdout)
+    except Exception as e:
+        print(f"  [!] 解析推断建议值结果失败: {e}", file=sys.stderr)
+        return {"row_inferred": {}, "summary": {"total_rows": 0, "rows_with_inferred": 0, "total_inferred_fields": 0}}
+
+
 def call_ocr_confusion_check(data_file: Path) -> Tuple[Dict[str, Any], int]:
     """调用 ocr_confusion_check.py，返回结果字典与存疑总数。"""
-    cmd = [sys.executable, str(CONFUSION_CHECK_PY), str(data_file), "--pretty"]
+    cmd = [PYTHON_CMD, str(CONFUSION_CHECK_PY), str(data_file), "--pretty"]
     rc, stdout, stderr = run_subprocess(cmd)
     if stderr:
         print(stderr, file=sys.stderr)
@@ -1846,25 +2559,77 @@ def update_index_for_doc(
 
 
 # ========== 模板复制 ==========
-def copy_web_templates(project_path: Path) -> None:
-    """将 Web 模板复制到项目文件夹根目录（含 PDF.js 离线依赖）。"""
-    # 模板文件清单：(源文件名, 目标文件名, 描述)
-    template_files = [
-        ("data-editor.html", "data-editor.html", "数据编辑器"),
-        ("project-dashboard.html", "项目总览.html", "项目总览仪表盘"),
-        ("tokens.css", "tokens.css", "统一设计令牌"),
-        ("pdf.min.js", "pdf.min.js", "PDF.js 主库（离线）"),
-        ("pdf.worker.min.js", "pdf.worker.min.js", "PDF.js Worker（离线）"),
-    ]
+def copy_web_templates(base_dir: Path) -> None:
+    """将 Web 模板复制到数据底座目录（含 PDF.js 离线依赖）。
 
-    for src_name, dst_name, desc in template_files:
+    从 template-manifest.json 读取模板清单，复制到 base_dir（即当前数据底座）
+    目录下。同时复制 rule-manager.bat 到数据底座目录。
+    """
+    # 模板统一复制到 base_dir（实际数据底座目录，兼容 --out 自定义目录名）
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_path = TEMPLATES_DIR / "template-manifest.json"
+    if manifest_path.exists():
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            template_files = [
+                (t["src"], t["dst"], t["desc"], t.get("required", False))
+                for t in manifest.get("templates", [])
+            ]
+            print(f"  ✓ 从 template-manifest.json 加载 {len(template_files)} 个模板",
+                  file=sys.stderr)
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"  [!] template-manifest.json 解析失败 ({e})，使用硬编码清单",
+                  file=sys.stderr)
+            template_files = _get_fallback_template_list()
+    else:
+        print("  [!] template-manifest.json 缺失，使用硬编码清单", file=sys.stderr)
+        template_files = _get_fallback_template_list()
+
+    missing_required = []
+    for src_name, dst_name, desc, required in template_files:
         src = TEMPLATES_DIR / src_name
-        dst = project_path / dst_name
+        dst = base_dir / dst_name
         if src.exists():
             shutil.copy2(src, dst)
             print(f"  ✓ 复制模板: {dst}（{desc}）", file=sys.stderr)
         else:
             print(f"  [!] 模板缺失: {src}（{desc}）", file=sys.stderr)
+            if required:
+                missing_required.append(src_name)
+
+    # 复制 rule-manager.bat 到数据底座目录
+    rule_bat_src = TEMPLATES_DIR.parent / "rule-manager.bat"
+    rule_bat_dst = base_dir / "规则管理工具.bat"
+    if rule_bat_src.exists():
+        shutil.copy2(rule_bat_src, rule_bat_dst)
+        print(f"  ✓ 复制规则管理工具: {rule_bat_dst}", file=sys.stderr)
+
+    if missing_required:
+        print(
+            f"  ⚠️ 缺失 {len(missing_required)} 个必需模板: {', '.join(missing_required)}",
+            file=sys.stderr)
+        print("  → 数据编辑器和项目总览可能无法正常使用", file=sys.stderr)
+
+
+def _get_fallback_template_list() -> list:
+    """硬编码的模板回退清单（当 template-manifest.json 不可用时使用）。"""
+    return [
+        ("data-editor.html", "数据核对编辑器.html", "数据核对编辑器", True),
+        ("project-dashboard.html", "项目总览.html", "项目总览仪表盘", True),
+        ("launcher.html", "打开审核工具.html", "审核工具入口导航页", True),
+        ("tokens.css", "tokens.css", "统一设计令牌", True),
+        ("pdf.min.js", "pdf.min.js", "PDF.js 主库（离线）", True),
+        ("pdf.worker.min.js", "pdf.worker.min.js", "PDF.js Worker（离线）", True),
+        ("alignment-view.html", "文档对齐视图.html", "文档对齐视图", False),
+        ("audit-scope-template.html", "审核范围模板.html", "审核范围模板", True),
+        ("feedback-collector.html", "反馈收集.html", "规则反馈收集面板", True),
+        ("rule-editor.html", "规则编辑器.html", "离线规则编辑器", True),
+        ("rule-manager.html", "规则管理器.html", "规则管理 Web 面板", True),
+        ("data_templates/碎石桩施工记录.json", "碎石桩施工记录.json", "碎石桩施工记录数据模板", True),
+    ]
 
 
 # ========== 断档检测（N-09） ==========
@@ -2230,8 +2995,12 @@ def main() -> int:
     )
     parser.add_argument("project_path", help="项目文件夹路径")
     parser.add_argument(
-        "--engine", choices=["auto", "vision", "paddle"], default="auto",
-        help="OCR 引擎（默认 auto）"
+        "--engine", choices=["auto", "vision", "rapidocr", "agent"], default=None,
+        help="OCR 引擎（默认 None：优先级 命令行 > preconditions.ocr_engine > auto）"
+    )
+    parser.add_argument(
+        "--handwritten", action="store_true", default=None,
+        help="标记全部资料为手写体（auto 模式直接走 VLM）。不传则按文件名启发式判定或前置信息 config",
     )
     parser.add_argument(
         "--incremental", action="store_true",
@@ -2254,7 +3023,13 @@ def main() -> int:
         "--include-all", action="store_true",
         help="扫描所有文件扩展名（默认仅扫描资料类扩展名）"
     )
+    parser.add_argument(
+        "--use-table", action="store_true",
+        help="启用 RapidTable(SLANetPlus) 表格结构感知（逐页识别，较慢；用于提升表格类扫描件的结构化精度）"
+    )
     args = parser.parse_args()
+
+    incremental = args.incremental if hasattr(args, 'incremental') else False
 
     project_path = Path(args.project_path).resolve()
     if not project_path.is_dir():
@@ -2274,8 +3049,31 @@ def main() -> int:
     else:
         preconditions = generate_default_preconditions(project_path)
 
-    # 命令行指定的 OCR 引擎优先级最高，回写到前置信息
-    preconditions["ocr_engine"] = args.engine
+    # ===== OCR 引擎解析 + 来源留痕 =====
+    # 优先级：命令行 --engine > preconditions.ocr_engine > 默认 auto
+    # ocr_engine_source 记录引擎是使用者显式选择还是默认，满足审核过程留痕
+    if args.engine is not None:
+        engine = str(args.engine)
+        engine_source = "user_chosen"      # CLI 显式指定
+    elif args.preconditions:
+        engine = str(preconditions.get("ocr_engine", "auto"))
+        engine_source = "user_chosen"      # 前置信息文件由使用者确认生成
+    else:
+        engine = "auto"
+        engine_source = "default"          # 全默认
+    preconditions["ocr_engine"] = engine
+    preconditions["ocr_engine_source"] = engine_source
+
+    # ===== 手写体判定（任务四：入口传参适配）=====
+    # 优先级：命令行 --handwritten > 前置信息 config["is_handwritten"] > 文件名启发式（逐文件）
+    if args.handwritten is not None:
+        global_is_handwritten: Optional[bool] = bool(args.handwritten)
+    elif isinstance(preconditions.get("config"), dict) and "is_handwritten" in preconditions.get("config", {}):
+        global_is_handwritten = bool(preconditions["config"]["is_handwritten"])
+    else:
+        global_is_handwritten = None  # None → 逐文件按文件名启发式判定
+    preconditions.setdefault("config", {})["is_handwritten"] = global_is_handwritten
+    print(f"  [i] 全局手写体判定: {global_is_handwritten}（None=逐文件按文件名启发式）", file=sys.stderr)
 
     if not args.preconditions:
         default_pre_path = out_base / "preconditions_default.json"
@@ -2427,6 +3225,17 @@ def main() -> int:
                 continue
             elif old_hash and old_hash != content_hash:
                 print(f"  [增量更新] 文件内容已变更，重新处理", file=sys.stderr)
+                # 文件已变更 → 用户修正了纸质文件重新扫描，旧数据应被完全覆盖
+                # 清除上一轮的核对状态和修正文件，让新数据从零开始（铁律：物理修正版 > 旧 OCR）
+                old_corrected = existing_doc.get("corrected_file", "")
+                if old_corrected:
+                    old_corrected_path = Path(old_corrected)
+                    if old_corrected_path.exists():
+                        old_corrected_path.unlink()
+                        print(f"  [清理] 删除旧修正文件: {old_corrected}", file=sys.stderr)
+                existing_doc["human_verified"] = False
+                existing_doc["corrected_file"] = None
+                print(f"  [清理] 重置 human_verified=false，新数据需重新核对", file=sys.stderr)
 
         # 确定存储目录与文件名
         folder = out_base / safe_filename(professional) / safe_filename(subcategory)
@@ -2445,53 +3254,30 @@ def main() -> int:
         ocr_confidence = 0.0
         ocr_text = ""
         retry_log: List[Dict[str, Any]] = []
+        # v12: rows/shift_result 初始化提前到分发之前，避免 OCR 分支结果被后续重置清空
+        rows: List[Dict[str, Any]] = []
+        shift_result: Dict[str, Any] = {}
+        table_struct_res: Optional[Dict[str, Any]] = None
 
         # ===== 提取 =====
         if method == "ocr":
-            # 扫描件 PDF / 图片
-            engine = args.engine
-            result = call_ocr_image(abs_path, engine, text_file, ocr_raw_file)
-            ocr_text = result.get("text", "")
-            ocr_engine = result.get("engine", engine)
-            ocr_confidence = result.get("confidence", 0.0)
-
-            # 行数校验与自动重试（铁律 R-16）
-            rows = build_rows(ocr_text, doc_type)
-            expected = get_expected_rows(rel, pages, file_type, expected_map)
-            passed, ratio = check_row_count(len(rows), expected)
-
-            if not passed:
-                # 第一次重试：图像增强（增量模式也执行，确保数据质量）
-                print(f"  [!] 行数不足（实际 {len(rows)} / 预期 {expected}，比例 {ratio:.0%}），尝试增强重识别...", file=sys.stderr)
-                retry_log.append({"attempt": 1, "action": "preprocess_enhance", "engine": engine})
-                result = call_ocr_image(abs_path, engine, text_file, ocr_raw_file, preprocess="enhance")
-                ocr_text = result.get("text", "")
-                ocr_engine = result.get("engine", engine)
-                ocr_confidence = result.get("confidence", 0.0)
-                rows = build_rows(ocr_text, doc_type)
-                passed, ratio = check_row_count(len(rows), expected)
-
-                # 第二次重试：切换引擎（paddle → vision）
-                if not passed:
-                    fallback_engine = "vision" if engine in ("paddle", "auto") else "vision"
-                    print(f"  [!] 增强后仍不足，尝试切换引擎 {fallback_engine}...", file=sys.stderr)
-                    retry_log.append({"attempt": 2, "action": "switch_engine", "from": engine, "to": fallback_engine})
-                    result = call_ocr_image(abs_path, fallback_engine, text_file, ocr_raw_file)
-                    if result.get("text"):
-                        ocr_text = result.get("text", "")
-                        ocr_engine = result.get("engine", fallback_engine)
-                        ocr_confidence = result.get("confidence", 0.0)
-                        rows = build_rows(ocr_text, doc_type)
-                        passed, ratio = check_row_count(len(rows), expected)
-
-                if not passed:
-                    ocr_status = "needs_review"
-                    retry_log.append({
-                        "attempt": "final",
-                        "action": "mark_needs_review",
-                        "reason": f"实际行数 {len(rows)} 低于预期 {expected} 的 {ROW_COUNT_THRESHOLD:.0%}",
-                    })
-                    print(f"  [⚠️] 行数校验未通过，标记为 needs_review", file=sys.stderr)
+            # 扫描件 PDF / 图片 —— v12.0 编排重写：单次 OCR，绝不多级重跑
+            # engine 使用 main() 顶部已解析的值（CLI > preconditions > auto）
+            use_table = bool((preconditions.get("config") or {}).get("use_table", False)) or args.use_table
+            o = orchestrate_ocr(
+                abs_path, engine, doc_type, pages, file_type, expected_map,
+                is_handwritten=global_is_handwritten,
+                text_file=text_file, ocr_raw_file=ocr_raw_file,
+                use_table=use_table,
+            )
+            ocr_text = o["ocr_text"]
+            ocr_engine = o["ocr_engine"]
+            ocr_confidence = o["ocr_confidence"]
+            ocr_status = o["ocr_status"]
+            rows = o["rows"]
+            shift_result = o["shift_result"]
+            retry_log = o["retry_log"]
+            table_struct_res = o.get("table")
 
         elif method == "pymupdf":
             # 电子档 PDF
@@ -2582,6 +3368,23 @@ def main() -> int:
                 })
                 print(f"  [!] {reason}", file=sys.stderr)
 
+        elif method == "docx":
+            # v9.5：电子 Word 文档（含 `nature=扫描转化电子文档`）
+            # 走电子表解析（python-docx 读段落+表格），不触发 OCR 引擎
+            result = call_extract_docx(abs_path, text_file)
+            ocr_text = result.get("text", "")
+            ocr_engine = result.get("engine", "docx")
+            ocr_confidence = result.get("confidence", 1.0)
+            save_json(ocr_raw_file, {
+                "text": ocr_text,
+                "engine": ocr_engine,
+                "confidence": ocr_confidence,
+                "items": [],
+                "page_count": pages,
+                "source": "docx",
+                "nature": preconditions.get("nature", ""),
+            })
+
         else:
             # 暂不支持的类型
             ocr_status = "unsupported"
@@ -2597,53 +3400,63 @@ def main() -> int:
             })
             print(f"  [!] {reason}", file=sys.stderr)
 
-        if method == "excel":
-            # Excel: only record metadata in index, don't create data files
-            doc = {
-                "id": next_doc_id(index),
-                "original_file": str(rel),
-                "file_type": "XLSX",
-                "is_scanned": False,
-                "extraction_mode": extraction_mode,
-                "is_drawing": is_drawing,
-                "drawing_type": drawing_type,
-                "doc_role": doc_role,
-                "doc_type": doc_type,
-                "professional": professional,
-                "subcategory": subcategory,
-                "classification_source": classification_source,
-                "classification_confidence": classification_confidence,
-                "subdivision_code": None,
-                "pages": len(wb.sheetnames) if 'wb' in dir() else 1,
-                "ocr_status": "completed",
-                "ocr_engine": "openpyxl",
-                "ocr_confidence": 1.0,
-                "data_file": None,
-                "data_md": None,
-                "data_format": "excel_raw",
-                "metadata": {
-                    "sheets": wb.sheetnames if 'wb' in dir() else [],
-                    "total_rows": len(sheet_rows) if 'sheet_rows' in dir() else 0,
-                },
-                "human_verified": True,
-                "human_confirmed": False,  # v7.2 C1: AI 分类结果，待人工确认
-                "audit_status": "pending",
-                "last_updated": now_iso(),
-                "size_bytes": sniff.get("size_bytes"),
-                "content_hash": content_hash,
+        # Excel 特殊元数据保存（供后续 structured 字典使用）
+        _excel_meta = {}
+        if method == "excel" and 'wb' in dir():
+            _excel_meta = {
+                "sheets": wb.sheetnames,
+                "total_rows": len(sheet_rows) if 'sheet_rows' in dir() else 0,
             }
-            update_index_for_doc(index, doc)
-            print(f"  ✓ Excel元数据已记录: {rel.name}", file=sys.stderr)
-            continue  # Skip the rest of the loop for Excel files
 
         # ===== 生成结构化 rows =====
-        rows: List[Dict[str, Any]] = []
-        if ocr_status != "unsupported":
+        # v12：rows/shift_result 已由分发前的初始化 + OCR 编排填充；
+        # 此块仅对非 OCR 分支（pymupdf/text/excel）且 rows 仍为空时做文本兜底。
+        if ocr_status != "unsupported" and not rows:
             rows = build_rows(ocr_text, doc_type)
             # 空内容也触发 needs_review
             if not rows:
                 ocr_status = "needs_review"
                 print(f"  [!] 未识别到任何数据行", file=sys.stderr)
+
+            # v8.9: 整表列校验 —— 错位率高强制 needs_review
+            shift_result = validate_structured_rows(rows, doc_type)
+            if shift_result.get("applied") and shift_result.get("shift_risk") == "high":
+                ocr_status = "needs_review"
+                print(
+                    f"  [⚠️] 列错位风险 {shift_result['shift_risk']}："
+                    f"{shift_result['suspect_count']}/{shift_result['total_rows']} 行错位，"
+                    f"标记为 needs_review",
+                    file=sys.stderr,
+                )
+
+        # 数据契约：columns / schema_status / row_parsed_stats（消费方感知前置）
+        _META_KEYS = {"page", "line_no", "issues", "raw_text", "inferred", "parsed", "unparsed_fields"}
+        _FIELD_KEYS = {"pile_no", "actual_length", "top_elev", "bottom_elev", "design_length"}
+        _contract_cols = [k for k in rows[0].keys() if k not in _META_KEYS] if rows else []
+        _lower = (doc_type or "").lower()
+        _is_pile = any(kw in _lower for kw in ["碎石桩", "cfg", "桩"])
+        _total = len(rows)
+        # 归一化 parsed：显式 parsed=False 或 raw_text-only 行均视为未解析（兼容多个解析器）
+        def _row_parsed(r: Any) -> bool:
+            if not isinstance(r, dict):
+                return False
+            if r.get("parsed") is False:
+                return False
+            if "raw_text" in r and not any(k in r for k in _FIELD_KEYS):
+                return False
+            return True
+        _parsed = sum(1 for r in rows if _row_parsed(r))
+        _unparsed = _total - _parsed
+        data_contract = {
+            "columns": _contract_cols,
+            "schema_status": "known_domain" if _is_pile else "unknown_domain",
+            "row_parsed_stats": {
+                "total": _total,
+                "parsed": _parsed,
+                "unparsed": _unparsed,
+                "unparsed_ratio": round(_unparsed / _total, 3) if _total else 0.0,
+            },
+        }
 
         # 构建 page_map（三层结构之 Layer 3）
         page_map = build_page_map(abs_path, is_scanned, ocr_text, method)
@@ -2678,7 +3491,21 @@ def main() -> int:
             "header_math_chain_failures": header_info["math_chain_failures"],
             "header_math_chain_inferred": header_info["math_chain_inferred"],
             "header_column_feature_issues": header_info["column_feature_issues"],
+            # v8.9: 整表列错位校验结果
+            "column_shift_check": shift_result,
+            # v15: RapidTable(SLANetPlus) 表格结构感知结果（逐页 cells 网格，供人工核对与规则引擎）
+            "table_struct": table_struct_res,
+            # v9.5: 数据契约（消费方感知前置，防止未知表格/未解析行静默失效）
+            "columns": data_contract["columns"],
+            "schema_status": data_contract["schema_status"],
+            "row_parsed_stats": data_contract["row_parsed_stats"],
         }
+
+        # Excel 元数据注入
+        if _excel_meta:
+            structured["data_format"] = "excel_raw"
+            structured["excel_sheets"] = _excel_meta.get("sheets", [])
+            structured["excel_total_rows"] = _excel_meta.get("total_rows", 0)
 
         # ===== 分配分部分项 code（v6.0 新增） =====
         subdivision_code = assign_subdivision_to_document(
@@ -2713,7 +3540,30 @@ def main() -> int:
             structured["confusion_result"] = confusion_result
             save_json(data_file, structured)
 
+            # ===== 行级推断建议值（v9.5: 对缺失值做数学关系推断） =====
+            infer_result = call_inference(data_file)
+            inferred_count = infer_result.get("summary", {}).get("total_inferred_fields", 0)
+            if inferred_count > 0:
+                # 将推断值写回 structured_rows 的 inferred 字段
+                row_inferred = infer_result.get("row_inferred", {})
+                for row_idx_str, inferred_fields in row_inferred.items():
+                    try:
+                        row_idx = int(row_idx_str) - 1  # 转 0-based
+                        if 0 <= row_idx < len(rows):
+                            rows[row_idx]["inferred"] = inferred_fields
+                    except (ValueError, IndexError):
+                        pass
+                structured["inferred_summary"] = infer_result["summary"]
+                save_json(data_file, structured)
+                print(f"  [推断] 生成 {inferred_count} 个推断建议值，涉及 {infer_result['summary']['rows_with_inferred']} 行",
+                      file=sys.stderr)
+
         # ===== 更新 index.json =====
+        # v9.5：human_verified 分层——「扫描转化电子文档」虽为电子表解析，
+        # 但因仍源自手写扫描，强制保留人工核对闸门（需确认后才放行）。
+        _nature = (preconditions.get("nature") or "").strip()
+        _is_scan_converted = _nature == "扫描转化电子文档" and method == "docx"
+        human_verified_flag = not (is_scanned or file_type == "IMAGE" or _is_scan_converted)
         doc = {
             "id": structured["doc_id"],
             "original_file": str(rel),
@@ -2743,14 +3593,18 @@ def main() -> int:
             "confusion_file": str(confusion_file.relative_to(out_base)).replace("\\", "/"),
             "quality_alerts": quality_alerts,
             "confusion_suspects": confusion_suspects,
-            "human_verified": not (is_scanned or file_type == "IMAGE"),
+            "human_verified": human_verified_flag,
+            "ai_reviewed": False,  # v9.5: AI 复核标记，低置信字段经 crop_and_verify 复核后置 True
             "human_confirmed": False,  # v7.2 C1: AI 分类结果，待人工确认
             "corrected_file": None,
             "audit_status": "pending",
             "last_updated": now_iso(),
+            "incremental_added_at": now_iso() if incremental else None,  # v9.5: 增量添加时间戳
+            "incremental_from": str(rel) if incremental else None,  # v9.5: 增量来源文件路径
             "size_bytes": sniff.get("size_bytes"),
             "content_hash": content_hash,
             "retry_log": retry_log,
+            "low_confidence": ocr_confidence < 0.5 if isinstance(ocr_confidence, (int, float)) else False,
         }
         update_index_for_doc(index, doc)
         print(f"  ✓ 已生成: {data_file.name}, 告警 {quality_alerts}, 存疑 {confusion_suspects}", file=sys.stderr)
@@ -2784,8 +3638,8 @@ def main() -> int:
     )
     save_json(out_base / "index.json", index)
 
-    # 复制 Web 模板
-    copy_web_templates(project_path)
+    # 复制 Web 模板到当前数据底座目录（out_base，兼容 --out 自定义目录名）
+    copy_web_templates(out_base)
 
     print(f"\n✅ 数据底座建立完成: {out_base}", file=sys.stderr)
     print(f"   阶段: {index['stage']}", file=sys.stderr)
