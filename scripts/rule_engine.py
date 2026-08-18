@@ -386,6 +386,34 @@ class ExpressionEvaluator:
             return template
 
 
+def is_row_consumable(row: Dict[str, Any]) -> bool:
+    """消费方感知：判断某行是否可被领域规则消费。
+
+    结构化行（parsed=true）可消费；纯文本兜底行（raw_text-only，parsed=false）不可消费，
+    否则会对未对齐的 raw_text 跑领域规则 → 静默失效/误报。
+    """
+    if not isinstance(row, dict):
+        return False
+    if row.get("parsed") is False:
+        return False
+    # 老数据底座无 parsed 标记：raw_text-only 行视为不可消费
+    if "raw_text" in row and not any(k in row for k in ("pile_no", "actual_length", "top_elev")):
+        return False
+    return True
+
+
+def doc_domain_status(doc_data: dict) -> str:
+    """消费方感知：返回文档的领域解析状态（known_domain / unknown_domain / empty）。"""
+    if not isinstance(doc_data, dict):
+        return "empty"
+    status = doc_data.get("schema_status")
+    if status:
+        return status
+    rows = doc_data.get("structured_rows") or doc_data.get("rows") or []
+    has_structured = any(is_row_consumable(r) for r in rows) if rows else False
+    return "known_domain" if has_structured else "unknown_domain"
+
+
 # ========== 4. SingleDocChecker ==========
 class SingleDocChecker:
     """对单份资料数据执行规则（逐行求值）。"""
@@ -400,9 +428,15 @@ class SingleDocChecker:
             {"doc_type": "碎石桩施工记录",
              "professional": "01_场道工程",
              "rows": [{"pile_no": "Z415", "实长": 13.7, ...}, ...]}
+        附加（v9.5 数据契约）：
+            {"schema_status": "known_domain" | "unknown_domain",
+             "row_parsed_stats": {...}}
 
         对每一行数据，构建 context（行字段），调用 evaluator.evaluate。
         返回 Violation 列表（每行一个）。
+
+        消费方感知（v9.5）：unknown_domain 文档仅执行通用检查，不执行领域规则；
+        未解析行（parsed=false / raw_text-only）直接跳过，避免静默失效。
         """
         violations: List[Violation] = []
         if rule.scope != SCOPE_SINGLE_DOC:
@@ -414,11 +448,15 @@ class SingleDocChecker:
         if not expr:
             return violations
 
+        # 领域规则：unknown_domain 文档不执行（无列语义可对齐），交由通用检查
+        if doc_domain_status(doc_data) == "unknown_domain":
+            return violations
+
         field_required = rule.trigger_when.get("field_required", []) or []
         severity = rule.severity_on_violation or SEVERITY_SANITY
 
         for idx, row in enumerate(rows):
-            if not isinstance(row, dict):
+            if not is_row_consumable(row):
                 continue
             # 构造 context（行字段 + 中文别名注入）
             context: Dict[str, Any] = dict(row)
@@ -525,13 +563,13 @@ class CrossDocChecker:
         if not docs_data:
             return violations
 
-        # 合并所有文档的 rows
+        # 合并所有文档的 rows（消费方感知：跳过未解析行，避免跨文档静默失效）
         all_rows: List[Dict[str, Any]] = []
         for doc in docs_data:
             if not isinstance(doc, dict):
                 continue
             for row in (doc.get("structured_rows") or doc.get("rows", [])) or []:
-                if isinstance(row, dict):
+                if isinstance(row, dict) and is_row_consumable(row):
                     all_rows.append(row)
 
         expr = rule.check_expr.get("expr", "")
@@ -605,8 +643,8 @@ class CrossUnitChecker:
         if not join_keys or not field_a or not field_b:
             return violations
 
-        a_rows = (party_a_data.get("structured_rows") or party_a_data.get("rows", [])) if isinstance(party_a_data, dict) else []
-        b_rows = (party_b_data.get("structured_rows") or party_b_data.get("rows", [])) if isinstance(party_b_data, dict) else []
+        a_rows = [r for r in ((party_a_data.get("structured_rows") or party_a_data.get("rows", [])) if isinstance(party_a_data, dict) else []) if is_row_consumable(r)]
+        b_rows = [r for r in ((party_b_data.get("structured_rows") or party_b_data.get("rows", [])) if isinstance(party_b_data, dict) else []) if is_row_consumable(r)]
 
         # E-2.1 按 join_key 建立乙方哈希索引（一对多：{key_str: [row1, row2, ...]}）
         b_index: Dict[str, List[Dict[str, Any]]] = self._build_index(b_rows, join_keys)
@@ -851,13 +889,20 @@ class ViolationReporter:
             "violations": [self._violation_to_dict(v) for v in violations],
         }
 
-    def to_audit_findings(self, violations: List[Violation]) -> List[dict]:
+    def to_audit_findings(self, violations: List[Violation],
+                          references_dir: Optional[str] = None,
+                          vault_dir: Optional[str] = None) -> List[dict]:
         """转换为现有审核系统兼容的 findings 格式。
 
         映射规则：
           - Fatal         → result="fail"
           - Sanity Check  → result="suspicious"
           - Best Practice → result="pass"（提示性警告，不影响合规判定）
+
+        依据查询机制（防幻觉铁律 IR-001）：
+          对每个 finding 调 lookup_source 补齐 spec（规范条款号）+ evidence_source
+          （references / obsidian / missing）。查不到 → evidence_source="missing"，
+          供后续结论门禁拦截"依据缺失却下确定性结论"。
         """
         findings: List[dict] = []
         for v in violations:
@@ -867,7 +912,7 @@ class ViolationReporter:
                 result = "suspicious"
             else:
                 result = "pass"
-            findings.append({
+            f = {
                 "rule_id": v.rule_id,
                 "rule_name": v.rule_name,
                 "level": v.level,
@@ -878,8 +923,55 @@ class ViolationReporter:
                 "finding": v.error_message,
                 "evidence": v.context,
                 "remediation": v.remediation or "",
-            })
+                "spec": "",
+                "evidence_source": "missing",
+            }
+            # 依据查询机制：回填 spec + evidence_source（不联网，只查 references/Obsidian）
+            try:
+                from lookup_source import lookup_source
+                self._backfill_spec(f, references_dir, vault_dir, lookup_source)
+            except Exception:
+                f["evidence_source"] = "missing"
+            findings.append(f)
         return findings
+
+    @staticmethod
+    def _infer_evidence_type(spec: str = "", evidence_file: str = "") -> str:
+        """推断依据类型（与 review_audit._infer_evidence_type 保持同规则，避免跨模块耦合）。"""
+        fname = (evidence_file or "").lower()
+        if "设计说明" in fname or "说明" in fname:
+            return "design_note"
+        if any(k in fname for k in ("布置图", "剖面图", "平面图", "断面图", "dwg", ".dwf")):
+            return "drawing"
+        if any(k in fname for k in ("通知单", "变更单", "变更", "洽商", "联系单")):
+            return "notice"
+        if spec or any(k in fname for k in ("mh", "gb", "jg", "jgj", "ac-", "ccar", "规范")):
+            return "spec"
+        return "engineering_practice"
+
+    @staticmethod
+    def _backfill_spec(f: dict, references_dir: Optional[str], vault_dir: Optional[str],
+                       lookup_source) -> None:
+        """单个 finding 的依据回填：spec 为空时调 lookup_source。"""
+        query = f.get("rule_name") or f.get("finding") or ""
+        if not query:
+            f["evidence_source"] = "missing"
+            f["evidence_type"] = "engineering_practice"
+            return
+        hit = lookup_source(query, content_snippet=f.get("evidence", ""),
+                            references_dir=references_dir, vault_dir=vault_dir)
+        if hit.get("found"):
+            f["spec"] = hit.get("spec", "")
+            f["evidence_source"] = hit.get("source", "references")
+            if hit.get("file"):
+                f["evidence_file"] = hit.get("file")
+            if hit.get("clause"):
+                f["clause"] = hit.get("clause")
+        else:
+            f["evidence_source"] = "missing"
+        f["evidence_type"] = ViolationReporter._infer_evidence_type(
+            f.get("spec", ""), f.get("evidence_file", ""),
+        )
 
     @staticmethod
     def _violation_to_dict(v: Violation) -> dict:

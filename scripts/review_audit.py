@@ -225,6 +225,142 @@ def _collect_ocr_review_list(
     return review_list
 
 
+# ========== 依据类型判定：evidence_type ==========
+def _infer_evidence_type(spec: str = "", evidence_file: str = "") -> str:
+    """推断审核依据的类型，用于报告展示依据来源。
+
+    取值：
+      - spec               规范条款（MH/T、GB、JGJ 等规范编号，或 references/Obsidian 规范原文）
+      - drawing            施工图纸（布置图/剖面图/平面图/dwg 等）
+      - design_note        设计说明
+      - notice             通知单/变更单/洽商记录
+      - engineering_practice  工程惯例（无规范原文支撑，仅作参考）
+
+    判定优先级：文件名关键词 > 规范编号。拿不准的一律归 spec，避免硬猜。
+    """
+    fname = (evidence_file or "").lower()
+    # 设计说明（优先于图纸判定：即使文件是 dwg/pdf，只要名为"设计说明"即归设计说明）
+    if "设计说明" in fname or "说明" in fname:
+        return "design_note"
+    # 图纸类
+    if any(k in fname for k in ("布置图", "剖面图", "平面图", "断面图", "dwg", ".dwf")):
+        return "drawing"
+    # 通知单/变更单/洽商
+    if any(k in fname for k in ("通知单", "变更单", "变更", "洽商", "联系单")):
+        return "notice"
+    # 规范类：有规范编号，或来源于规范原文文件
+    if spec or any(k in fname for k in ("mh", "gb", "jg", "jgj", "ac-", "ccar", "规范")):
+        return "spec"
+    return "engineering_practice"
+
+
+# ========== 依据查询机制：evidence_source 回填 ==========
+def _backfill_evidence_source(
+    findings: List[Dict[str, Any]],
+    references_dir: Optional[str] = None,
+    vault_dir: Optional[str] = None,
+) -> Dict[str, int]:
+    """为 findings 回填规范依据来源，并统计来源分布。
+
+    依据查询机制（防幻觉铁律）：
+      - 对 spec 为空的 finding，调 lookup_source 主动查 references/Obsidian 回填
+      - 所有 finding 补 evidence_source 标记（references / obsidian / missing）
+      - 查不到 → evidence_source="missing"，供结论门禁拦截（依据缺失不得下确定性结论）
+
+    返回来源分布统计 {references: n, obsidian: n, missing: n}。
+    """
+    try:
+        from lookup_source import lookup_source
+    except Exception:
+        lookup_source = None
+
+    dist: Dict[str, int] = {"references": 0, "obsidian": 0, "missing": 0}
+    for f in findings:
+        # 依据类型：统一回填（spec 或 evidence_file 均可能变化，放在最前保证最新）
+        f["evidence_type"] = _infer_evidence_type(
+            f.get("spec", ""), f.get("evidence_file", ""),
+        )
+        # 已带来源标记则跳过
+        if f.get("evidence_source"):
+            f["evidence_quality"] = f.get("evidence_quality") or "medium"
+            dist[f["evidence_source"]] = dist.get(f["evidence_source"], 0) + 1
+            continue
+        spec = f.get("spec", "")
+        # 规范对账/逻辑一致性 finding 已固化 spec → 视为 references 缓存提供
+        if spec:
+            f["evidence_source"] = "references"
+            f["evidence_quality"] = "high"
+            dist["references"] += 1
+            continue
+        # spec 为空 → 主动查依据（不靠 AI 自觉、不联网）
+        if lookup_source is None:
+            f["evidence_source"] = "missing"
+            f["evidence_quality"] = "low"
+            dist["missing"] += 1
+            continue
+        query = f.get("check_item") or f.get("finding") or f.get("rule_name") or ""
+        if not query:
+            f["evidence_source"] = "missing"
+            f["evidence_quality"] = "low"
+            dist["missing"] += 1
+            continue
+        try:
+            hit = lookup_source(query, content_snippet=f.get("finding", ""),
+                                references_dir=references_dir, vault_dir=vault_dir)
+        except Exception:
+            hit = {"found": False, "source": "missing", "spec": "", "clause": "",
+                   "snippet": "", "file": ""}
+        if hit.get("found"):
+            f["spec"] = hit.get("spec", spec) or spec
+            f["evidence_source"] = hit.get("source", "obsidian")
+            f["evidence_file"] = hit.get("file", "")
+            f["evidence_quality"] = hit.get("quality", "medium")
+            if hit.get("clause"):
+                f["clause"] = hit.get("clause")
+            if hit.get("snippet"):
+                f["evidence_snippet"] = hit.get("snippet")
+        else:
+            f["evidence_source"] = "missing"
+            f["evidence_quality"] = "low"
+        src = f.get("evidence_source", "missing")
+        dist[src] = dist.get(src, 0) + 1
+    return dist
+
+
+# ========== 依据文件清单聚合（供报告 1.2 审核依据文件使用）==========
+def _aggregate_evidence_files(findings: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """从 findings 聚合出去重后的依据文件清单，供 HTML 报告 1.2 章节使用。
+
+    每个依据条目：spec（规范编号）、clause（条款号）、source（references/obsidian）、
+    file（来源文件名）、purpose（用途说明）。
+    依据来源缺失（missing）或未命中具体文件的条目不进入清单，避免报告出现空壳行。
+    """
+    seen = set()
+    rows: List[Dict[str, str]] = []
+    for f in findings:
+        spec = (f.get("spec") or "").strip()
+        src = f.get("evidence_source") or "missing"
+        if src == "missing":
+            continue
+        if not spec:
+            continue
+        key = (spec, src, (f.get("evidence_file") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({
+            "spec": spec,
+            "clause": (f.get("clause") or "").strip(),
+            "source": src,
+            "file": (f.get("evidence_file") or "").strip(),
+            "type": f.get("evidence_type") or _infer_evidence_type(spec, f.get("evidence_file", "")),
+            "purpose": "规范依据" if src == "references" else "知识库依据（Obsidian）",
+        })
+    # 按来源分组排序：references 在前，obsidian 在后
+    rows.sort(key=lambda r: (0 if r["source"] == "references" else 1, r["spec"]))
+    return rows
+
+
 # ========== 审核前置检查 ==========
 def check_human_verified(index: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """
@@ -784,7 +920,11 @@ def audit_logic_consistency(
         # L-07: 检验批工程量累计 = 分项工程工程量
         elif check_id == "L-07":
             # 尝试自动计算（如果有数量字段）
-            total_rows = sum(len(data.get("structured_rows") or data.get("rows", [])) for data in all_data.values())
+            # v9.5 消费方感知：仅统计可消费（parsed）行，未解析行不计入累计
+            def _consumable(data: dict) -> int:
+                rows = data.get("structured_rows") or data.get("rows", []) or []
+                return sum(1 for r in rows if not (isinstance(r, dict) and r.get("parsed") is False))
+            total_rows = sum(_consumable(data) for data in all_data.values())
             finding["finding"] = f"需核对检验批工程量累计与分项工程量是否一致（共 {total_rows} 行数据）"
             finding["evidence"] = f"共 {len(all_docs)} 份文档参与累计计算"
 
@@ -938,7 +1078,12 @@ def run_rule_engine(
                     cross_unit_hits += len(violations)
 
     # 转换为 findings
-    findings = reporter.to_audit_findings(all_violations)
+    # 依据查询机制：传入 references/Obsidian 目录，让 finding 回填 spec + evidence_source
+    findings = reporter.to_audit_findings(
+        all_violations,
+        references_dir=str(SKILL_DIR / "references"),
+        vault_dir=None,  # 默认 H:\Obsidian notes\溜哥笔记\wiki\sources（lookup_source 内置）
+    )
 
     # v7.2 C4：对 SINGLE_DOC findings 应用 OCR 置信度降级
     # findings 与 all_violations 顺序一致，通过 parallel list all_violation_doc_meta 匹配
@@ -1032,6 +1177,50 @@ def generate_audit_log(
     新增 force_info 参数：记录 --force 跳过 human_verified 闸门的情况，
     包含 force_bypass_gate / unverified_files / bypassed_at 等字段。
     """
+    # ===== 签字一致性检测结果并入 findings =====
+    # 铁律：拒绝为伪造/疑似资料背书。此前 signature_anomalies 仅写入日志和
+    # 报告展示，未并入结论判定，导致疑似代签资料在其他检查通过时仍输出
+    # "合格 — 未发现不符合项"。现将异常转为 findings 并入 all_findings：
+    #   likely_forgery → result=fail（不合格），severity=high
+    #   suspect        → result=suspicious（存疑），severity=medium
+    if signature_anomalies:
+        for anomaly in signature_anomalies:
+            status = anomaly.get("status", "suspect")
+            is_forgery = status == "likely_forgery"
+            all_findings.append({
+                "checklist_id": str(anomaly.get("rule", "LG-304")).split(":")[0].strip(),
+                "category": "签字一致性",
+                "check_item": anomaly.get("rule", "同一签字人在不同资料的笔迹一致"),
+                "criteria": anomaly.get("rule", ""),
+                "spec": "MH/T 5078.1（签字一致性）",
+                "doc_id": anomaly.get("doc_id", ""),
+                "doc_file": anomaly.get("doc_file", ""),
+                "severity": "high" if is_forgery else "medium",
+                "result": "fail" if is_forgery else "suspicious",
+                "finding": (
+                    f"签字一致性异常：{anomaly.get('signer', '?')} "
+                    f"在 {anomaly.get('baseline_doc', '基线资料')}"
+                    f"({anomaly.get('baseline_date', '')}) 与本文档笔迹相似度 "
+                    f"{anomaly.get('similarity', '?')}，"
+                    f"判定为{'疑似代签' if is_forgery else '存疑'}"
+                ),
+                "evidence": (
+                    f"相似度 {anomaly.get('similarity', '?')}；"
+                    f"对比图 {anomaly.get('compare_image_path', '')}"
+                ),
+                "checked_at": now_iso(),
+            })
+
+    # ===== 依据查询机制：回填 evidence_source（防幻觉，来源留痕）=====
+    # 对 spec 为空的 finding 调 lookup_source 主动查 references/Obsidian；
+    # 全部 finding 补 evidence_source 标记，供结论门禁拦截"依据缺失却下结论"。
+    references_dir = str(SKILL_DIR / "references")
+    evidence_sources = _backfill_evidence_source(
+        all_findings + logic_findings + rule_engine_findings,
+        references_dir=references_dir,
+        vault_dir=None,  # 默认 H:\Obsidian notes\溜哥笔记\wiki\sources（lookup_source 内置）
+    )
+
     # 统计（统一从 all_findings + logic_findings 统计，保证总数一致）
     all_results = all_findings + logic_findings
     total = len(all_results)
@@ -1115,10 +1304,15 @@ def generate_audit_log(
         "force_info": force_info,
         "subdivision_tree": get_full_subdivision_tree(),
         "conclusion": {
-            "overall": _derive_overall_conclusion(all_findings + logic_findings),
-            "high_confidence": sum(1 for f in all_findings + logic_findings if f["severity"] == "high" and f["result"] != "pass"),
-            "recommendations": _generate_recommendations(all_findings + logic_findings),
+            # 依据查询机制：结论门禁纳入规则引擎 findings，依据缺失同样拦截
+            "overall": _derive_overall_conclusion(all_findings + logic_findings + rule_engine_findings),
+            "high_confidence": sum(1 for f in all_findings + logic_findings + rule_engine_findings if f["severity"] == "high" and f["result"] != "pass"),
+            "recommendations": _generate_recommendations(all_findings + logic_findings + rule_engine_findings),
         },
+        # 依据查询机制：本次审核依据来源分布（可追溯，防幻觉）
+        "evidence_sources": evidence_sources,
+        # 依据文件清单（去重，供报告 1.2 审核依据文件表格填充）
+        "evidence_files": _aggregate_evidence_files(all_findings + logic_findings + rule_engine_findings),
     }
 
     if signature_anomalies:
@@ -1159,6 +1353,18 @@ def _derive_overall_conclusion(findings: List[Dict[str, Any]]) -> str:
     needs_ai_count = sum(1 for f in findings if f["result"] == "needs_ai")
     # v7.2 C4：统计 OCR 低置信度降级的存疑项
     ocr_downgraded_count = sum(1 for f in findings if f.get("_ocr_downgraded"))
+    # 依据查询机制：统计"依据缺失"且带结论的项（fail/suspicious 被 missing 证据支撑）
+    missing_evidence_count = sum(
+        1 for f in findings
+        if f.get("evidence_source") == "missing" and f.get("result") in ("fail", "suspicious")
+    )
+
+    # 依据缺失门禁：存在带结论但依据缺失的项 → 禁止下确定性结论（硬约束「审核结论必须有据可依」）
+    if missing_evidence_count > 0:
+        return (
+            f"依据缺失 — 存在 {missing_evidence_count} 项检查结论缺少规范依据"
+            f"（references 与 Obsidian 均未命中），需人工补充规范依据后重新审核"
+        )
 
     if fatal_count > 0:
         return "不合格 — 存在严重问题，需立即整改"

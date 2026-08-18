@@ -48,6 +48,10 @@ except ImportError:
     HAS_PYMUPDF = False
 
 
+# ========== Python 解释器路径（强制使用 Python 3.14，确保 rapidocr 可用） ==========
+PYTHON_CMD = r"C:\Python314\python.exe"
+
+
 # ========== 1. 资料格式识别 ==========
 def sniff_document(file_path: str) -> dict:
     """识别资料类型、页数、是否扫描件、文件大小。
@@ -129,8 +133,8 @@ def extract_text(
     根据 sniff_document 结果自动选择提取策略。
 
     Args:
-        engine: OCR 引擎，默认 auto（API 优先 → PaddleOCR 备选 → Tesseract 兜底）。
-                可选：auto / vision / paddle / tesseract。
+        engine: OCR 引擎，默认 auto（印刷体→RapidOCR 备选 → Tesseract 兜底；手写体→Vision/agent）。
+                可选：auto / rapidocr / vision / tesseract / agent。
         use_table: 已废弃，保留兼容性（v4.1 移除 rapid-table）。
 
     Returns:
@@ -152,7 +156,7 @@ def extract_text(
         return {"text": clean_text("\n".join(parts)), "engine": "PyMuPDF", "confidence": 1.0}
 
     if method == "ocr":
-        # v4.1：默认 PaddleOCR 单层主引擎
+        # v10.0：默认 auto 路由（印刷体→RapidOCR，手写体→Vision/agent）
         import ocr_image as _ocr
         if info["suffix"] == ".pdf":
             result = _ocr.ocr_pdf(file_path, lang=lang, dpi=dpi, engine=engine)
@@ -261,11 +265,12 @@ def cmd_build(args):
     out_dir = project_path / args.out
 
     cmd = [
-        sys.executable, str(foundation_script),
+        PYTHON_CMD, str(foundation_script),
         str(project_path),
-        "--engine", args.engine,
         "--out", args.out,
     ]
+    if args.engine is not None:
+        cmd.extend(["--engine", args.engine])
     if args.incremental:
         cmd.append("--incremental")
     if args.preconditions:
@@ -935,6 +940,25 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     SEV_LABEL = {"fatal": "严重", "high": "高", "medium": "中", "low": "低", "suspicious": "存疑",
                  "Fatal": "严重", "Sanity Check": "存疑", "Best Practice": "提示"}
 
+    # 依据类型徽标（报告"依据类型"列可视化，颜色区分类型）
+    EVIDENCE_TYPE_LABEL = {
+        "spec": "规范", "drawing": "图纸", "design_note": "设计说明",
+        "notice": "通知单", "engineering_practice": "工程惯例",
+    }
+    EVIDENCE_TYPE_COLOR = {
+        "spec": "#2563EB", "drawing": "#059669", "design_note": "#7C3AED",
+        "notice": "#D97706", "engineering_practice": "#6C757D",
+    }
+
+    def _evidence_badge(etype: str) -> str:
+        """依据类型的彩色徽标 HTML（未知类型回退为灰色文本）。"""
+        label = EVIDENCE_TYPE_LABEL.get(etype, etype or "")
+        color = EVIDENCE_TYPE_COLOR.get(etype, "#6C757D")
+        if not label:
+            return ""
+        return (f'<span style="display:inline-block;padding:1px 8px;border-radius:10px;'
+                f'font-size:12px;color:#fff;background:{color};white-space:nowrap;">{label}</span>')
+
     non_pass_findings = [f for f in findings if f.get("result") != "pass" and f.get("result") != "not_applicable"]
     finding_rows = ""
     for f in non_pass_findings[:100]:
@@ -954,6 +978,7 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
           <td title="{fname}">{display_name}</td>
           <td>{f.get('finding', '')}</td>
           <td>{f.get('spec', '')}</td>
+          <td>{_evidence_badge(f.get('evidence_type', ''))}</td>
         </tr>"""
 
     # ===== OCR 低置信度待核实专区（v7.2 C4） =====
@@ -1224,10 +1249,10 @@ def _generate_html_report(audit_log: dict, project_path: Path) -> str:
     <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>结果</th><th>严重</th><th>编号</th><th>类别</th><th>检查项</th><th>文档</th><th>发现</th><th>规范</th></tr>
+        <tr><th>结果</th><th>严重</th><th>编号</th><th>类别</th><th>检查项</th><th>文档</th><th>发现</th><th>规范</th><th>依据类型</th></tr>
       </thead>
       <tbody>
-        {finding_rows or '<tr><td colspan="8" style="text-align:center;color:#999;">（无需要关注的问题）</td></tr>'}
+        {finding_rows or '<tr><td colspan="9" style="text-align:center;color:#999;">（无需要关注的问题）</td></tr>'}
       </tbody>
     </table>
     </div>
@@ -1280,8 +1305,8 @@ def main() -> None:
     p_extract.add_argument("--dpi", type=int, default=200)
     p_extract.add_argument("--out")
     p_extract.add_argument(
-        "--engine", choices=["paddle", "tesseract", "vision", "auto"], default="paddle",
-        help="OCR 引擎：paddle(默认)/tesseract/vision/auto"
+        "--engine", choices=["rapidocr", "tesseract", "vision", "auto", "agent"], default="auto",
+        help="OCR 引擎：auto(默认)/rapidocr/tesseract/vision/agent"
     )
     p_extract.add_argument(
         "--use-table", action="store_true",
@@ -1302,8 +1327,8 @@ def main() -> None:
     p_build = sub.add_parser("build", help="建立数据底座（Phase 1）")
     p_build.add_argument("project_path", help="项目文件夹路径")
     p_build.add_argument(
-        "--engine", choices=["auto", "vision", "paddle"], default="auto",
-        help="OCR 引擎（默认 auto）"
+        "--engine", choices=["auto", "vision", "rapidocr", "agent"], default=None,
+        help="OCR 引擎（默认 None：由 build_foundation.py 从 preconditions 读取或回退 auto）"
     )
     p_build.add_argument(
         "--incremental", action="store_true",
@@ -1332,8 +1357,8 @@ def main() -> None:
     p_audit.add_argument("--lang", default="chi_sim+eng")
     p_audit.add_argument("--dpi", type=int, default=200)
     p_audit.add_argument(
-        "--engine", choices=["paddle", "tesseract", "vision", "auto"], default="paddle",
-        help="OCR 引擎：paddle(默认)/tesseract/vision/auto"
+        "--engine", choices=["rapidocr", "tesseract", "vision", "auto", "agent"], default="auto",
+        help="OCR 引擎：auto(默认)/rapidocr/tesseract/vision/agent"
     )
     p_audit.add_argument(
         "--use-table", action="store_true",
