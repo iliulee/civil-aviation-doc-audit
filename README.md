@@ -1,24 +1,29 @@
 # 民航建设施工资料合规审核大师 (civil-aviation-doc-audit)
 
-> 民航工程施工资料合规性审核 Skill v7.2
+> 民航工程施工资料合规性审核 Skill v9.5
 > 适用：MH/T 5078.1~5078.6-2024 系列 + CCAR-165-R1 + MH 5031-2025 等民航规范
 > 五大专业全覆盖：场道 / 空管 / 助航 / 弱电 / 供油
-> v7.2 核心特性：数据底座基础能力增强（关键词聚合分类 + 图纸角色解耦 + 电子表状态语义 + 文档级置信度存疑降级 + 表头三路融合识别 + 规格自洁）
 
+> v9.5 核心特性：**审核流水线步骤 1~7 线性编号 + 前置信息表迁移共享基础设施 + 推断值生成规则 + 闸门用户动作说明 + 规则管理步骤化工作流**。审核流水线统一为步骤 1~7 线性编号，每次 AI 回复顶部展示进度条，用户一眼可知当前走到哪一步；前置信息确认（6 项）表移至共享基础设施，审核流水线与规则管理场景共用；新增推断值生成规则，明确定义数值型/文本型/签名类的推断逻辑、置信度标定和审核使用规则；强制闸门表新增「用户动作」和「AI 恢复条件」两列，人工确认节点清晰可见；规则管理场景改为步骤化工作流（第一步规则浏览→第二步规则操作→第三步反馈闭环🚧→第四步反思触发🚧），步进步度条直观展示。
+> v9.4 核心特性：**表格式样导入导出 + 苹果浅色界面优化 + SKILL.md 内部路由重构**。data-editor 新增「表格式样」面板，拆分**前缀区**（表格上方固定内容，用于定位表体，支持行增删改）与**数字区**（每列定义格式样式，支持多格式用 `/` 或 `，` 分隔、列名可编辑、列增删改、备注）；新增 `scripts/import_template.py` 从电子版（Excel/Word）表格一键导入表格式样，自动识别表头行、生成 JSON 模板；data-editor 支持「导入 JSON」加载模板、「保存样式定义」写回。界面由深墨蓝改为**苹果浅色风格**（白底、浅灰描边、浅蓝点缀），去除大片蓝色背景。
+> v9.1 核心特性：**RapidTable(SLANetPlus) 表格结构识别 3.14 原生**，取代旧 TableStructureRec 双环境 subprocess；**方式二对话式核对四条纪律**（默认批量 / 条件补扫 / 落盘强制 / 推断标记+禁子代理）。v9.0 核心特性：本地 OCR 主力从原生 paddleocr 替换为 **rapidocr（RapidOCR）**，跨平台轻量稳定、无需 PaddlePaddle；新增**手写体前置路由**（手写资料直接走 VLM，印刷资料走本地 OCR）；VLM 手写体专用 Prompt 优化；`FORCE_USE_PADDLE` / `DISABLE_HANDWRITING_ROUTE` 配置开关；关键节点日志（路由判定/引擎选择/识别结果）。v8.8 PaddleOCR 3.x + PP-OCRv6 Tiny + ONNX Runtime；v8.7 OCR 全流程加固（表头检测优化+跨页表头继承+内容感知分类+分词修复）；模板统一存放数据底座目录+中文命名；data-editor 自动加载数据底座；launcher 三步指引 UI（核对数据→查看报告→其他工具）；rule-manager.bat 自动定位 skill 目录
 ---
 
 ## 目录结构
 
 ```
 civil-aviation-doc-audit/
-├── SKILL.md                          # 主 Skill 文件（必读，v7.2）
-├── README.md                         # 本文件
+├── SKILL.md                          # 主 Skill 文件（必读，v9.5，按场景路由组织，步骤 1~7 线性编号）
+├── README.md                         # 本文件（v9.5）
+├── PROJECT_SPEC.md                   # 项目规格说明（v9.5）
 ├── requirements.txt                  # Python 依赖
-├── install.ps1                       # 一键安装脚本（Python+Tesseract，PDF转图由PyMuPDF处理）
-├── audit.bat                         # Windows 快捷入口
+├── install.ps1                       # 一键安装脚本（Python 依赖 + Vision API 配置 + RapidOCR 强烈推荐）
+├── rule-manager.bat                  # 【v8.7】规则管理面板启动器（自动定位 skill 目录）
 ├── .gitignore
 │
-├── references/                       # 16 个参考文件
+├── 同步内部路由到安装版.bat     # 【唯一同步入口】将项目版文件同步到安装版
+│
+├── references/                       # 18 个参考文件
 │   ├── audit-checklists.md           # 分专业审核检查清单
 │   ├── specification-mapping.md      # 资料类型→规范条款映射
 │   ├── specification-quick-reference.md  # 规范条款速查表
@@ -34,45 +39,53 @@ civil-aviation-doc-audit/
 │   ├── ocr-confusion-correction.md   # OCR 混淆修正规则
 │   ├── ocr-hybrid-architecture.md    # OCR 混合架构说明
 │   ├── document-templates.md         # 审核报告/日志模板
-│   └── html-report-template.html     # HTML 报告标准模板
+│   ├── html-report-template.html     # HTML 报告标准模板
+│   ├── native-mode-checklist.md       # 【v8.1】原生模式审核检查清单（34 项）
+│   └── native-mode-stage1-checklist.md # 【v8.4】原生模式阶段 1 机械化步骤清单（8 步骤）
 │
-├── scripts/                          # 27 个脚本
-│   ├── run_audit.py                  # Skill 入口（含 build/review/report/audit 子命令）
-│   ├── build_foundation.py           # 【v6.0】数据底座建立脚本（阶段 1）
-│   ├── review_audit.py               # 【v6.0】正式审核流水线脚本（阶段 3，多 Agent 并行）
-│   ├── audit_config.py               # 【v6.0】分部分项配置（5 专业 / 48 分部 / 115 分项）
-│   ├── signature_check.py             # 【v7.0】签字一致性检测（pHash + SSIM 双指标）
-│   ├── extract_pdf.py                # PDF 文字提取（PyMuPDF）
-│   ├── ocr_image.py                  # 扫描件 OCR（API-First：Vision API → PaddleOCR → Tesseract）
-│   ├── postprocess.py                # 文本后处理（全角转半角、PUA 替换）
-│   ├── data_quality_check.py         # 数据质量检测（铁律 10 配套）
-│   ├── ocr_confusion_check.py        # OCR 混淆检测（Z→2、4→0 等）
-│   ├── verify_fields.py              # 存疑字段自动复核（裁剪+AI 视觉验证）
-│   ├── vision_providers.py           # Vision API 统一配置层（7 家 Provider）
-│   ├── rule_engine.py                # 【v6.0】规则引擎核心（加载/匹配/求值/检查/报告）
-│   ├── rule_admin.py                 # 【v6.0】规则管理 API 服务（20+ 端点）
-│   ├── rule_lifecycle.py             # 【v6.0】规则生命周期管理（draft→active）
-│   ├── rule_monitor.py               # 【v6.0】规则效力自监控（命中率/误报率/自动降级）
-│   ├── rule_reflector.py             # 【v6.0】定时反思调度器（LLM 生成优化建议）
-│   ├── rule_registry_builder.py      # 【v6.0】规则注册表生成工具
-│   ├── rule_schema_validator.py      # 【v6.0】规则 JSON Schema 校验工具
-│   ├── feedback_store.py             # 【v6.0】反馈存储管理
-│   ├── feedback_analyzer.py          # 【v6.0】LLM 反馈分析管道（聚类/模式提取/候选规则）
-│   ├── llm_client.py                 # 【v7.2】LLM 公共客户端（分类语义辅助，复用 LLM_API_URL/KEY/MODEL）
-│   ├── import_corrections.py         # 【v7.2】自成长导入（人工修正记录 → 分类/表头候选词条回流）
-│   ├── audit_memory.py               # 【v6.0】审核记忆流（JSONL 事件日志）
-│   ├── test_rule_engine.py           # 【v6.0】规则引擎单元测试（6/6 通过）
-│   ├── test_cross_unit_perf.py       # 【v6.0】跨单位性能测试（4/4 通过）
-│   └── test_rule_subsystem_integration.py  # 【v6.0】子系统全链路集成测试（7/7 通过）
+├── scripts/                          # 运行脚本（【核心】/【工具】/【测试】分类）
+│   ├── run_audit.py                  # 【核心】Skill 入口（含 build/review/report/audit 子命令）
+│   ├── build_foundation.py           # 【核心】数据底座建立脚本（v8.7，表头检测优化+跨页表头继承+内容感知分类+模板复制）
+│   ├── review_audit.py               # 【核心】正式审核流水线脚本（v6.0，阶段 3，多 Agent 并行）
+│   ├── audit_config.py               # 【核心】分部分项配置（v6.0，5 专业 / 48 分部 / 115 分项）
+│   ├── signature_check.py             # 【核心】签字一致性检测（v7.0，pHash + SSIM 双指标）
+│   ├── extract_pdf.py                # 【核心】PDF 文字提取（PyMuPDF）
+│   ├── ocr_image.py                  # 【核心】扫描件 OCR（v9.0，RapidOCR 本地主力 + 手写体前置 VLM 路由 + Vision API / Tesseract 降级 + AGENT Vision 复核）
+│   ├── postprocess.py                # 【核心】文本后处理（全角转半角、PUA 替换）
+│   ├── data_quality_check.py         # 【核心】数据质量检测（铁律 10 配套）
+│   ├── ocr_confusion_check.py        # 【核心】OCR 混淆检测（Z→2、4→0 等）
+│   ├── verify_fields.py              # 【核心】存疑字段自动复核（裁剪+AI 视觉验证）
+│   ├── vision_providers.py           # 【核心】Vision API 统一配置层（7 家 Provider）
+│   ├── rule_engine.py                # 【核心】规则引擎核心（v6.0，加载/匹配/求值/检查/报告）
+│   ├── rule_admin.py                 # 【工具】规则管理 API 服务（v6.0，20+ 端点）
+│   ├── rule_lifecycle.py             # 【工具】规则生命周期管理（v6.0，draft→active）
+│   ├── rule_monitor.py               # 【工具】规则效力自监控（v6.0，命中率/误报率/自动降级）
+│   ├── rule_reflector.py             # 【工具】定时反思调度器（v6.0，LLM 生成优化建议）
+│   ├── rule_registry_builder.py      # 【工具】规则注册表生成工具（v6.0）
+│   ├── rule_schema_validator.py      # 【工具】规则 JSON Schema 校验工具（v6.0）
+│   ├── feedback_store.py             # 【工具】反馈存储管理（v6.0）
+│   ├── feedback_analyzer.py          # 【工具】LLM 反馈分析管道（v6.0，聚类/模式提取/候选规则）
+│   ├── llm_client.py                 # 【工具】LLM 公共客户端（v7.2，分类语义辅助，复用 LLM_API_URL/KEY/MODEL）
+│   ├── import_corrections.py         # 【核心】自成长导入（v7.2，人工修正记录 → 分类/表头候选词条回流）
+│   ├── import_template.py            # 【核心】表格式样导入（v9.4，Excel/Word 电子表 → 前缀区+数字区 JSON 模板）
+│   ├── audit_memory.py               # 【核心】审核记忆流（v6.0，JSONL 事件日志）
+│   ├── test_rule_engine.py           # 【测试】规则引擎单元测试（v6.0，6/6 通过）
+│   ├── test_cross_unit_perf.py       # 【测试】跨单位性能测试（v6.0，4/4 通过）
+│   ├── test_ocr_routing.py           # 【测试】OCR 手写体/印刷体路由测试（v9.0，21/21 通过）
+│   ├── test_rule_subsystem_integration.py  # 【测试】子系统全链路集成测试（v6.0，7/7 通过）
+│   └── verify_skill_structure.py     # 【测试】SKILL.md 结构验证（v9.4，路由重构校验）
 │
-├── templates/                        # HTML 模板层
+├── templates/                        # HTML 模板层（v8.7 模板清单统一管理）
+│   ├── template-manifest.json        # 【v8.7】模板清单文件 v1.3（统一管理模板复制规则）
 │   ├── audit-scope-template.html     # 审核范围清单模板（v1.9）
-│   ├── data-editor.html              # 【v7.2】Web 数据编辑器（精密仪表盘+文档属性/表头映射面板）
+│   ├── data-editor.html              # 【v8.7】Web 数据编辑器（自动加载+中文按钮+精密仪表盘；v9.4 新增表格式样面板+苹果浅色风格）
+│   ├── launcher.html                 # 【v8.7】三步指引入口页（核对数据→查看报告→其他工具）
 │   ├── project-dashboard.html        # 【v6.0】项目总览仪表盘
 │   ├── rule-editor.html              # 【v6.0】离线规则编辑器（小白友好）
 │   ├── rule-manager.html             # 【v6.0】规则管理面板（4 标签页，可视化编辑器）
 │   ├── feedback-collector.html       # 【v6.0】反馈收集组件（漏审/误报）
 │   ├── alignment-view.html           # 【v6.0】跨单位数据对齐视图
+│   ├── tokens.css                    # 【v8.7】统一设计令牌（颜色/字体/间距）
 │   ├── pdf.min.js                    # 【v6.0】PDF.js 离线预下载
 │   └── pdf.worker.min.js             # 【v6.0】PDF.js worker
 │
@@ -89,9 +102,7 @@ civil-aviation-doc-audit/
 ├── feedbacks/                        # 【v6.0】反馈存储
 │   └── schema/feedback-schema.json   # 反馈 JSON Schema
 │
-├── audit_memory/                     # 【v6.0】审核记忆流日志
-│
-└── tools/                              # 工具目录（poppler 已移除，PyMuPDF 替代）
+└── audit_memory/                     # 【v6.0】审核记忆流日志
 ```
 
 ---
@@ -100,6 +111,15 @@ civil-aviation-doc-audit/
 
 | 能力 | 说明 |
 |------|------|
+| **OCR 全流程加固**（v8.7） | 表头检测（超长token过滤+列名关键词）+ 表头续行合并 + 跨页表头继承 + 内容感知分类（桩基关键词自动路由）+ 分词修复（_tokenize_table_line 替代 re.split） |
+| **模板目录重构**（v8.7） | 所有 Web 模板统一复制到 `数据底座/` 目录，中文命名（数据核对编辑器.html/项目总览.html/打开审核工具.html），精简非必要模板 |
+| **data-editor 自动加载**（v8.7） | 打开即自动加载同级 index.json，localStorage 记忆上次项目，按钮文案全中文化 |
+| **launcher 三步指引 UI**（v8.7） | 核对数据 → 查看报告 → 其他工具，流程化导航，动态显示项目状态（审核时间/资料数/问题统计） |
+| **rule-manager.bat 自动定位**（v8.7） | 自动查找 skill 安装目录（当前→上级→全局），中文界面，复制到数据底座方便用户访问 |
+| **OCR 引擎四选一前置**（v8.7） | auto（自动最优）/ vision（云端API）/ rapidocr（本地批量）/ agent（AGENT Vision复核），作为 6 项前置信息第 4 项收集 |
+| **双模式运行架构**（v8.1） | 引擎模式（Python 可用，四阶段流水线）+ 原生模式（无 Python，三阶段简化流水线），适配 WorkBuddy/Codex/Hermes |
+| **原生模式检查清单**（v8.1） | 34 项检查（DQ×4 + IR×15 + LG×10 + BG×5），低智商模型按清单机械执行 |
+| **OCR 策略重定位**（v8.0） | PaddleOCR 强烈推荐 + AGENT Vision 复核定位 + 安装引导 token 消耗警告 |
 | **数据底座基础能力增强**（v7.2） | 关键词聚合分类 + 图纸角色解耦 + 电子表状态语义 + 文档级置信度存疑降级 + 表头三路融合识别 + 规格自洁 |
 | **data-editor 精密仪表盘**（v7.1） | 诊断面板 + 文档树优化 + 状态分级 + 问题视图 + 批量应用建议值 + 精密仪表盘视觉 |
 | **四阶段流水线** | 建数据底座 → 人工核对 → 正式审核 → 生成报告，阶段间硬闸门 |
@@ -110,9 +130,10 @@ civil-aviation-doc-audit/
 | **三级粒度多 Agent 并行**（v6.0） | professional/sub/item，与人工分部分项划分一致，最多 115 个独立任务 |
 | **增量更新**（v6.0） | 基于 SHA256 哈希对比，仅处理新增/变更文件 |
 | **断档检测**（v6.0） | 桩号/日期/编号连续性检查，自动标记缺漏 |
-| OCR 识别扫描件 | API-First：Vision API（7 家）→ PaddleOCR → Tesseract |
+| OCR 识别扫描件 | 【v9.0】印刷体→RapidOCR 本地主力（零 token）→ Vision API → Tesseract；手写体→前置路由 VLM（识别率最高）→ AGENT 内置 Vision 复核（页数不限） |
 | 规范逐条对账 | 对着 MH/T 5078 系列逐条比对，每条引规范编号和条款号 |
 | 数据质量检测 | 自动识别造假、涂改、异常模式（DQ-REPEAT/JUMP/ALTER/SELF） |
+| **数据验证闸门 + 闭环**（v8.10） | `validate_rows` 六类校验（类型/格式/范围/完整性/一致性/跨字段数学链）+ 表头消歧定列落地于数据底座写入前，脏行标 `needs_review` 不直接进库，行级 `issues` 写入 `structured_rows`；data-editor 层3 闭环（行标红⚠+内联原因 → 问题视图 → 精准跳转橙闪 → 确认门禁阻止未处理 issues 放行） |
 | 逻辑一致性检查 | 10 个子项 71 条规则，含监理-施工方跨单位日期对照（9.10，18 条 CU 规则） |
 | 运算规范审核 | 只做规范性检查，不做数值复算 |
 | 自动生成审核报告 | 三级输出：🔴Fatal / 🟡Sanity Check / 🔵Best Practice，含 SVG 图表 |
@@ -121,6 +142,89 @@ civil-aviation-doc-audit/
 ---
 
 ## 功能特性
+
+### v9.4 新增（表格式样导入导出 + 苹果浅色界面优化）
+
+1. **表格式样面板（data-editor 新增标签页）**：
+   - 🧱 **前缀区**：表格上方固定内容（如工程名称、表号、施工单位），仅用于定位表体，不定义格式样式；支持**添加 / 删除 / 编辑 / 上下移动**行
+   - 🔢 **数字区**：定义每列填写的格式样式，列名可直接编辑；支持**添加 / 删除列**；每列可写**多种格式样式**（用 `/` 或 `，` 分隔，如 `2026年/2026-01-01`）；附带**备注**列供说明
+   - 🎯 **格式样式作用**：填写样式后，核对时按该样式校验扫描件的值（如日期列写 `2026年`，则非 2026 年的值标需核实）
+
+2. **从电子表导入表格式样（`scripts/import_template.py`）**：
+   - 📥 解析电子版表格（`.xlsx` / `.docx`），自动识别表头行，提取前缀区固定行与数字区列定义（列名 / 样例值），生成 JSON 模板
+   - 📄 用法：`python scripts/import_template.py 表格.xlsx [--header-row 行号] [--out 输出.json]`
+   - 🖱️ data-editor 提供「导入 JSON」按钮加载模板，「保存样式定义」写回 `index.json`
+
+3. **苹果浅色界面优化（表格式样面板）**：
+   - ✨ 去除大片蓝色背景，改为白底 / 浅灰描边 / 浅蓝点缀的苹果风格，与编辑器其余面板风格统一
+   - 🎨 表头浅灰底深灰字、可编辑区聚焦浅蓝描边 + 淡蓝光晕、操作按钮浅灰底悬停变色
+
+4. **与几何重建联动**：导入的表格式样作为**值格式锚点的补充**，数字区格式样式用于校验列值所属格式，前缀区用于定位表体，与 `table_struct.validate_rows()` 六类校验互补。
+
+### v9.0 新增（RapidOCR 本地主力 + 手写体前置 VLM 路由）
+
+1. **本地 OCR 引擎替换为 RapidOCR（rapidocr）**：
+   - 🚀 已彻底替代原生 paddleocr：Windows 下环境依赖轻、跨平台稳定，**无需安装 PaddlePaddle**，规避 PaddlePaddle 3.x PIR 引擎 Windows 兼容性问题
+   - 🧠 模型选择：使用 rapidocr>=3.9 统一包，默认加载 PP-OCRv6 Small 模型（`ModelType.SMALL`）；通过 `RapidOCR(params=...)` 的 `ModelType` 和 `OCRVersion` 参数配置
+   - ⚡ **引擎单例化**：`_get_rapidocr_engine()` 全局单例，批量图片只加载一次模型，严禁 for 循环内重复实例化
+   - 🖼️ **图像预处理**：`_preprocess_for_rapidocr()` **仅保留灰度化**，已删除 CLAHE/高斯模糊/锐化核（实测对印刷体 OCR 无提升且拖慢速度）
+
+2. **手写体前置路由（is_handwritten）**：
+   - 📝 手写资料（`is_handwritten=True`）：**直接跳过本地 OCR**，首选 `vision`（VLM，识别率最高），次选 `agent`（AI 读图）
+   - 🖨️ 印刷资料（`is_handwritten=False`）：首选本地 `rapidocr`，失败再降级 `vision` → `tesseract`
+   - 🎯 文件名启发式判定：`detect_is_handwritten()` 匹配"手写/笔记/草稿/note"等关键词；可用 `--handwritten` 参数或前置信息 `config.is_handwritten` 显式指定
+
+3. **配置开关（调试）**：
+   - `DISABLE_HANDWRITING_ROUTE=1`：强制所有资料走本地 OCR，跳过 VLM 路由
+   - `FORCE_USE_PADDLE` 已彻底移除：原生 PaddleOCR 不再可用，无回滚备份
+
+4. **VLM 手写体专用 Prompt**：
+   - `HANDWRITTEN_OCR_PROMPT`：当路由走 vision 且资料为手写体时，追加 System Prompt 指令——结合上下文语境推断纠错、无法辨认用 `[?]` 标记、严格 JSON 输出
+
+5. **关键节点日志监控**：
+   - `[路由判定]` 文件名及 is_handwritten 状态
+   - `[引擎选择]` 最终决定调用的引擎（rapidocr / vision / tesseract）
+   - `[识别结果]` 识别出的文本行数及平均置信度
+
+6. **路由测试**：`test_ocr_routing.py` 独立测试脚本，21/21 通过，覆盖手写/印刷路由、配置开关、文件名启发式判定、关键日志节点
+
+7. **运行时进度展示（强制）**：正式审核运行中，AI 每条回复固定展示"第一/第二/第三/第四"四阶段运行进度清单，完成一条打勾一条（✅/⬜），闸门硬停时写明卡住原因与等待用户操作，用户无需看终端日志即可掌握审核进度
+
+### v8.7 新增（OCR 全流程加固 + 模板目录重构 + 用户体验全面升级）
+
+1. **OCR 全流程加固（四项核心修复）**：
+   - 🛡️ **表头检测优化**：`detect_generic_header()` 新增超长 token 过滤（排除>10字符的公司名/标题）和列名关键词命中要求（至少1个列名型关键词如"序号/桩号/日期/高程"），解决施工单位名称被误判为表头列名的问题
+   - 📐 **表头续行合并**：`parse_pile_rows()` 和 `parse_generic_table()` 检测到表头后，自动检查紧接的1-2行是否也是表头续行（如"桩/设计/桩径..."+"号/长/(m)/..."），合并字段映射并跳过续行，解决表头拆分导致数据错位
+   - 📄 **跨页表头继承优化**：翻页后重新检测表头，未检测到但遇到桩号格式数据行时才继承首页表头，解决跨页表头行被当作数据行的问题
+   - 🎯 **内容感知分类**：`build_rows()` 新增桩基内容关键词检测（碎石桩/沉管时间/拔管时间/充盈系数等≥2个命中），即使文件名是"扫描件.pdf"也能自动走桩基解析逻辑，解决通用文件名分类遗漏
+
+2. **模板目录重构（集中存放 + 中文命名）**：
+   - 📂 所有 Web 模板统一复制到项目文件夹 `数据底座/` 目录下，不再与审核资料混放
+   - 🏷️ 中文命名：data-editor.html→**数据核对编辑器.html**、project-dashboard.html→**项目总览.html**、launcher.html→**打开审核工具.html**
+   - ✂️ 精简非必要模板：移除 rule-editor.html、feedback-collector.html 等低频工具
+   - 📋 `template-manifest.json` 升级至 v1.3，统一管理 src/dst/required/category，跨模式可靠复制
+
+3. **data-editor 自动加载与中文化**：
+   - 🚀 新增 `autoLoad()` 函数，打开即自动尝试 `fetch('./index.json')`，无需用户每次手动选择文件夹
+   - 💾 localStorage 记住上次加载项目名称，下次打开自动提示"上次项目：XXX"
+   - 🀄 按钮文案全中文化："选择项目文件夹"→"**加载数据底座**"，降低小白用户理解门槛
+
+4. **launcher 三步指引 UI（流程化导航）**：
+   - 1️⃣ **核对数据**：大按钮直链「数据核对编辑器.html」，附说明"逐份核对 OCR 识别结果，确认无误后标记已核对"
+   - 2️⃣ **查看报告**：审核报告入口 + 「项目总览」仪表盘，动态显示项目状态（审核时间、资料数量、问题统计）
+   - 3️⃣ **其他工具**：文档对齐视图、规则管理工具.bat 等次级入口
+   - 顶部设计令牌 tokens.css 统一视觉风格
+
+5. **rule-manager.bat 自动定位（小白零配置）**：
+   - 📍 三级路径自动查找：当前目录 → 上级目录 → `%USERPROFILE%\.trae-cn\skills\civil-aviation-doc-audit\`
+   - 🀄 全中文界面提示，明确显示"当前规则路径：%SKILL_DIR%rules\"
+   - 📋 自动复制到 `数据底座/` 目录，用户双击即可启动，不需到 skill 安装目录找文件
+
+6. **OCR 引擎四选一前置（用户明确选择）**：
+   - 🔧 6 项前置信息第 4 项新增：**OCR 引擎**（auto / vision / rapidocr / agent 四选一）
+   - 默认 **auto**：自动路由（印刷体 RapidOCR，手写体 vision，均不可用降级 tesseract）
+   - **rapidocr**：强制使用本地 RapidOCR（PP-OCRv6 Small，批量零 token，推荐离线场景）
+   - **agent**：强制使用 AGENT 内置 Vision（页数不限，逐页读图，不装依赖也能用）
 
 ### v7.2 新增
 - 🔑 **关键词聚合分类（无硬编码副本）**：从 references/classification-terms.json + 91 条规则 trigger_when.doc_type + FIELD_ALIAS_MAP 三真相源运行时聚合，带来源标注可追溯
@@ -186,7 +290,7 @@ python scripts/rule_admin.py --port 8765
 ### 1. 安装依赖
 
 ```powershell
-# 一键安装（Python 依赖 + Tesseract，PDF 转图由 PyMuPDF 处理）
+# 一键安装（Python 依赖 + Vision API 配置 + RapidOCR 强烈推荐）
 .\install.ps1
 ```
 
@@ -200,9 +304,12 @@ pip install -r requirements.txt
 
 ```powershell
 # 阶段 1：建立数据底座（全自动）
+# --engine 参数：auto（默认）/ vision / rapidocr / agent（v9.2 OCR引擎四选一）
 python scripts/run_audit.py build "D:\你的项目文件夹" --engine auto
 
-# 阶段 2：人工核对（浏览器中打开 data-editor.html，零 token）
+# 阶段 2：人工核对（浏览器中打开「数据底座/打开审核工具.html」→ 点「核对数据」，零 token）
+# v8.7 模板已复制到「数据底座/」目录，中文命名：
+#   数据核对编辑器.html / 项目总览.html / 打开审核工具.html / 规则管理工具.bat
 
 # 阶段 3：正式审核（全自动，支持多 Agent 并行）
 python scripts/run_audit.py review "D:\你的项目文件夹" --split-by sub
@@ -240,22 +347,27 @@ python scripts/run_audit.py report "D:\你的项目文件夹"
 
 ### 5. 在 AI 对话中触发
 
-v6.0 流水线触发语句：
-- "建数据底座" / "建立项目数据底座"
-- "审核这个项目的资料" / "审一下整个项目"
+SKILL.md 顶部设有**路由表**，AI 根据用户输入自动定位到对应场景。详见 SKILL.md「路由表」章节。
+
+**审核流水线场景**：
+- "建数据底座" / "审核这个项目的资料" / "正式审核" / "开始审核"
 - "人工核对" / "打开数据编辑器"
-- "启动审核" / "正式审核"
-- "生成审核报告"
+- "生成审核报告" / "出报告"
 - "增量更新" / "补充资料"
 - "并行审核" / "多 Agent 审核"
-- "按分部审核" / "按分项审核"
 
-v5.0 单文件触发语句：
+**规则管理场景**：
+- "规则管理" / "管理规则" / "规则面板"
+- "新建规则" / "添加规则"
+- "规则反馈" / "漏审反馈" / "误报反馈"
+- "启动反思" / "触发反思"
+
+**v5.0 单文件触发语句**：
 - "审核这份检验批 / 监理通知单 / 施工日志 / 竣工图"
 - "看看这份资料有没有逻辑矛盾"
 - "这是扫描件，做 OCR 后审核"
 
-安装触发语句：
+**安装触发语句**：
 - "安装这个skill" / "安装依赖" / "初始化"
 
 ### 签字一致性检测（可选）
@@ -276,32 +388,39 @@ pip install imagehash scikit-image
 ### 规则管理
 
 ```bash
-# 双击启动规则管理面板
-rule-manager.bat
+# 方式一（v8.7 推荐，零配置）：在项目「数据底座/」目录下双击「规则管理工具.bat」
+# （已自动复制到数据底座，自动定位 skill 安装目录，中文界面）
 
-# 或手动启动
+# 方式二：双击 skill 根目录的 rule-manager.bat
+.\rule-manager.bat
+
+# 方式三（手动启动）：
 python scripts/rule_admin.py --port 8765
 # 浏览器打开 http://127.0.0.1:8765/
 ```
 
-规则文件位于 `rules/` 目录：
+规则文件位于 `rules/` 目录（跟着 skill 走，所有项目共用一套规则）：
 - `L1-iron/`：铁律（不可违反的强制性条款）
 - `L2-logic/`：逻辑规则（跨文档/跨资料一致性）
 - `L3-business/`：业务规则（分部分项专项要求）
 
 规则编辑方式：
-1. Web 面板：双击 `rule-manager.bat`，可视化编辑（推荐小白使用）
-2. 离线编辑：浏览器打开 `templates/rule-editor.html`，选择 `rules/` 文件夹
-3. 直接改 JSON：编辑 `rules/` 下对应文件
+1. **Web 面板**（推荐小白）：双击「规则管理工具.bat」，4 标签页可视化编辑（规则浏览/新建/统计/反思）
+2. **离线编辑**：浏览器打开 `templates/rule-editor.html`，选择 skill 目录下的 `rules/` 文件夹（无需启动服务）
+3. **硬核方式**：直接用文本编辑器修改 `rules/` 下对应 JSON 文件
+
+> **v8.7 重要说明**：`rule-manager.bat` 支持三级路径自动定位（当前目录→上级目录→全局 skill 安装路径），无论在哪个目录双击都能正确找到 rules/ 目录。
 
 ---
 
-## 四阶段流水线详解（v6.0）
+## 四阶段流水线详解（v6.0，引擎/原生模式统一）
+
+> 引擎模式（Python 可用）和原生模式（Python 不可用）的流程差异见 SKILL.md「场景·审核流水线」章节。此处仅展示统一流程。**引擎模式与原生模式数据完全兼容，可双向迁移**。
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ 阶段 1：建数据底座（全自动）                              │
-│   输入：项目文件夹 + 5 项前置信息                         │
+│   输入：项目文件夹 + 6 项前置信息                         │
 │   处理：扫描分类 → OCR → 三层JSON → 质量检测 → 混淆检测 →  │
 │         断档检测 → index.json → 复制 Web 模板             │
 │   闸门：所有文件 ocr_status = "completed"                │
@@ -389,33 +508,56 @@ python scripts/rule_admin.py --port 8765
 
 ---
 
-## OCR 引擎策略（v5.0 API-First）
+## OCR 引擎策略（v9.2 更新：RapidOCR 轻量本地主力 + 手写体前置路由）
+
+v9.2 重新定位 OCR 引擎角色：**印刷体 → RapidOCR（rapidocr，轻量跨平台本地主力，零 token）→ Vision API 辅助 → Tesseract 兜底**；**手写体 → 自动前置路由 Vision API（VLM，识别率最高）→ AGENT 内置 Vision 复核工具（非批量引擎）**。默认 auto 模式自动路由。
+
+> **🍀 推荐路径：`扫描转化电子文档`**：扫描件先用 WPS「PDF 转 Word」转成带真实表格的 .docx，走**电子表解析**（`extraction_mode="docx"`），识别准确率显著高于本地 OCR，且**不设 OCR 引擎优先级**。前置信息 `nature=扫描转化电子文档` 时，OCR 引擎选择自动跳过。因仍源自手写扫描，`human_verified` 人工核对闸门照常保留。
 
 ```
 PDF / 图片
    │
    ▼
-auto 模式自动检测可用引擎
+判定 is_handwritten（手写体前置路由）
    │
-   ├─ 检测到 Vision API Key → 优先使用 Vision API（云端，按量付费）
-   │   ├─ 7 家 Provider：doubao / qwen / glm / kimi / silicon / baidu / openai
-   │   ├─ 推荐：Doubao Vision Pro（0.003 元/千 token，中文 OCR 最准最快）
-   │   └─ ⚠️ 使用前自动列出可用 Provider 供参考
+   ├─ 手写体 = True（文件名含"手写/笔记/草稿/note"，或 --handwritten 显式指定）
+   │   ├─ 首选 vision（VLM，识别率最高）★ 追加手写体专用 Prompt
+   │   └─ 次选 agent（AI 读图，页数不限，仅提醒 token 消耗）
    │
-   ├─ 无 API Key → 降级为 PaddleOCR（本地，零成本）
-   │   ├─ ⚠️ 需 Python 3.12 及以下（PaddlePaddle 最高支持 Python 3.12）
-   │   ├─ PP-OCRv4 模型，enable_mkldnn=True, cpu_threads=10
-   │   └─ 桩号列检测 + Z/2 混淆自动修正
-   │
-   ├─ 无 PaddleOCR → 降级为 Tesseract（本地，需安装）
-   │
-   └─ 无 Tesseract → 降级为 AGENT 内置 Vision 模型（最终兜底）
-       ├─ 通过 TRAE Read 工具直接读取图片，用 AI 自身 Vision 能力识别
-       ├─ 适用于单页或少页 OCR 复核，速度较慢但零依赖
-       └─ 不适于大批量 OCR（>10 页建议用 Vision API 或 PaddleOCR）
+   └─ 手写体 = False（印刷体）
+       ├─ 首选 rapidocr（本地，零 token 消耗）★ RapidOCR 单例 + 图像预处理
+       │   └─ 失败 → vision（VLM）→ tesseract（本地兜底）
+       └─ 无任何可用引擎 → agent（AI 读图，页数不限）
 ```
 
-Vision API 支持以下 7 家 Provider：
+### auto 模式优先级链（v9.2）
+
+| is_handwritten | 引擎优先级 | 说明 |
+|:---:|:---|:---|
+| True | vision → agent | 手写体直接走 VLM，跳过本地 OCR |
+| False | rapidocr → vision → tesseract | 印刷体先本地 OCR，降级 VLM / Tesseract |
+
+### 配置开关（v9.2 调试）
+
+| 环境变量 | 取值 | 作用 |
+|:---|:---:|:---|
+| `DISABLE_HANDWRITING_ROUTE` | `1` | 强制所有资料走本地 OCR，跳过 VLM 路由 |
+
+> `FORCE_USE_PADDLE` 已彻底移除：原生 PaddleOCR 不再可用，无回滚备份。
+
+### RapidOCR 模型指定（PP-OCRv6 Small）
+
+默认加载 PP-OCRv6 **Small** 模型（`ModelType.SMALL`，rapidocr>=3.9 统一包）；如需指定模型，通过 `RapidOCR(params=...)` 的 `ModelType`（SMALL/MEDIUM 等）和 `OCRVersion` 参数配置。
+
+### 离线场景：安装 RapidOCR（强烈推荐 ★）
+
+```powershell
+pip install rapidocr opencv-python
+```
+
+> ⚠️ **为什么强烈推荐安装？** 不安装 RapidOCR 且无 Vision API Key 时，多页扫描件将使用 AGENT 内置 Vision 模型逐页读图，大量消耗 token 且识别速度慢。
+
+### Vision API 支持的 7 家 Provider
 
 | Provider | 名称 | 环境变量 | 默认模型 | 价格（元/千token） |
 |:---:|:---|:---|:---|:---:|
@@ -437,14 +579,6 @@ python scripts/vision_providers.py --list
 ```
 
 > **使用 Vision API 前会提醒**：系统自动执行 `python scripts/vision_providers.py --list`，列出当前可用的 Provider 及其价格，供用户参考选择。无可用 Provider 时自动降级本地引擎。
-
-### 离线场景：安装 PaddleOCR
-
-> ⚠️ **PaddlePaddle 最高支持 Python 3.12**。如果当前 Python 版本 ≥ 3.13，需要先降级 Python 到 3.12。
-
-```powershell
-python3.12 -m pip install paddleocr==2.8.1 paddlepaddle==2.6.2 opencv-python
-```
 
 ---
 
@@ -477,6 +611,20 @@ git clone https://github.com/iliulee/civil-aviation-doc-audit.git
 | **v7.0** | **2026-07-31** | **三层JSON数据底座 + 文档关联图谱 + 签字一致性检测 + data-editor三栏升级** |
 | **v7.1** | **2026-08-01** | **data-editor 精密仪表盘升级：诊断面板 + 文档树优化 + 状态分级 + 问题视图 + 批量应用建议值 + 精密仪表盘视觉** |
 | **v7.2** | **2026-08-01** | **数据底座基础能力增强：关键词聚合分类 + 图纸角色解耦 + 电子表状态语义 + 文档级置信度存疑降级 + 表头三路融合识别 + 规格自洁** |
+| **v8.0** | **2026-08-04** | **OCR 策略重定位：PaddleOCR 从"可选"升级为"强烈推荐"、AGENT Vision 从"最终兜底"降级为"复核工具（≤5 页）"、安装引导强化 token 消耗警告** |
+| **v8.1** | **2026-08-04** | **双模式运行架构：引擎模式（Python 可用，四阶段流水线）+ 原生模式（无 Python，三阶段简化流水线），适配 WorkBuddy/Codex/Hermes，低智商模型适配（34 项检查清单）** |
+| **v8.2** | **2026-08-04** | **强制闸门修复：顶部新增 G-0/G-1/G-2 硬闸门 + 原生模式阶段 1 机械化步骤清单（7 步骤），修复 WorkBuddy 中 AI 跳过数据底座直接输出审核结论的问题** |
+| **v8.3** | **2026-08-04** | **模板复制修复：原生模式新增步骤 7 复制 Web 模板 + G-1.5 闸门，修复 WorkBuddy 建了数据底座但不复制 data-editor.html 等模板文件的问题** |
+| **v8.4** | **2026-08-04** | **人工核实硬停修复：原生模式新增 G-1.9 硬停闸门 + 扫描件待核实清单，阶段 1 完成 = AI 必须停下来等用户人工核实扫描件，修复 AI 不等人工核实直接出审核结论的问题** |
+| **v8.5** | **2026-08-04** | **增量路径：新增步骤 0.5 数据底座检测 + I-1~I-6 增量路径（文件 diff → 一键确认 → 三选一 → 模板智能拷贝 → 增量 OCR → 硬停），解决增量审核时重复弹窗、重复 OCR、老问题重复报告、模板漏拷的问题** |
+| **v8.6** | **2026-08-04** | **嵌入数据入口页：launcher.html 改为数据嵌入（`__PROJECT_DATA__` 占位符）替代 fetch()，解决 file:// CORS 拦截导致入口页无法加载数据的问题；增量 I-4 只更新入口页不重拷静态模板；步骤 7 拆分 7a/7b** |
+| **v8.7** | **2026-08-05** | **OCR 全流程加固 + 模板目录重构 + 用户体验全面升级：表头检测优化（超长token过滤+列名关键词）+ 表头续行合并 + 跨页表头继承优化 + 内容感知分类 + 分词修复；模板统一存放数据底座目录+中文命名；data-editor自动加载+localStorage记忆项目；launcher三步指引UI；rule-manager.bat三级路径自动定位；OCR引擎四选一前置；PaddleOCR dpi=72→200修复；OCR retry行数比较回退保护；Excel continue链路修复；copy_templates.py独立脚本** |
+| **v8.8** | **2026-08-05** | **PaddleOCR 引擎升级：从 PaddleOCR 2.8.1 + PaddlePaddle 2.6.2 升级为 PaddleOCR 3.x + PP-OCRv6 Tiny + ONNX Runtime；使用 engine=onnxruntime 绕过 PaddlePaddle 3.x PIR 引擎 Windows 兼容性问题；模型体积从 ~30MB 缩小到 ~3MB；无需安装 PaddlePaddle；auto 模式优先级改为 PaddleOCR 优先；agent 模式支持修复（run_audit.py/build_foundation.py/ocr_image.py 三处 --engine 参数补齐 agent 选项）** |
+| **v8.10** | **2026-08-08** | **数据验证闸门 + 表头消歧定列 + 数据验证闭环：`table_struct.validate_rows()` 六类校验（类型/格式/范围/完整性/一致性/跨字段数学链）落地于数据底座写入前，脏行标 `needs_review` 不直接进库，行级 `issues` 写入 `structured_rows[i].issues`；列角色推断改为值格式锚点为主 + 表头文字消歧/补空缺，修复列错位（pile_no='28'、actual_length='2401'）；data-editor 层3 闭环（有 issues 行标红⚠+内联原因 → 问题视图接入六类校验条目 → 精准跳转橙闪 → 确认门禁阻止未处理 issues 放行，人工修正/忽略后放行），形成"闸门→呈现→人工核对→放行"闭环** |
+| **v9.0** | **2026-08-07** | **OCR 模块重构：本地主力从原生 paddleocr 替换为 rapidocr（RapidOCR，跨平台轻量稳定、无需 PaddlePaddle）；RapidOCR 引擎单例化 + 图像预处理（灰度化+CLAHE+去噪）；新增手写体前置路由（is_handwritten=True 直接走 vision/agent，False 走 rapidocr→vision→tesseract）；VLM 手写体专用 Prompt（HANDWRITTEN_OCR_PROMPT）；配置开关 FORCE_USE_PADDLE / DISABLE_HANDWRITING_ROUTE；关键节点日志（路由判定/引擎选择/识别结果）；test_ocr_routing.py 路由测试 21/21 通过；requirements.txt 更新（快速依赖 rapidocr，注释 paddle 依赖）** |
+| **v9.1** | **2026-08-08** | **RapidTable(SLANetPlus) 表格结构识别 3.14 原生，取代旧 TableStructureRec（仅 Python≤3.12）双环境 subprocess，单一环境完成表格还原；方式二对话式核对四条强制纪律——默认批量 / 条件补扫（提DPI→换预处理→换VLM，无解标存疑回原图严禁硬猜）/ 落盘强制（写回 data_file + index.json 四项）/ 推断标记+禁子代理（inferred:true+置信度，禁 Explore Agent）** | **实测：对话式核对逐条确认不落盘致 data-editor 显老数据；Z516 充盈系数 1.89/1.29 推断值标注不清污染审核；逐条渲染读图上下文膨胀越核越慢；Explore Agent 后台空转** |
+| **v9.2** | **2026-08-08** | **错位率阈值收紧 + AGENT 复核放开页限 + 数据编辑器文本行可编辑** | **用户要求：错位率阈值设为 5%；放开 AGENT 复核页数限制；实测文本行表格只有 3 列且无法修改** |
+| **v9.4** | **2026-08-10** | **表格式样导入导出 + 苹果浅色界面优化 + SKILL.md 内部路由重构** | **用户要求：实现从电子表格导入表格式样；去掉大片蓝色背景，改用苹果浅色风格；SKILL.md 按场景路由重构** |
 
 ### v7.2 核心变更
 
@@ -515,3 +663,24 @@ git clone https://github.com/iliulee/civil-aviation-doc-audit.git
 2. **字段别名映射（FIELD_ALIAS_MAP）**：rule_engine.py 新增 28 组中英文字段名映射（如"实长"↔"actual_length"），解决规则用中文字段名、数据底座用英文字段名导致规则无法命中问题，桩长自洽校验（LG-001）恢复正常
 3. **沉管/拔管时间规则**：新增 LG-006（沉管时间完整性校验）和 LG-007（拔管时间完整性校验）；build_foundation.py 增加 sink_time/pull_time 字段映射
 4. **端到端测试通过**：8/8 通过，LG-001 桩长自洽校验正确命中 3 条违规（实长 ≠ 桩顶高程 − 桩底高程）
+
+---
+
+## 铁律体系演进脉络
+
+> 本节记录铁律体系从 v1.0 到 v1.7 的演进历史，供理解设计思路参考。
+
+| 阶段 | 版本 | 核心变化 | 驱动来源 |
+|:---:|:---|:---|:---|
+| 第一轮 | v1.0~v1.4 | 20 条铁律体系建立 | 实际审核发现的问题逐条沉淀 |
+| 第二轮 | v1.5 | 五专业审核全覆盖 + Obsidian 知识库集成 | 用户要求专业审查全面有章可循 |
+| 第三轮 | v1.7 | 前置信息收集 + OCR 存疑核实 + 统一 HTML 交付 | 用户反馈 OCR 年份误读 + 过程资料误判 |
+| 第四轮 | v1.8~v1.9 | 三层工作流重组 + 知识分区红线 + 三级输出格式 + 多Agent并行 + 标准模板 | 对标分析后的框架级全面提升 |
+
+### 演进要点
+
+- **铁律 1~8**（v1.0~v1.4）：从实际审核中逐条沉淀的基础规则
+- **铁律 9**（v1.5）：逻辑一致性专项检查，10 个子项 + 监理-施工方跨单位对照 17 条
+- **铁律 10**（v1.5）：数据质量四类检测（DQ-REPEAT/JUMP/ALTER/SELF）
+- **铁律 11~15**（v1.5）：桩基工程专项检查规则
+- **铁律 16~20**（v1.7）：OCR 提取-验证-重试循环 + 人工核实机制

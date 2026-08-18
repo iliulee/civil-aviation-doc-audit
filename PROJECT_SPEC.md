@@ -1,8 +1,8 @@
-# PROJECT_SPEC — 民航施工资料合规审核 Skill v7.2
+# PROJECT_SPEC — 民航施工资料合规审核 Skill v9.5
 
-> 文档版本：v2.6 | 创建日期：2026-07-29 | 最后更新：2026-08-03 | 状态：v7.1 已实施 · v7.2 规格制定中（C7 通用表格提取已实现）
+> 文档版本：v3.2 | 创建日期：2026-07-29 | 最后更新：2026-08-10 | 状态：v9.5（审核流水线步骤 1~7 线性编号 + 前置信息表迁移共享基础设施 + 推断值生成规则 + 闸门用户动作说明 + 规则管理步骤化工作流）已实施
 >
-> 本文档是项目的唯一权威规格说明，覆盖全部已有功能（v5.0）、v7.0 三层JSON数据底座 + 文档关联图谱 + 签字一致性检测、v7.1 data-editor 精密仪表盘升级、v7.2 数据底座基础能力增强（分类聚合/图纸角色/状态语义/置信度降级/表头识别/通用表格提取/规格自洁）。
+> 本文档是项目的唯一权威规格说明，覆盖全部已有功能（v5.0）、v6.0 四阶段流水线 + 数据底座、v6.1 规则管理子系统、v7.0 三层JSON数据底座 + 文档关联图谱 + 签字一致性检测、v7.1 data-editor 精密仪表盘升级、v7.2 数据底座基础能力增强、v8.0 OCR 策略重定位、v8.1 双模式运行架构、v8.2/8.3/8.4/8.5/8.6 强制闸门与增量路径修复、v8.7 OCR 全流程加固 + 模板目录重构 + 用户体验全面升级、v8.8 PaddleOCR 引擎升级、v9.0 OCR 模块重构（RapidOCR + 手写体前置 VLM 路由）、v9.1（RapidTable 表格结构识别 + 方式二对话式核对四条纪律）、v9.4（表格式样导入导出 + 苹果浅色界面优化 + SKILL.md 内部路由重构）、v9.5（审核流水线步骤 1~7 线性编号 + 前置信息表迁移共享基础设施 + 推断值生成规则 + 闸门用户动作说明 + 规则管理步骤化工作流）。
 
 ---
 
@@ -29,8 +29,37 @@
 | **v7.0** | **三层JSON数据底座 + 文档关联图谱 + 签字一致性检测 + data-editor三栏升级** | **数据完整性 + 签字审核 + 精准上下文加载** |
 | **v7.1** | **data-editor 精密仪表盘升级：诊断面板、文档树优化、状态分级、问题视图、批量应用建议值、精密仪表盘视觉** | **UI/UX 全面重做，提升核对效率和视觉专业度** |
 | **v7.2** | **数据底座基础能力增强：关键词聚合分类、图纸角色解耦、电子表状态语义、文档级置信度存疑、表头三路融合识别、通用表格提取、规格自洁** | **从"能跑"到"稳"——解决分类硬编码、图纸角色硬判、状态语义误导、低置信卡流程、表头识别脆弱、非桩基类表格不结构化七大基础问题** |
+| **v8.0** | **OCR 策略重定位：PaddleOCR 从"可选"升级为"强烈推荐"、AGENT Vision 从"最终兜底"降级为"复核工具（≤5 页）"、安装引导强化 token 消耗警告** | **WorkBuddy 实测反馈：无 PaddleOCR 时 AGENT Vision 只抽样 6 页，大量消耗 token 且遗漏异常数据** |
+| **v8.1** | **双模式运行架构：引擎模式（Python 可用，四阶段流水线）+ 原生模式（无 Python，三阶段简化流水线），适配 WorkBuddy/Codex/Hermes 等智能体平台，低智商模型适配** | **WorkBuddy 实测反馈：无 Python 时跳过数据底座直接出结果；需跨平台兼容** |
+| **v8.2** | **强制闸门修复：顶部新增 G-0/G-1/G-2 硬闸门 + 原生模式阶段 1 机械化步骤清单（`references/native-mode-stage1-checklist.md`），修复 WorkBuddy 中 AI 跳过数据底座直接输出审核结论的问题** | **WorkBuddy 实测：v8.1 部署后 AI 仍跳过数据底座，根因是原生模式埋在文档底部（第 813 行），低智商模型读不到** |
+| **v8.3** | **模板复制修复：原生模式新增步骤 7 复制 Web 模板（data-editor.html/项目总览.html/tokens.css）+ G-1.5 闸门，修复 WorkBuddy 建了数据底座但不复制模板文件导致用户无法浏览编辑数据的问题** | **WorkBuddy 实测：v8.2 数据底座建立了，但 data-editor.html 等模板未复制到项目文件夹，用户无法浏览和编辑数据** |
+| **v8.4** | **人工核实硬停修复：原生模式新增 G-1.9 硬停闸门 + 扫描件待核实清单，阶段 1 完成 = AI 必须停止输出等用户"核对完成"，禁止自行判"没问题"或推进到阶段 3** | **WorkBuddy 实测：v8.3 阶段 1 完成后 AI 没有停下来等人工核实扫描件，直接走完流程出审核结论，扫描件 OCR 误读污染了结论** |
+| **v8.5** | **增量路径：新增步骤 0.5 数据底座检测 + I-1~I-6 增量路径（文件 diff → 一键确认 → 三选一 → 模板智能拷贝 → 增量 OCR → 硬停），解决增量审核时重复弹窗、重复 OCR、老问题重复报告、模板漏拷的问题** | **WorkBuddy 实测：同一个项目新增资料后，AI 重弹 6 项前置信息、重新 OCR 全部老文件、老问题混在新报告里分不清，模板也漏拷** |
+| **v8.6** | **嵌入数据入口页：launcher.html 从 fetch() 改为数据嵌入（`__PROJECT_DATA__` 占位符），解决 file:// 协议下浏览器 CORS 拦截导致入口页无法加载数据的问题；增量 I-4 简化为只更新入口页，不重拷静态模板；新建路径步骤 7 拆分为 7a（纯拷贝静态模板）+ 7b（数据嵌入生成入口页）** | **用户反馈：增量审核模板依然没拷过去，且打开审核工具.html 使用了 fetch() 读取 index.json，在 file:// 协议下被浏览器 CORS 拦截，导致入口页始终显示"加载中…"** |
+| **v8.7** | **OCR 全流程加固 + 模板目录重构 + 用户体验全面升级：① OCR 四项核心修复（表头检测优化+表头续行合并+跨页表头继承优化+内容感知分类+分词修复）；② 模板统一存放「数据底座/」目录+中文命名；③ data-editor 自动加载 index.json + localStorage 记忆项目 + 中文按钮；④ launcher 三步指引 UI（核对数据→查看报告→其他工具）；⑤ rule-manager.bat 三级路径自动定位；⑥ OCR 引擎 auto/vision/paddle/agent 四选一前置选项；⑦ PaddleOCR dpi=72→200 图片模糊修复；⑧ OCR retry 行数比较回退保护；⑨ Excel continue 链路修复；⑩ scripts/copy_templates.py 模板复制独立脚本** | **用户测试7实测：① 扫描件从第二页起表格数据字段错乱（施工单位名被误判为表头、表头续行当数据、跨页表头错位、文件名"扫描件.pdf"分类错误）；② 模板与审核资料混放难管理；③ data-editor 每次需手动选文件夹；④ launcher 入口小白看不懂；⑤ rule-manager.bat 普通用户找不到 skill 目录；⑥ 用户无法指定 OCR 引擎；⑦ PaddleOCR dpi=72 图片模糊识别空行；⑧ Vision retry 空数据覆盖好数据；⑨ Excel xlsx 处理跳过正常链路 data_file 为 null** |
+| **v8.8** | **PaddleOCR 引擎升级：从 PaddleOCR 2.8.1 + PaddlePaddle 2.6.2 升级为 PaddleOCR 3.x + PP-OCRv6 Tiny + ONNX Runtime；使用 engine=onnxruntime 绕过 PaddlePaddle 3.x PIR 引擎 Windows 兼容性问题；模型体积 ~30MB→~3MB；无需安装 PaddlePaddle；auto 模式优先级改为 PaddleOCR 优先** | **PaddlePaddle 3.x PIR 引擎在 Windows 下报错，需绕行 ONNX Runtime** |
+| **v8.10** | **数据验证闸门 + 表头消歧定列 + 数据验证闭环：`table_struct.validate_rows()` 六类校验（类型/格式/范围/完整性/一致性/跨字段数学链）落地于数据底座写入前，脏行标 `needs_review` 不直接进库，行级 `issues` 写入 `structured_rows[i].issues`；列角色推断改为值格式锚点为主 + 表头文字消歧/补空缺，修复列错位（pile_no='28'、actual_length='2401'）；data-editor 层3 闭环（有 issues 行标红⚠+内联原因 → 问题视图接入六类校验条目 → 精准跳转橙闪 → 确认门禁阻止未处理 issues 放行，人工修正/忽略后放行），形成"闸门→呈现→人工核对→放行"闭环** | **实测 RapidTable 网格还原正确但列角色推断丢表头导致列错位进底座；OCR 数据进库前缺六类校验闸门；用户反馈 v8.9 后端算出 issues 但 data-editor 不消费，人工看不到"这行错在哪"，确认门禁不感知未处理问题，闭环缺最后一环** |
+| **v9.0** | **OCR 模块重构：本地主力从原生 paddleocr 替换为 rapidocr（RapidOCR，跨平台轻量稳定、无需 PaddlePaddle）；RapidOCR 引擎单例化 + 图像预处理（灰度化+CLAHE+去噪）；新增手写体前置路由（is_handwritten=True 直接走 vision/agent，False 走 rapidocr→vision→tesseract）；VLM 手写体专用 Prompt（HANDWRITTEN_OCR_PROMPT）；配置开关 FORCE_USE_PADDLE / DISABLE_HANDWRITING_ROUTE；关键节点日志（路由判定/引擎选择/识别结果）；test_ocr_routing.py 路由测试 21/21 通过** | **原生 paddleocr Windows 依赖重、易报环境错误；手写体本地轻量 OCR 识别率极低，需前置路由到 VLM** |
+| **v9.1** | **RapidTable(SLANetPlus) 表格结构识别 3.14 原生 + 方式二对话式核对四条纪律**：①`ocr_image.py` 用 RapidTable 3.14 原生表格识别取代旧 TableStructureRec（仅 Python≤3.12）双环境 subprocess，单一环境完成表格还原；②方式二对话式核对四条强制纪律——默认批量（存疑项一次推断成完整修正表）/ 条件补扫（仅严重数据问题+用户点名，提DPI→换预处理→换VLM，无解标存疑回原图严禁硬猜）/ 落盘强制（确认后写回 data_file + index.json 四项并明示"已落盘"）/ 推断标记+禁子代理（inferred:true+置信度，低置信单独列，审核只用确认值，禁 Explore Agent） | **实测：对话式核对 AI 逐条确认不落盘致 data-editor 仍显老数据；推断值（Z516 充盈系数 1.89/1.29 摇摆）标注不清污染审核；逐条渲染读图上下文膨胀越核越慢；Explore Agent 后台空转** |
+| **v9.2** | **错位率阈值收紧 + AGENT 复核放开页限 + 数据编辑器文本行可编辑**：①`data_quality_check.py` 列错位高风险阈值由 30% 收紧至 5%（≥5% 强制 needs_review 人工复核）；②解除 AGENT Vision 复核的 ≤5 页限制，页数不限，仅保留 token 消耗提醒（RapidOCR/Vision 缺失时逐页读图较慢）；③`data-editor.html` 文本行（raw_text）表格单元格改为可编辑，复用结构化编辑链路（bindCellEditEvents），并防止纯数字行被误转数值 | **用户要求：错位率阈值设为 5% 强化数据把关；放开 AGENT 复核页数限制；实测文本行表格只有 3 列且无法修改** |
+| **v9.4** | **表格式样导入导出 + 苹果浅色界面优化**：①data-editor 新增「表格式样」标签页，拆分**前缀区**（表格上方固定内容，用于定位表体，支持行增删改/上下移动，不定义格式样式）与**数字区**（每列定义格式样式，列名可编辑，支持列增删改，多格式用 `/` 或 `，` 分隔，含备注列）；②新增 `scripts/import_template.py` 从电子版（Excel/Word）表格一键导入表格式样，自动识别表头行，生成 JSON 模板；③data-editor 提供「导入 JSON」加载模板、「保存样式定义」写回 `index.json`；④表格式样面板由深墨蓝改为**苹果浅色风格**（白底/浅灰描边/浅蓝点缀），去除大片蓝色背景 | **用户要求：实现从电子表格导入表格式样；去掉大片蓝色背景，改用苹果浅色风格** |
+| **v9.5** | **新增 `nature=扫描转化电子文档` 一等路径 + 数据编辑器中文字段映射**：①前置信息 `nature` 新增第 4 个取值 `扫描转化电子文档`（扫描件先用 WPS「PDF 转 Word」转成带真实表格的 .docx，走电子表解析，识别准确率显著高于本地 OCR）；②该类文件 `extraction_mode="docx"` 走电子表解析，**跳过全部 OCR 引擎**，不设 OCR 优先级路由；③因仍源自手写扫描，`human_verified` 人工核对闸门照常保留；④data-editor 新增 `FIELD_LABELS` 中文字段映射，列头/推荐值/存疑清单全部显示中文，`data-field` 内部仍英文保证写回 | **用户实测：本地 RapidOCR 对测试20手写扫描件识别率天花板明显，WPS 转 Word 后准确率显著提升；且 data-editor 表头显示英文内部名（sink_start/current…），一键采纳因字段错位+英文名无法使用** |
 
-### 1.3 v7.0 核心变更
+### 1.3 同步门禁（强制收尾）
+
+> **铁律：改完核心文件不做全量同步 → 相当于没改。** skill 运行时加载的是**安装版**，不是项目版。只改项目版不同步，新会话永远用旧代码，必踩坑。
+
+```
+项目版：d:\2026年7月22日 民航资料skill\.trae\skills\civil-aviation-doc-audit
+安装版：C:\Users\Administrator\.trae-cn\skills\civil-aviation-doc-audit
+
+强制动作：robocopy 镜像同步（覆盖全文件 + 清理 .bak/__pycache__）
+robocopy <项目版> <安装版> /MIR
+```
+
+触发范围：修改 `scripts/`、`rules/`、`templates/`、`SKILL.md`、`PROJECT_SPEC.md`、`README.md` 等任一核心文件后，本次改动收尾前必须同步。
+
+### 1.4 v7.0 核心变更
 
 v7.0 不是对现有功能的推倒重来，而是在 v6.0 四阶段流水线基础上，对数据底座进行三层重构，新增签字审核和文档关联能力：
 
@@ -198,6 +227,231 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 | **硬约束** | 不得硬卡流程；重扫只能是建议；必须有非重扫兜底（人工核实+存疑标签通过）。 |
 | **肉眼验收** | V-68：构造一个 ocr_confidence=0.6 的糊件测试文档，跑 review 不被拒绝，报告该件所有规则触发项 severity 标"存疑"、出现在 R-20 待核实清单；总览 TOP N 卡片按分数正确排序；对"没有 Fatal 规则关联的纯文本资料"不会错误出现在重扫建议前列（score=0 即不建议）。 |
 
+### 1.3.5 v8.0 核心变更（OCR 策略重定位 + 安装引导强化）
+
+v8.0 不是功能新增，而是对 OCR 引擎角色的重新定位。驱动来源：WorkBuddy 实测中，无 PaddleOCR 时 AGENT 内置 Vision 模型只抽样识别了 6 页（49 页扫描件），大量消耗 token 且遗漏了 43 页的异常数据。根因是 AGENT Vision 的逐页读图模式在批量场景下不可靠——AI 会自主判断"够了"而停止。
+
+**核心变更**：
+
+1. **PaddleOCR 从"可选"升级为"强烈推荐"**：install.ps1、SKILL.md、README.md 中所有提及 PaddleOCR 安装引导的位置，从"可选本地备选引擎"改为"强烈推荐本地引擎"，并明确告知不安装的 token 消耗后果
+2. **AGENT Vision 从"最终兜底"降级为"复核工具（≤5 页）"**：OCR 引擎降级链中，AGENT 内置 Vision 模型不再作为批量 OCR 的兜底选项，而是定位为单页/少页快速复核工具
+3. **安装引导增加 token 消耗警告**：install.ps1 和 SKILL.md 环境检测中，PaddleOCR 缺失时输出明确的 token 消耗警告
+4. **build_foundation.py 增加页面数判断**：当检测到 PDF 页数 > 5 且无 PaddleOCR 时，输出警告提示
+
+**改动文件清单**：
+
+| 文件 | 改动内容 |
+|:---|:---|
+| `install.ps1` | PaddleOCR 步骤从"可选"改为"强烈推荐"；增加 token 消耗警告；验证输出修正；版本标签更新为 v8.0 |
+| `SKILL.md` | 安装步骤表、OCR 引擎策略图、引擎选择指南、环境检测输出、离线安装章节同步更新；版本号 v7.2→v8.0 |
+| `PROJECT_SPEC.md` | 新增 v8.0 版本记录和核心变更说明；新增企业版升级路径章节 |
+| `README.md` | OCR 引擎策略说明同步；残留"PaddleOCR 可选"修正；版本号 v7.2→v8.0 |
+| `requirements.txt` | PaddleOCR 注释说明从"可选依赖"改为"强烈推荐依赖" |
+| `templates/template-manifest.json` | **新增**：模板清单文件，统一管理 10 个模板文件（5 个 required + 5 个 optional），确保跨模式可靠复制 |
+| `scripts/build_foundation.py` | **新增**：`_check_paddleocr_available()` 和 `_check_vision_api_available()` 函数；`copy_web_templates()` 改为从 manifest 读取模板清单（含回退逻辑）；OCR 循环中增加页面数 > 5 且无 PaddleOCR/Vision API 时的警告 |
+
+**设计意图**：
+
+v5.0 的 API-First 策略在"有 API Key"场景下是正确的——Vision API 云端识别质量最高。但在"无 API Key"场景下，原策略的降级链末端是 AGENT Vision，而 AGENT Vision 在批量场景下不可靠。v8.0 修正了这个假设：**AGENT Vision 不是批量 OCR 引擎，它只是复核工具**。批量 OCR 要么用 Vision API，要么用 PaddleOCR，没有第三条路。
+
+### 1.3.6 企业版升级路径（未来方向，当前不实施）
+
+以下内容来自专家建议评估，记录为未来企业版升级方向，当前 v8.0 不实施。这些建议适用于资料量达到 10 万页以上、需要多用户协同、对审核时效有严格要求的场景。
+
+| 方向 | 专家建议 | 当前方案 | 差距 | 升级时机 |
+|:---|:---|:---|:---|:---|
+| 数据存储 | PostgreSQL + 对象存储 | 纯文件系统 JSON | 文件系统满足单机 ≤ 5 万页，无需数据库 | 资料量 > 10 万页或多用户协同时 |
+| 搜索引擎 | Elasticsearch 全文检索 | index.json 总索引 + Grep | 文件系统 grep 满足当前查找需求 | 需要跨项目全文检索时 |
+| 异步队列 | Celery / Redis 任务队列 | Python subprocess 同步调用 | 同步调用满足当前单机场景 | 审核任务需要分布式调度时 |
+| 向量库 | 规范条款向量化检索 | references 缓存层 + Obsidian 回源 | references 已固化 80%+ 条款，向量化收益有限 | 规范库规模扩大 10 倍以上时 |
+| OCR 预处理 | 图像增强（去噪/纠偏/超分辨率） | PyMuPDF 渲染 + 基础预处理 | 基础预处理满足 90% 扫描件场景 | 扫描件质量普遍较差时 |
+| 版面分析 | 表格/文字区域分离识别 | 通用表格提取 + 三路融合表头 | 当前方案已覆盖表格场景 | 复杂版面（多栏/图文混排）高频出现时 |
+| 分区域识别 | 按区域类型分配不同引擎 | 统一引擎整页识别 | 统一引擎满足当前精度需求 | 对特定区域（如签字区）有更高精度要求时 |
+
+> **核心原则**：当前 Skill 定位为单机、单用户、文件系统存储的轻量工具。企业版升级路径保留在文档中，但不在当前版本实施。每项升级的触发条件是"当前方案确实无法满足实际需求"，而非"技术上更先进"。
+
+### 1.3.7 v8.1 双模式运行架构（跨平台兼容 + 低智商模型适配）
+
+**驱动来源**：WorkBuddy 实测中，因无 Python 环境导致 build_foundation.py 无法执行，AI 跳过数据底座建立直接出结果。Codex/Hermes 等智能体平台同样面临无 Python/无 shell 的问题。v8.1 引入双模式架构，让 Skill 在任何智能体平台中都能完成审核工作。
+
+**核心设计**：
+
+```
+Skill 加载 → 检测 Python 可用性
+              │
+              ├─ Python 可用 → 引擎模式（Engine Mode）
+              │   └─ 现有四阶段流水线（build_foundation.py → data-editor.html → review_audit.py → 报告）
+              │   └─ 适用于：Trae IDE、本地 PowerShell + Python 环境
+              │
+              └─ Python 不可用 → 原生模式（Native Mode）
+                  └─ 三阶段简化流水线（AI 原生提取 → 对话式核对 → AI 审核+报告）
+                  └─ 适用于：WorkBuddy、Codex、Hermes 等无 Python 智能体平台
+```
+
+**引擎模式（现有，保持不变）**：
+
+| 阶段 | 执行方式 | 工具依赖 |
+|:---|:---|:---|
+| 1. 建数据底座 | `build_foundation.py` 全自动 | Python + PyMuPDF + OCR 引擎 |
+| 2. 人工核对 | `data-editor.html` 浏览器操作 | 零 Python 依赖 |
+| 3. 正式审核 | `review_audit.py` 多 Agent 并行 | Python + 规则引擎 |
+| 4. 报告生成 | Python 模板渲染 | Python |
+
+**原生模式（v8.1 新增）**：
+
+| 阶段 | 执行方式 | AI 能力依赖 |
+|:---|:---|:---|
+| 1. AI 原生数据提取 | AI 逐页读图 → 手动建结构化 JSON + index.json | Vision（逐页读图） |
+| 2. 对话式人工核对 | AI 逐条展示 OCR 结果 → 用户对话确认/修正 | 文本交互 |
+| 3. AI 规则审核 + 报告 | AI 按检查清单逐条核对 → 直接生成 HTML 报告 | 文本推理 |
+
+**两种模式的数据兼容性**：
+
+原生模式生成的 JSON 数据结构与引擎模式保持一致（structured_rows + full_text + page_map + index.json），确保：
+1. 原生模式生成的数据可以被引擎模式的脚本后续处理（如用户后来安装了 Python）
+2. 审核报告格式统一，不受运行模式影响
+
+**低智商模型适配策略**：
+
+原生模式下，将复杂推理任务拆解为机械判断步骤：
+1. **规则匹配**：将 93 条规则简化为核心检查清单（约 30 条），每条提供明确的"是/否"判断标准
+2. **数据检测**：将数据质量检测拆解为逐步判断流程（"这个日期是否早于开工日期？""这个桩号是否连续？"）
+3. **OCR 识别**：强制逐页读图（不允许抽样），每页输出固定格式表格
+4. **报告生成**：提供报告模板，AI 填空式生成
+
+**改动范围**：
+
+| 文件 | 改动内容 |
+|:---|:---|
+| `SKILL.md` | 新增双模式检测路由、原生模式工作流（3 阶段）、低智商模型适配检查清单 |
+| `PROJECT_SPEC.md` | 新增本章节（§1.3.7） |
+| `README.md` | 新增双模式说明 |
+
+> **不变的部分**：引擎模式的四阶段流水线完全不变；规则文件（rules/）、参考文件（references/）、模板文件（templates/）完全不变；install.ps1 不变。
+
+### 1.3.8 v8.7 核心变更（OCR 全流程加固 + 模板目录重构 + 用户体验全面升级）
+
+> **v8.8 增补**：PaddleOCR 引擎从 2.8.1 + PaddlePaddle 2.6.2 升级为 PaddleOCR 3.x + PP-OCRv6 Tiny + ONNX Runtime。使用 `engine=onnxruntime` 绕过 PaddlePaddle 3.x PIR 引擎 Windows 兼容性问题，模型体积从 ~30MB 缩小到 ~3MB，无需安装 PaddlePaddle。auto 模式优先级调整为 PaddleOCR 优先（原 Vision API 优先）。
+
+> **v9.0 增补（OCR 模块重构）**：本地 OCR 主力从原生 paddleocr 替换为 **rapidocr（RapidOCR）**——跨平台轻量稳定、无需安装 PaddlePaddle，规避 PaddlePaddle 3.x PIR 引擎 Windows 兼容性问题。RapidOCR 引擎单例化（`_get_rapidocr_engine()` 全局单例，批量只加载一次模型）+ 图像预处理（灰度化 + CLAHE 对比度增强 + 去噪）。新增**手写体前置路由**：`is_handwritten=True` 直接跳过本地 OCR，首选 `vision`（VLM）次选 `agent`；`False` 走 `rapidocr → vision → tesseract`。配置开关 `FORCE_USE_PADDLE`（强制回滚原生 PaddleOCR）/ `DISABLE_HANDWRITING_ROUTE`（禁用 VLM 路由）。VLM 手写体专用 Prompt（`HANDWRITTEN_OCR_PROMPT`）。关键节点日志（[路由判定]/[引擎选择]/[识别结果]）。手写体判定：文件名启发式（手写/笔记/草稿/note）+ `--handwritten` 参数 + 前置信息 `config.is_handwritten` 显式指定。
+
+**驱动来源**：用户测试7实测反馈九大问题：①扫描件第2页起表格字段错乱（表头被公司名污染、表头续行当数据行、跨页表头错位、通用文件名分类错误）；②模板文件与审核资料混放，用户难管理；③data-editor 每次打开需手动选择文件夹，操作繁琐；④launcher 入口页对小白用户不友好，不知道先点什么后点什么；⑤rule-manager.bat 普通用户找不到 skill 安装目录；⑥用户无法明确指定 OCR 引擎；⑦PaddleOCR dpi=72 渲染模糊导致零行识别；⑧Vision API retry 空数据覆盖首次好数据；⑨Excel xlsx 处理时因 continue 语句跳过正常链路，data_file 为 null。
+
+v8.7 不是引入新模块，而是在 v8.6 已跑通的流水线基础上，对「OCR 入口准确性」「模板目录组织」「用户操作路径」三处做加固和优化。目标：一份新资料进入系统后，**表头不瞎、跨页不乱、分类不错、模板不混、打开即用、流程清晰、规则能改、引擎可选、图片不糊、数据不丢**。
+
+每条改动明确标注落点（既有概念/既有章节 + 具体代码锚点）。
+
+---
+
+#### V1｜OCR 全流程加固（四项核心修复）
+
+**问题现象（测试7实测）**：扫描件「扫描件.pdf」49页OCR完成后，第2页起 structured_rows 字段名被误判为「云南机场建设发展有限公司」（施工单位名），数据行从表头续行（「号/长/(m)/…」）开始解析，跨页第2页表头行本身被当作第1条数据，桩号 Z360+20 错分到 generic 行。根因四重叠加：①detect_generic_header 无超长token过滤，把施工单位长名称（>10字符）认作列名；②表头拆成两行（「桩/设计/桩径…」+「号/长/(m)/…」），第二行被当作数据行；③跨页后直接继承首页表头，未重新检测，导致第2页的表头行和续行被当数据；④文件名「扫描件.pdf」走通用分类，未命中桩基解析路由。
+
+| 项目 | 说明 |
+|------|------|
+| **落点代码** | [build_foundation.py](file:///d:/2026年7月22日%20民航资料skill/scripts/build_foundation.py) `detect_generic_header()`（表头检测）、`parse_pile_rows()`（桩基解析表头续行+跨页）、`parse_generic_table()`（通用表格表头续行）、`build_rows()`（内容感知分类路由）、`parse_pile_data_line()`（分词修复）、`_pdf_to_images_pymupdf()` dpi参数、`_ocr_retry_wrapper()` 行数比较回退、`sniff_document()` excel 分支 |
+| **落点既有概念** | 复用 §1.3.4 C7 通用表格提取（表头检测/结构化行路由）；复用 §C5 桩基三路融合表头框架；复用 v6.0 差异化提取 Excel 分支；不新增数据结构，仅在既有流程中加过滤条件和合并逻辑 |
+| **改动内容** | 1. **V1a 表头检测优化** `detect_generic_header(line)`：<br>　a. 超长token过滤：分词后任一 token 长度>10 → 整行排除（直接过滤公司名/文档标题）；<br>　b. 列名关键词命中要求：分词 token 中至少命中1个列名型关键词（序号/编号/桩号/日期/时间/高程/长度/桩径/灌入量/充盈系数/沉管/拔管/密实/反插等），命中≥2个时置信度+0.15；<br>2. **V1b 表头续行合并** `parse_pile_rows()` + `parse_generic_table()`：<br>　a. 检测到表头行后（i+=1 跳过表头本身），检查紧接的1-2行是否也通过表头检测（用相同 detect_header/detect_generic_header 函数）；<br>　b. 若为续行，将其 {列索引: 字段名} 合并进 header_map（相同索引取首次值，新索引追加），i+=1 继续跳过；<br>　c. 遇分页标记 `=== 第 X 页 ===` 或非表头行时停止续行合并；<br>3. **V1c 跨页表头继承优化** `parse_pile_rows()`：<br>　a. 翻页（遇分页标记）后 first_page_header 缓存不清零，但 **立即重置 header_map=None**；<br>　b. 翻页后逐行扫描：**先尝试重新 detect_header 检测当前页表头**——若检测到（且与 first_page_header 键数差异≤2），直接用当前页表头 + 跳过续行；<br>　c. 若未检测到表头、但遇到桩号格式数据行（`r'^[ZD]\s*\d+'`），才 fallback 继承 first_page_header；<br>4. **V1d 内容感知分类路由** `build_rows()`：<br>　a. 文件名匹配未命中桩基类时，先用 OCR 文本前500字符做内容感知：统计桩基关键词（碎石桩/沉管时间/拔管时间/充盈系数/密实电流/反插/桩底高程/桩顶高程/沉管开始/拔管结束）的命中数；<br>　b. 命中≥2个 → 强制 is_pile=True，走 parse_pile_rows() 桩基解析；<br>5. **V1e 分词修复** `parse_pile_data_line()`：删除错误的 `re.split(r"[	]{2,}", line)`（仅对双tab分割有效），改用 `_tokenize_table_line(line)`（正确处理单tab/多空格/混合分隔）；<br>6. **V1f PaddleOCR 渲染清晰度修复** `_pdf_to_images_pymupdf()`：`page.get_pixmap(dpi=72)` → `dpi=200`（实测 dpi=72 时 PaddleOCR 识别行数=0，dpi=200 时 418 行/49页）；<br>7. **V1g OCR retry 行数比较回退保护** `_ocr_retry_wrapper()`：Vision API 重试结果若 `len(retry_rows) < len(first_rows) * 0.7`（即重试行数不足首次的70%），**不覆盖首次结果**，恢复 first_rows 作为最终输出 + 记录告警「Vision retry 空数据覆盖被拦截」；<br>8. **V1h Excel 链路修复** `build_foundation.py sniff_document()` excel 分支：删除错误的 `continue` 语句（导致跳过后续 data_file 赋值），恢复正常结构化行提取→JSON写入→index.json注册链路 |
+| **用户看到什么** | 表头字段名是「桩号/设计桩长/桩径/…」而不是施工单位名；第2页起数据行不从表头续行开始；跨页表头行不再被当作数据行；文件名是「扫描件.pdf」但内容是桩基施工记录时，能自动路由到桩基解析；PaddleOCR 不再出现 0 行识别；Vision API 重试时好数据不被空数据覆盖；Excel 数据文件 data_file 不为 null |
+| **硬约束** | V1a 的超长token过滤（>10字符）是经验阈值，若真存在>10字符的合法列名（极罕见），需人工在 data-editor 表头映射 Tab 修正；V1c 的「桩号格式数据行」判定优先于「直接继承首页表头」，防止第2页表头被拆成多行时首页表头错位；不破坏 v7.2 C5 桩基三路融合框架（first_page_header 仍作为三路融合的输入之一）；V1g 的 70% 阈值为经验值，仅防止极端空数据覆盖场景 |
+| **肉眼验收** | V-85：对测试7扫描件.pdf，build后 structured_rows 字段名正确（桩号/设计桩长/…）；第2页数据行桩号 Z360+20 对应字段正确；第1页和第2页桩号连续无错位；文件名「扫描件.pdf」的 index.json doc_type 为桩基类；V-86：PaddleOCR 49页识别行数≥400；V-87：模拟 Vision retry 返回 0 行时，最终输出为首次结果而非空；V-88：测试7施工日志.xlsx 的 data_file 非 null，structured_rows 含4月各日期数据 |
+
+---
+
+#### V2｜模板目录重构（集中存放 + 中文命名 + 精简冗余）
+
+| 项目 | 说明 |
+|------|------|
+| **问题现象** | 项目文件夹根目录直接出现 data-editor.html、project-dashboard.html、launcher.html 等英命名模板文件，与「扫描件.pdf」「施工日志.xlsx」等审核资料混在一起，用户不知道哪些是模板哪些是资料，整理归档时容易误删模板。 |
+| **落点代码** | [build_foundation.py](file:///d:/2026年7月22日%20民航资料skill/scripts/build_foundation.py) `copy_web_templates()`；[template-manifest.json](file:///d:/2026年7月22日%20民航资料skill/templates/template-manifest.json) v1.4 |
+| **落点既有概念** | 复用 v8.6 的 template-manifest.json 统一管理机制（src/dst/required/category）；复用 v6.0 数据底座目录结构（项目文件夹/数据底座/）；不修改模板文件内部内容，只改复制目的地和文件命名 |
+| **改动内容** | 1. **复制目的地变更**：所有模板从「项目文件夹根目录」改到「项目文件夹/数据底座/」目录下；<br>2. **中文命名映射**：<br>　- data-editor.html → **数据核对编辑器.html**<br>　- project-dashboard.html → **项目总览.html**<br>　- launcher.html → **打开审核工具.html**<br>　- alignment-view.html → **文档对齐视图.html**<br>　- rule-manager.bat → **规则管理工具.bat**<br>　- tokens.css/pdf.min.js/pdf.worker.min.js 保持原名（静态资源）<br>3. **模板全量复制**：template-manifest.json v1.4 收录全部模板（含 rule-editor.html、feedback-collector.html、audit-scope-template.html、碎石桩施工记录.json），全部复制到每个项目的数据底座；<br>4. **模板复制归属**：模板复制由 `build_foundation.py` 的 `copy_web_templates()` 统一完成（读取 template-manifest.json），原生模式阶段 1 同样调用；<br>5. **G-1.5 闸门同步更新**：模板清单对应更新为中文文件名（数据核对编辑器.html、项目总览.html、打开审核工具.html） |
+| **用户看到什么** | 项目文件夹根目录只有「资料文件（PDF/XLSX）」和「数据底座/」文件夹，干净整洁；「数据底座/」内全是中文命名的工具文件，一眼看懂用途 |
+| **硬约束** | 向后兼容：若已有项目数据底座目录下存在旧英命名模板，copy 时自动覆盖为中命名版本 + 保留旧文件（不删除，避免用户正在打开旧文件）；template-manifest.json 的 dst 字段是中文命名，所有 copy 逻辑必须读 manifest 而非硬编码路径 |
+
+---
+
+#### V3｜data-editor 自动加载（fetch 同级 + localStorage 记忆）
+
+| 项目 | 说明 |
+|------|------|
+| **问题现象** | 每次打开 data-editor.html 都要手动点击「选择项目文件夹」→ 导航到数据底座目录 → 选中 index.json，3 次点击才能看数据，用户每天打开数十次，累计操作量巨大。 |
+| **落点代码** | [templates/data-editor.html](file:///d:/2026年7月22日%20民航资料skill/templates/data-editor.html) `autoLoad()` IIFE 函数（顶部立即执行）；按钮 `#load-btn` 文案 |
+| **落点既有概念** | 复用 v7.1 的 File System Access API 加载逻辑（`window.showDirectoryPicker()`）；复用 v8.6 launcher 的数据嵌入机制（同级文件可通过 fetch 访问）；不新增后端依赖，纯前端实现 |
+| **改动内容** | 1. **autoLoad 自动探测**：页面加载时立即 try `fetch('./index.json', {cache: 'no-store'})`，若响应 ok 且 JSON 解析成功，直接赋值 state.index + 渲染文档树 + toast「已自动加载：项目名」；<br>2. **fetch 失败优雅降级**：file:// 协议下浏览器 CORS 拦截 fetch → 捕获异常不报错，toast「请点击顶部『加载数据底座』按钮选择数据底座目录」（5秒自动消失）；<br>3. **localStorage 项目记忆**：手动成功加载项目后，写入 `localStorage.setItem('civil-audit-last-project', project_name)`，下次打开 autoLoad 失败时额外提示「上次项目：XXX」；<br>4. **按钮文案中文化**：`「选择项目文件夹」` → `「加载数据底座」`，tooltip 改为「手动选择数据底座目录（当自动加载失败时使用）」 |
+| **用户看到什么** | data-editor.html 放在数据底座目录下，双击打开后 1 秒内自动加载项目数据，无需任何点击；只有在非数据底座目录下打开时才需要手动点击 |
+| **硬约束** | fetch 用 `{cache: 'no-store'}`，防止浏览器缓存旧的 index.json（用户刚 OCR 完，数据已更新但浏览器读缓存导致显示旧数据）；localStorage 仅存项目名用于提示，**不存任何实际数据**，防止泄露 |
+
+---
+
+#### V4｜launcher 三步指引 UI（流程化导航 + 动态状态）
+
+| 项目 | 说明 |
+|------|------|
+| **问题现象** | 原 launcher.html 是链接列表式的「工具集合页」，小白用户不知道审核流程的先后顺序——打开后不知道先点什么后点什么，容易跳过人工核对直接点出报告（然后被 human_verified 闸门拒绝）。 |
+| **落点代码** | [templates/launcher.html](file:///d:/2026年7月22日%20民航资料skill/templates/launcher.html) 整体重构；[templates/tokens.css](file:///d:/2026年7月22日%20民航资料skill/templates/tokens.css) 设计令牌 |
+| **落点既有概念** | 复用 v6.0 四阶段流水线概念（步骤1=阶段2、步骤2=阶段4、步骤3=辅助工具）；复用 v8.6 数据嵌入 `__PROJECT_DATA__` 占位符；不新增后端依赖 |
+| **改动内容** | 1. **三步卡片式布局**：页面从上到下依次展示「步骤 1｜核对数据」「步骤 2｜查看报告」「步骤 3｜其他工具」，每步大按钮带图标+说明文字+箭头；<br>　- 步骤1 主按钮：**打开数据核对编辑器.html**，附说明「逐份核对 OCR 识别结果，修正误读后标记『已核对』」；状态徽标动态显示「已核对 X/总数」（从 index.json 统计 human_verified 为 true 的文件数）；<br>　- 步骤2 双按钮：**打开项目总览.html**（仪表盘，看整体进度/问题统计）+ **审核报告.html**（若已生成则直接打开，否则按钮灰色+tooltip「请先完成步骤1并启动审核」）；<br>　- 步骤3 次级入口：文档对齐视图.html、规则管理工具.bat（附说明「修改全局审核规则，所有项目共用」）；<br>2. **顶部项目状态栏**：从嵌入数据读取 project_name / updated_at / documents.length / issues_total，动态显示「项目名称：XX｜更新时间：XX｜资料 X 份｜待处理问题 X 个」；<br>3. **视觉统一**：引入 tokens.css 设计令牌（深墨蓝主色/工程橙强调色/中性灰辅助色/等宽数字字体），三步卡片带 hover 微动效 |
+| **用户看到什么** | 打开「打开审核工具.html」后，第一眼就看到「先核对→再看报告→其他工具」的明确顺序；已核对进度实时显示，不会漏核对；报告未生成时按钮灰色防止误点 |
+| **硬约束** | 三步顺序**不可变更**，必须按流水线方向排列；步骤1状态徽标统计必须与 data-editor 的 human_verified 字段一致（同源 index.json）；未完成步骤1时步骤2报告按钮灰色，不可绕过 |
+
+---
+
+#### V5｜rule-manager.bat 三级路径自动定位（零配置启动）
+
+| 项目 | 说明 |
+|------|------|
+| **问题现象** | 普通用户不知道 rule-manager.bat 必须在 skill 目录下才能启动（因为它要调用 `python scripts/rule_admin.py`），用户在项目数据底座目录下双击时会报错「找不到 scripts/rule_admin.py」，用户以为工具坏了。 |
+| **落点代码** | [rule-manager.bat](file:///d:/2026年7月22日%20民航资料skill/rule-manager.bat) 路径查找逻辑；build_foundation.py copy_web_templates() 复制 bat 到数据底座 |
+| **落点既有概念** | 复用 v6.1 规则管理子系统（rule_admin.py 启动参数：--port --rules-dir）；复用 skill 全局安装路径约定 `%USERPROFILE%\.trae-cn\skills\civil-aviation-doc-audit\`；不修改 rule_admin.py 内部逻辑 |
+| **改动内容** | 1. **三级路径查找链**：<br>　- 第1级：`%~dp0`（当前 bat 文件所在目录）→ 检查是否存在 `scripts\rule_admin.py`；<br>　- 第2级：`%~dp0..\`（bat 所在目录的上级目录——即项目文件夹，bat 被复制到数据底座子目录时命中）→ 检查 `scripts\rule_admin.py`；<br>　- 第3级：`%USERPROFILE%\.trae-cn\skills\civil-aviation-doc-audit\`（全局 skill 安装路径）→ 检查 `scripts\rule_admin.py`；<br>　- 三级均未命中 → 红色中文错误提示「未找到 skill 安装目录，请确认已安装 skill 或手动指定路径」，暂停不退出；<br>2. **找到后中文提示**：echo 绿色中文「当前规则目录：%SKILL_DIR%rules\」「启动规则管理面板…端口 8765」「启动后浏览器将自动打开 http://127.0.0.1:8765/」；<br>3. **自动复制到数据底座**：copy_web_templates() 中把 skill 根目录的 rule-manager.bat 复制到「数据底座/规则管理工具.bat」（通过 template-manifest.json v1.3 注册，required=false） |
+| **用户看到什么** | 在「项目文件夹/数据底座/」目录下双击「规则管理工具.bat」，1秒后正常启动面板，显示当前规则路径，不需要用户知道 skill 安装在哪里 |
+| **硬约束** | 三级路径必须按「就近→全局」顺序，本地 skill 优先于全局安装；找到 SKILL_DIR 后立即 `cd /d %SKILL_DIR%` 切换工作目录再启动 rule_admin.py，防止相对路径读取 rules/ 出错 |
+
+---
+
+#### V6｜OCR 引擎选择前置（v9.0 更新：手写体前置路由）
+
+| 项目 | 说明 |
+|------|------|
+| **问题现象** | 原前置信息 OCR 引擎选择只有「Vision API / PaddleOCR 本地」两个选项，缺少「auto 自动最优」和「agent 零依赖」场景；小白用户不知道自己该选什么，默认逻辑可能不符合用户意图（如用户离线场景却想用 Vision API）。 |
+| **落点代码** | [SKILL.md](file:///d:/2026年7月22日%20民航资料skill/SKILL.md) Step 0 前置信息表；build_foundation.py --engine 参数说明；ocr_image.py 引擎路由 |
+| **落点既有概念** | 复用 v8.0 OCR 引擎策略 + v9.0 手写体前置路由（is_handwritten=True 走 vision/agent，False 走 rapidocr→vision→tesseract）；复用 v8.1 双模式检测；默认 auto 模式 |
+| **改动内容** | 1. **6 项前置信息第 4 项**：OCR 引擎 auto / agent / rapidocr / vision；另加「是否手写体」判定（文件名启发式 /config.is_handwritten / --handwritten）<br>2. **--engine 参数扩展**：`run_audit.py build --engine` 接受 `auto/agent/rapidocr/vision`（兼容 `paddle` 作为 FORCE_USE_PADDLE 回滚），额外支持 `--handwritten` 布尔参数；<br>3. **auto 模式路由链（v9.0）**：<br>　- 手写体（is_handwritten=True）：`vision → agent`，直接跳过本地 OCR；<br>　- 印刷体（is_handwritten=False）：`rapidocr → vision → tesseract`；<br>4. **配置开关**：`FORCE_USE_PADDLE=1` 强制回滚原生 PaddleOCR；`DISABLE_HANDWRITING_ROUTE=1` 强制所有资料走本地 OCR；<br>5. **vision 模式**：检测不到可用 Provider → 立即终止，红色提示「未配置 Vision API Key」；<br>6. **agent 模式**：页数不限，逐页读图；仅提醒 token 消耗，不终止 |
+
+---
+
+### 1.3.9 v9.4 核心变更（表格式样导入导出 + 苹果浅色界面优化 + SKILL.md 内部路由重构）
+
+v9.4 解决"新表类型如何确认列定义"的落地问题：把表格式样定义从隐式 AI 推断升级为**用户可直接编辑、可从电子表导入**的显式模板，并统一界面风格。
+
+1. **表格式样面板（data-editor 新增「表格式样」标签页）**：
+   - **前缀区**：表格上方固定内容（工程名称 / 表号 / 施工单位 / 开工日期等），仅用于**定位表体**，不定义格式样式；支持**添加 / 删除 / 编辑 / 上下移动**行
+   - **数字区**：定义每列填写的格式样式，列名可**直接编辑**；支持**添加 / 删除列**；每列可写**多种格式样式**（用 `/` 或 `，` 分隔，如 `2026年/2026-01-01`）；含**备注**列供说明
+   - **格式样式的作用**：填写样式后，核对时按该样式校验扫描件值（如日期列写 `2026年`，则非 2026 年的值标需核实）
+   - 模板结构写入 `index.json` 的 `table_style` 字段，含 `prefix_rows`（前缀行数组）与 `number_cols`（数字列数组，每列含列名 / 格式样式列表 / 备注）
+
+2. **从电子表导入表格式样（`scripts/import_template.py`）**：
+   - 解析电子版表格（`.xlsx` / `.docx`），自动识别表头行（可用 `--header-row` 手动指定），提取前缀区固定行与数字区列定义（列名 / 样例值），生成 JSON 模板
+   - 用法：`python scripts/import_template.py 表格.xlsx [--header-row 行号] [--sheet 工作表名] [--out 输出.json]`
+   - data-editor 提供「导入 JSON」按钮加载模板（校验 `prefix_rows` / `number_cols` 结构），「保存样式定义」写回
+
+3. **苹果浅色界面优化（表格式样面板）**：
+   - 去除大片蓝色背景，改为白底 / 浅灰描边 / 浅蓝点缀的苹果风格
+   - 表头浅灰底深灰字、可编辑区聚焦浅蓝描边 + 淡蓝光晕、操作按钮浅灰底悬停变色，与编辑器其余面板风格统一
+
+4. **与几何重建的关系**：导入的表格式样作为**值格式锚点的补充**。几何重建（值格式锚点定列 + 领域物理约束 + `validate_rows()` 六类校验）仍是表格识别主路径；表格式样数字区的格式样式用于校验列值所属格式，前缀区用于定位表体，两者互补。
+
+5. **SKILL.md 内部路由重构**：将 SKILL.md 从 500+ 行精简至 308 行，按**场景路由**组织为五大模块：
+   - **路由表**：顶部 10 条触发词 → 场景映射，AI 收到消息先匹配路由，匹配不到默认走审核流水线
+   - **共享基础设施**：强制闸门（G-0~G-2）、Anti-Omission Protocol、常见错误、OCR 引擎策略、三级输出格式、知识库红线、核心铁律概要——两个场景共用，不重复定义
+   - **场景·审核流水线**：步骤 0/0.5、前置信息确认（6 项）、四阶段流水线（含 CLI 命令）、原生模式替代、多 Agent 并行、进度展示
+   - **场景·规则管理**：三层分级体系、编辑方式（三选一）、反思流程、反馈闭环
+   - **附录**：v5.0 旧版模式、参考资料清单、CLI 命令参考、版本更新历史——均引用 references/ 对应文件
+   - 驱动来源：**避免 SKILL.md 越写越臃肿，按场景路由让 AI 仅加载当前任务所需内容**
+
+---
+
 ### 1.4 设计决策记录
 
 | 决策点 | 决策 | 理由 |
@@ -214,6 +468,12 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 | C4 field-level 置信度是否进 v7.2 P1 | **砍到 P2** | 开发量占 C4 60%+，但不改变用户核对操作（低/高置信都要看原图），投入产出比低 |
 | C1 自成长是否全管道 | **简化版**：候选→人工确认两步，不做 LLM 聚类 | 月度改分类次数<5，全管道成本不划算；候选→确认两步+主动提醒已足够 |
 | LLM 调用是否公共化 | **抽公共 `scripts/llm_client.py`** | 避免 build_foundation.py、feedback_analyzer.py、review_audit.py 三处双写 API_KEY/超时/错误处理 |
+| 模板复制能力是否解耦（v8.7 D9） | **否，由 `build_foundation.py` 的 `copy_web_templates()` 统一承担** | build_foundation.py 职责是 OCR+结构化+模板复制；模板复制能力内聚在 build 流程，原生模式阶段 1 同样调用该函数 |
+| 表头检测是否引入经验阈值（v8.7 D10） | **是，超长 token 过滤（>10 字符排除）+ 列名关键词命中要求（≥1 个）** | 纯算法检测无法区分"公司名 12 字"和"合法列名"，工地实际资料中列名>10 字符极罕见，用经验阈值换 99% 场景的准确率 |
+| OCR retry 结果是否无条件覆盖（v8.7 D11） | **否，仅当重试行数≥首次 70% 才覆盖** | Vision API 重试可能因为超时/限流返回空结果，无条件覆盖会把好数据清空；宁可保留坏数据也不丢失已有数据（人工还能核对） |
+| PaddleOCR/RapidOCR dpi 经验值（v8.7 D12） | **dpi=200** | dpi=72 实测 0 行识别；dpi=300 图像体积 2.5x 且 OCR 速度慢 1.8x；dpi=200 是准确率和速度的平衡点（49页/418行/约2分钟）。v8.8 升级为 PP-OCRv6 Tiny + ONNX Runtime；v9.0 本地主力替换为 RapidOCR，dpi=200 保持不变 |
+| 模板命名是否强制中文化（v8.7 D13） | **是，面向用户的入口文件全中文命名** | 工地一线安全主管/资料员大多非IT背景，文件名"数据核对编辑器.html"比"data-editor.html"直观10倍，零培训成本 |
+| launcher 是否按流水线顺序排列入口（v8.7 D14） | **是，三步顺序强制：核对数据→查看报告→其他工具** | 小白用户最大痛点是"不知道先干什么后干什么"，用页面物理顺序强制对齐流水线逻辑，比任何说明文字都有效 |
 
 ---
 
@@ -225,7 +485,7 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 |:---:|:---|:---|:---:|
 | F-01 | 资料格式识别（PDF/Word/Excel/图片/扫描件） | `run_audit.py info` | ✅ |
 | F-02 | PDF 电子档文字提取 | `extract_pdf.py` | ✅ |
-| F-03 | 扫描件 OCR（PaddleOCR / Vision API / Tesseract） | `ocr_image.py` | ✅ |
+| F-03 | 扫描件 OCR（v9.0：RapidOCR / 手写体 VLM 路由 / Vision API / Tesseract） | `ocr_image.py` | ✅ |
 | F-04 | 文本后处理（全角转半角、PUA 替换） | `postprocess.py` | ✅ |
 | F-05 | OCR 字符混淆检测（Z→2、4→0 等） | `ocr_confusion_check.py` | ✅ |
 | F-06 | 字段级复核编排（裁剪→任务清单→合并） | `verify_fields.py` | ✅ |
@@ -235,14 +495,14 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 | F-10 | 批量目录识别 | `run_audit.py batch` | ✅ |
 | F-11 | HTML 审核报告标准模板（9 章节强制套用） | `run_audit.py` 内嵌模板 | ✅ |
 | F-12 | 项目审核范围清单模板 | `templates/audit-scope-template.html` | ✅ |
-| F-13 | 5 项前置信息收集（阶段/性质/范围/OCR引擎/特殊说明） | `SKILL.md` Step 0 | ✅ |
+| F-13 | 6 项前置信息收集（阶段/性质/范围/OCR引擎/特殊说明/签字检查） | `SKILL.md` Step 0 | ✅ |
 | F-14 | 20 条铁律体系 | `SKILL.md` | ✅ |
 | F-15 | 16 个 references 参考文件 | `references/` | ✅ |
 | F-16 | 多 Agent 并行审核（按专业拆分，最多 6 Agent） | `SKILL.md` | ✅ |
 | F-17 | 知识分区红线（3 条红线 + 推理边界决策树） | `SKILL.md` | ✅ |
 | F-18 | 三级输出格式（Fatal / Sanity Check / Best Practice） | `SKILL.md` | ✅ |
 | F-19 | Obsidian 知识库集成（首次探测 + 按需回源） | `SKILL.md` | ✅ |
-| F-20 | OCR 引擎选择开关（Vision API / PaddleOCR 本地） | `SKILL.md` Step 0 | ✅ |
+| F-20 | OCR 引擎选择开关（v9.0：RapidOCR / Vision API / agent，含手写体路由与配置开关） | `SKILL.md` Step 0 | ✅ |
 
 ### 2.2 功能需求 — v6.0 新增
 
@@ -284,13 +544,21 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 | R-19 | 用户标记问题闭环追溯 | 追溯 AI 为什么没发现，按四类原因归类补充规则 | 阶段 4 审核日志 |
 | R-20 | OCR 存疑项人工核实 | 低置信度/存疑项汇总为待核实清单，人工核实前不下确定性结论 | 阶段 2 人工核对 |
 
-### 2.4 约束需求（来自项目记忆，v6.0 必须遵守）
+### 2.4 约束需求（来自项目记忆，v6.0~v8.7 必须遵守）
 
 | 编号 | 约束 | 说明 |
 |:---:|:---|:---|
 | C-01 | 审核前必须进行文件分类确认 | 区分被审核资料、依据文件和排除文件 |
-| C-02 | 前置信息确认时必须提供完整选项 | 禁止使用"默认信息"，5 项必须全部展示 |
-| C-03 | OCR 引擎需提供切换开关 | 支持在前置信息确认中选择 Vision API 或 PaddleOCR |
+| C-02 | 前置信息确认时必须提供完整选项 | 禁止使用"默认信息"，6 项必须全部展示（阶段/性质/范围/OCR引擎/特殊说明/签字检查） |
+| C-03 | OCR 引擎需提供选择开关（v8.7 更新，v9.0 调整为 RapidOCR + 手写体路由） | 支持在前置信息确认中选择 **auto（推荐）/ agent（零安装，AI 直接读图）/ rapidocr（本地批量，零 token）/ vision（云端 API）**。auto 模式按手写体路由：is_handwritten=True 走 vision→agent，False 走 rapidocr→vision→tesseract。行为严格定义见 §1.3.8 V6 |
+| C-03.1 | vision 模式无可用 Provider 时必须硬终止（v8.7 新增） | 不得降级到其他引擎，防止用户预期偏差；必须红色提示后等待用户重新选择 |
+| C-03.2 | rapidocr 模式未安装时必须硬终止（v8.7 新增，v9.0 由 paddle 改为 rapidocr） | 不得降级到其他引擎；必须红色提示后等待用户重新选择 |
+| C-03.3 | agent 模式页数不限，仅提醒 token 消耗（v8.7 新增，v9.2 放开 5 页限制） | 黄色警告 token 消耗，但不终止，给用户选择权 |
+| C-03.4 | OCR 渲染 DPI 固定为 200（v8.7 新增） | 禁止使用 dpi=72，防止 0 行识别 |
+| C-03.5 | OCR retry 空结果不得覆盖首次好数据（v8.7 新增） | 重试行数<首次 70% 时，恢复首次结果 + 告警记录 |
+| C-03.6 | 手写体前置路由（v9.0 新增） | is_handwritten=True 直接跳过本地 OCR，首选 vision（VLM）次选 agent；文件名含"手写/笔记/草稿/note"自动置 True，可用 --handwritten 或 config.is_handwritten 显式覆盖 |
+| C-03.7 | 配置开关 | `DISABLE_HANDWRITING_ROUTE=1` 强制所有资料走本地 OCR，跳过 VLM 路由（原生 PaddleOCR 已彻底移除，无 FORCE_USE_PADDLE 回滚） |
+| C-03.8 | 运行时进度展示（v9.0 新增） | 正式审核运行中，AI 每条回复必须固定展示"第一/第二/第三/第四"四阶段运行进度清单，完成一条打勾一条（✅/⬜），闸门硬停时在清单下方写明"⛔ 卡住原因 + 等待用户做什么"；不得省略、不得只贴静态清单不更新 |
 | C-04 | 设计变更文件自动归类为依据文件 | 不与施工资料混同审核 |
 | C-05 | 排除文件需在审核前明确声明 | 如测试文档不参与审核 |
 | C-06 | 资料文件夹中所有文件默认纳入审核 | 需通过特殊说明排除 |
@@ -313,6 +581,21 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 | C-23 | 数据底座需记录 OCR 原始输出 | 用于追溯识别过程 |
 | C-24 | 数据底座需生成修正记录日志 | 记录所有人工修正操作 |
 | C-25 | 数据底座需生成审核日志 | 记录每次审核的完整过程 |
+| C-26 | 模板文件统一存放数据底座目录（v8.7 新增） | 禁止模板直接出现在项目文件夹根目录；必须复制到「数据底座/」子目录 |
+| C-27 | 用户入口模板必须中文命名（v8.7 新增） | data-editor.html→数据核对编辑器.html、project-dashboard.html→项目总览.html、launcher.html→打开审核工具.html、rule-manager.bat→规则管理工具.bat |
+| C-28 | 低频工具模板不复制到项目目录（v8.7 新增） | rule-editor.html、feedback-collector.html 等低频工具仅存在于 skill 根目录 templates/，不复制到每个项目的数据底座 |
+| C-29 | 模板复制必须通过 template-manifest.json 统一管理（v8.7 新增） | 禁止在代码中硬编码模板文件名和路径；所有模板复制操作必须读 manifest 的 src/dst/required/category 字段 |
+| C-30 | data-editor 必须尝试自动加载同级 index.json（v8.7 新增） | 打开后立即 fetch('./index.json')，成功则自动加载；失败才提示手动选择 |
+| C-31 | data-editor localStorage 仅存项目名（v8.7 新增） | 禁止存储任何实际审核数据到 localStorage，防止信息泄露；仅允许存 project_name 用于用户提示 |
+| C-32 | launcher 三步顺序必须与流水线一致（v8.7 新增） | 从上到下必须是「核对数据→查看报告→其他工具」，不允许调换顺序或平行排列 |
+| C-33 | launcher 报告按钮必须检查 human_verified 状态（v8.7 新增） | 未完成核对时，报告入口按钮灰色禁用 + tooltip 说明原因 |
+| C-34 | rule-manager.bat 必须三级路径自动定位（v8.7 新增） | 当前目录→上级目录→全局安装路径，找到为止；找不到时红色中文报错不退出 |
+| C-35 | 表头检测必须过滤超长 token（>10字符）（v8.7 新增） | 任何 token 长度>10 字符时，该行直接排除表头候选；防止公司名/文档标题被误判为列名 |
+| C-36 | 表头检测至少命中 1 个列名关键词（v8.7 新增） | 序号/编号/桩号/日期/时间/高程/长度/桩径/灌入量/充盈系数/沉管/拔管/密实/反插等，命中数=0 时排除表头候选 |
+| C-37 | 检测到表头后必须检查紧接的 1-2 行是否为续行（v8.7 新增） | 续行判定：同样通过 detect_header/detect_generic_header 检测；是续行则合并字段并跳过，不进入数据行解析 |
+| C-38 | 跨页后必须先重新检测当前页表头，再考虑继承首页表头（v8.7 新增） | 翻页后 header_map 立即置 None；逐行扫，先尝试 detect_header；只有未检测到且遇到桩号格式数据行时，才 fallback 继承 first_page_header |
+| C-39 | 内容感知分类必须在文件名分类失败时启用（v8.7 新增） | OCR 文本前 500 字符命中桩基关键词≥2 个时，强制 is_pile=True；关键词清单见 §1.3.8 V1d |
+| C-40 | Excel 分支禁止使用 continue 跳过正常链路（v8.7 新增） | sniff_document() excel 分支必须完成结构化行提取、JSON 写入、index.json 注册全链路；禁止中途 continue 导致 data_file=null |
 
 ### 2.5 非功能需求
 
@@ -332,30 +615,60 @@ v7.2 不是引入新模块，而是把 v7.0/v7.1 已跑通的四阶段流水线�
 
 ## 三、系统架构
 
-### 3.1 四阶段流水线
+### 3.1 四阶段流水线（v8.7 更新）
 
 ```
 阶段 1：建数据底座（全自动）
-  输入：项目文件夹路径 + 5 项前置信息
-  处理：文件扫描分类 → OCR 提取 → 三层结构化 JSON → 数据质量检测 → 混淆检测
-  输出：数据底座/（JSON + index.json + 质量告警 + 混淆检测）
-  闸门：index.json 中所有文件 ocr_status = "completed"
+  输入：项目文件夹路径 + 6 项前置信息（阶段/性质/范围/OCR引擎四选一/特殊说明/签字检查）
+  处理：
+    1. 文件扫描 + 智能分类（文件名 + 内容感知：桩基关键词≥2自动走桩基路由）
+    2. OCR 提取：
+       - 手写体前置路由（v9.0）：is_handwritten=True 直接走 vision（VLM）→ agent；False 走 rapidocr → vision → tesseract
+       - 引擎选择：auto / agent / rapidocr / vision（v9.0 默认 rapidocr 本地主力；原生 PaddleOCR 已彻底移除，无 FORCE_USE_PADDLE 回滚）
+       - RapidOCR 单例化 + 图像预处理（仅灰度化，v9.2 已删除 CLAHE/高斯模糊/锐化核）
+       - RapidOCR dpi=200 渲染（v8.7 修复 dpi=72 零行识别）
+       - retry 行数≥首次70%才覆盖（v8.7 保护，防止空数据毁好数据）
+    3. 结构化解析：
+       - 表头检测：超长token过滤 + 列名关键词命中（v8.7 修复公司名误判表头）
+       - 表头续行合并（v8.7 修复两行表头错位）
+       - 跨页先重检当前页表头，再 fallback 继承首页表头（v8.7 修复跨页错位）
+       - 通用表格 parse_generic_table + 桩基 parse_pile_rows（内容感知自动路由）
+    4. 三层结构化 JSON 写入（structured_rows + full_text + page_map）
+    5. 数据质量检测 → 混淆检测 → 断档检测
+    6. 模板复制（`build_foundation.py copy_web_templates()`，读取 template-manifest.json）：
+       - 复制目的地：数据底座/（禁止放项目根目录）
+       - 中文命名：数据核对编辑器.html / 项目总览.html / 打开审核工具.html / 文档对齐视图.html / 规则管理工具.bat
+       - 静态资源：tokens.css / pdf.min.js / pdf.worker.min.js
+       - 工具模板：审核范围模板.html / 反馈收集.html / 规则编辑器.html / 规则管理器.html / 碎石桩施工记录.json
+    7. launcher 三步指引入口页生成（数据嵌入 __PROJECT_DATA__：项目名/资料数/已核对进度/问题统计）
+  输出：数据底座/（JSON + index.json + 质量告警 + 混淆检测 + Web模板中文命名 + 三步指引入口页）
+  闸门：index.json 所有文件 ocr_status = "completed" + G-1.5（数据底座/ 存在 6 个核心模板）
   铁律执行：R-10（数据质量先于规范合规）、R-11（全列提取）、R-16（提取-验证-重试）
+  v8.7 新增：OCR 引擎四选一前置；内容感知分类；表头四项修复；模板中文命名；三步指引入口；RapidOCR dpi=200；retry 行数保护；Excel continue 链路修复
+  v8.8 新增：PaddleOCR 3.x + PP-OCRv6 Tiny + ONNX Runtime（替代 2.8.1 + PaddlePaddle 2.6.2）；auto 模式优先级改为 PaddleOCR 优先
+  v9.0 新增：本地主力替换为 RapidOCR（rapidocr>=3.9 统一包，PP-OCRv6 medium）；手写体前置 VLM 路由；RapidOCR 单例化 + 图像预处理；FORCE_USE_PADDLE / DISABLE_HANDWRITING_ROUTE 配置开关；关键节点日志（路由判定/引擎选择/识别结果）
 
-      ↓ 人机闸门：数据未经确认，不进审核（铁律 R-02/R-20）
+      ↓ G-1.9 硬停闸门：输出「扫描件待核实清单」后 AI 立即停止，等用户「核对完成/开始审核」
 
 阶段 2：人工核对（人机交互，零 token）
-  输入：数据底座/ + Web 数据编辑器
-  处理：左图右表对照 → 逐条确认告警 → 修正 OCR 误读 → 导出 JSON
-  输出：修正记录/corrections.json + 各文件 corrected_data.json
-  闸门：用户在 Web 编辑器中点击"确认完成"并导出
+  入口：双击「数据底座/打开审核工具.html」→ 步骤 1「核对数据」大按钮（v8.7 三步指引）
+  数据加载：
+    - data-editor 自动 fetch('./index.json') 自动加载（v8.7 新增，零点击）
+    - fetch 失败时提示手动「加载数据底座」按钮（全中文，v8.7 中文化）
+    - localStorage 记住上次项目名（仅项目名，不存实际数据，v8.7 隐私保护）
+  输入：数据底座/ + 数据核对编辑器.html（全中文命名，v8.7）
+  处理：左图右表对照 → 逐条确认告警 → 修正 OCR 误读 → 表头映射修正 → 分类确认 → 导出 JSON
+  输出：修正记录/corrections.json + 各文件 corrected_data.json（human_verified: true）
+  闸门：所有文件 human_verified = true；data-editor「确认完成」按钮点亮并点击
   铁律执行：R-02（OCR 人工复核）、R-20（OCR 存疑项核实）
+  v8.7 新增：打开即自动加载；三步指引入口按钮；按钮文案全中文；localStorage 项目名记忆
 
-      ↓ 确认完成后，AI 读取修正后数据
+      ↓ 用户明确说「核对完成/开始审核」，AI 继续；用户未说则 AI 硬停，禁止自行推进
 
 阶段 3：正式审核（全自动，支持多 Agent 并行）
-  输入：修正后的 corrected_data.json + 前置信息
-  处理：规范逐条对账 + 逻辑一致性检查（10 子项）+ 运算规范审核（按需）
+  入口：用户在对话中说「开始审核」或 run_audit.py review 命令
+  输入：修正后的 data_file（human_verified=true）+ 前置信息
+  处理：规范逐条对账 + 逻辑一致性检查（10 子项，含 9.10 监理-施工方跨单位对照）+ 运算规范审核（按需）
   输出：审核日志/AU-{日期}-{序号}_审核日志.json
   铁律执行：R-01/R-03/R-04/R-05/R-06/R-09/R-15/R-17
 
@@ -387,7 +700,7 @@ civil-aviation-doc-audit/
 │   ├── extract_pdf.py                 # PDF 文字提取
 │   ├── ocr_image.py                   # OCR 引擎
 │   ├── postprocess.py                 # 文本后处理
-│   ├── data_quality_check.py          # 数据质量检测
+│   ├── data_quality_check.py          # 数据质量检测（读取 rules/inference_rules.json 生成推荐值）
 │   ├── ocr_confusion_check.py         # OCR 混淆检测
 │   ├── verify_fields.py               # 字段复核
 │   ├── vision_providers.py            # Vision API 配置
@@ -494,7 +807,7 @@ civil-aviation-doc-audit/
 python build_foundation.py <项目文件夹路径> [选项]
 
 选项：
-  --engine <auto|vision|paddle>    OCR 引擎选择（默认 auto）
+  --engine <auto|vision|paddle|agent>    OCR 引擎选择（默认 auto）
   --professional <专业>             指定专业分类（默认自动识别）
   --incremental                     增量模式（仅处理新文件）
   --out <输出目录>                  数据底座目录名（默认"数据底座"）
@@ -854,7 +1167,7 @@ index.json（唯一真相源）
 
 ```
 # 新增：建立数据底座
-python run_audit.py build <项目文件夹> --engine <auto|vision|paddle>
+python run_audit.py build <项目文件夹> --engine <auto|vision|paddle|agent>
 
 # 新增：启动正式审核（读取修正后数据）
 python run_audit.py review <项目文件夹>
@@ -883,7 +1196,7 @@ python run_audit.py report <项目文件夹>
 
 v7.0 对 SKILL.md 的核心修改：
 
-1. **Step 0 不变**：5 项前置信息收集（含 OCR 引擎选择），禁止使用默认值（约束 C-02）
+1. **Step 0 不变**：6 项前置信息收集（含 OCR 引擎选择、签字检查），禁止使用默认值（约束 C-02）
 2. **Step 0 新增文件分类**：审核前必须进行文件分类确认（约束 C-01）
 3. **Step 1~2 改为阶段 1**：文件分类 + OCR → 建立数据底座（调用 `build` 子命令）
 4. **新增人机闸门**：阶段 1 完成后停下，提示用户打开 Web 编辑器
@@ -926,7 +1239,7 @@ v5.0 多 Agent 并行审核能力在 v6.0 中的集成方式：
 ## 五、数据流图
 
 ```
-用户指定项目文件夹 + 5 项前置信息
+用户指定项目文件夹 + 6 项前置信息
         │
         ▼
 ┌───────────────────────────┐
