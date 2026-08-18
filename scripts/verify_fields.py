@@ -39,7 +39,6 @@
   # 分步执行
   python verify_fields.py prepare <原始文件> <混淆检测结果.json> --data <数据JSON> --out <输出目录>
   python verify_fields.py verify-api <verify_tasks.json> --provider qwen
-  python verify_fields.py verify-enhance <原始文件> <verify_tasks.json>
   python verify_fields.py merge <verify_results.json> --data <数据JSON> --out <修正后数据JSON>
 """
 
@@ -69,10 +68,10 @@ def select_verify_path(
     Args:
         has_api: 是否有可用的 Vision API Key
         has_agent: 是否在智能体环境中运行（默认 True）
-        force_path: 手动指定路径（"agent"/"api"/"enhance"）
+        force_path: 手动指定路径（"agent"/"api"）
 
     Returns:
-        "agent" / "api" / "enhance"
+        "agent" / "api"
     """
     if force_path:
         return force_path
@@ -85,8 +84,8 @@ def select_verify_path(
     if has_api:
         return "api"
 
-    # 路径 C：增强重跑
-    return "enhance"
+    # 无 agent 且无 API 时，回退到 API 路径
+    return "api"
 
 
 # ========== 图片裁剪 ==========
@@ -451,165 +450,6 @@ def api_verify(tasks: dict, provider: Optional[str] = None) -> dict:
     }
 
 
-# ========== 步骤 2C：增强重跑（路径 C） ==========
-
-def enhance_verify(
-    source_file: str,
-    tasks: dict,
-    dpi: int = 300,
-) -> dict:
-    """
-    用增强参数重新跑 PaddleOCR（路径 C）。
-
-    增强参数：DPI 300、det_max_side_len=2560、二值化+去噪+对比度增强。
-    只重跑存疑字段所在的页，不整本重跑。
-
-    Args:
-        source_file: 原始文件路径
-        tasks: prepare_verify_tasks 的输出
-        dpi: 增强模式 DPI
-
-    Returns:
-        verify_results dict
-    """
-    import tempfile
-    import os
-    import gc
-    from pathlib import Path
-    task_list = tasks.get("tasks", [])
-    if not task_list:
-        return {"status": "no_tasks", "results": []}
-
-    try:
-        from paddleocr import PaddleOCR
-        from PIL import Image, ImageEnhance, ImageFilter
-    except ImportError:
-        return {
-            "status": "error",
-            "results": [],
-            "error": "PaddleOCR 或 Pillow 未安装",
-        }
-
-    # 初始化增强引擎
-    try:
-        engine = PaddleOCR(
-            use_angle_cls=True,
-            lang="ch",
-            ocr_version="PP-OCRv3",
-            use_gpu=False,
-            show_log=False,
-            enable_mkldnn=True,
-            cpu_threads=4,
-            det_max_side_len=2560,
-            det_db_thresh=0.1,
-            det_db_box_thresh=0.3,
-            drop_score=0.3,
-            rec_batch_num=1,
-            cls_batch_num=1,
-        )
-    except Exception as e:
-        print(f"  [!] PaddleOCR 增强引擎初始化失败: {e}", file=sys.stderr)
-        return {
-            "status": "error",
-            "results": [],
-            "error": f"PaddleOCR 增强引擎初始化失败: {e}",
-        }
-
-    # 收集需要重跑的页码（去重）
-    pages_to_rerun = sorted(set(t.get("page", 1) for t in task_list))
-    print(f"  [i] 增强重跑：DPI={dpi}, det_max_side_len=2560, 预处理=二值化+去噪+对比度", file=sys.stderr)
-    print(f"  [i] 需重跑页: {pages_to_rerun}", file=sys.stderr)
-
-    # 逐页增强重跑
-    page_results = {}
-    tmp_dir = Path(tempfile.gettempdir()) / "trae_paddleocr_verify"
-    tmp_dir.mkdir(exist_ok=True)
-
-    for page_num in pages_to_rerun:
-        try:
-            img = _safe_convert_pdf_page(source_file, page_num, dpi=dpi)
-        except Exception as e:
-            print(f"  [!] 第 {page_num} 页转换失败: {e}", file=sys.stderr)
-            continue
-
-        # 图像增强预处理
-        img = img.convert("L")  # 转灰度
-        img = img.filter(ImageFilter.MedianFilter(size=3))  # 去噪
-        enhancer = ImageEnhance.Contrast(img)
-        img = enhancer.enhance(1.5)  # 提升对比度
-
-        tmp_path = tmp_dir / f"verify_p{page_num}_{os.getpid()}.png"
-        try:
-            img.save(tmp_path, "PNG")
-            result = engine.ocr(str(tmp_path), cls=True)
-            lines = []
-            if result and isinstance(result, list):
-                page_res = result[0] if result and isinstance(result[0], list) else result
-                for line in page_res:
-                    if isinstance(line, (list, tuple)) and len(line) >= 2:
-                        text_info = line[1]
-                        if isinstance(text_info, (list, tuple)) and len(text_info) >= 1:
-                            lines.append(str(text_info[0]))
-            page_results[page_num] = lines
-            print(f"  [i] 第 {page_num} 页增强重跑：{len(lines)} 行", file=sys.stderr)
-        except Exception as e:
-            print(f"  [!] 第 {page_num} 页增强重跑失败: {e}", file=sys.stderr)
-        finally:
-            try:
-                tmp_path.unlink()
-            except Exception:
-                pass
-            gc.collect()
-
-    # 将增强重跑结果与存疑字段匹配
-    results = []
-    for task in task_list:
-        task_id = task["task_id"]
-        page_num = task.get("page", 1)
-        field = task.get("field", "")
-        ocr_value = task.get("ocr_value", "")
-
-        page_lines = page_results.get(page_num, [])
-        # 简单匹配：在重跑结果中搜索是否还包含 OCR 原始值
-        found_original = any(ocr_value in line for line in page_lines)
-        found_suspected = False
-        suspected = task.get("suspected_value", "")
-        if isinstance(suspected, list):
-            found_suspected = any(
-                any(str(s) in line for s in suspected)
-                for line in page_lines
-            )
-        elif suspected:
-            found_suspected = any(str(suspected) in line for line in page_lines)
-
-        if found_suspected and not found_original:
-            verified = str(suspected if not isinstance(suspected, list) else suspected[0])
-            confidence = "medium"
-            note = "增强重跑结果支持疑似值，未找到 OCR 原始值"
-        elif found_original:
-            verified = ocr_value
-            confidence = "low"
-            note = "增强重跑结果仍包含 OCR 原始值，无法确认是否有误"
-        else:
-            verified = ""
-            confidence = "low"
-            note = "增强重跑结果中未找到相关值"
-
-        results.append({
-            "task_id": task_id,
-            "verified_value": verified,
-            "confidence": confidence,
-            "note": note,
-        })
-
-    return {
-        "status": "completed",
-        "method": "paddleocr_enhance_rerun",
-        "total": len(task_list),
-        "results": results,
-    }
-
-
 # ========== 步骤 3：合并复核结果 ==========
 
 def merge_results(
@@ -722,13 +562,12 @@ def auto_verify(
         confusion_result: ocr_confusion_check.py 的输出
         data: 原始数据 JSON
         out_dir: 输出目录
-        force_path: 强制指定路径（"agent"/"api"/"enhance"）
+        force_path: 强制指定路径（"agent"/"api"）
         provider: 强制指定 API Provider
 
     Returns:
         路径 B: {"path": "agent", "tasks": {...}, "agent_action": {...}}
         路径 A: {"path": "api", "verify_results": {...}, "merged_data": {...}}
-        路径 C: {"path": "enhance", "verify_results": {...}, "merged_data": {...}}
     """
     # 检测可用 API
     sys.path.insert(0, str(Path(__file__).parent))
@@ -776,13 +615,6 @@ def auto_verify(
         merged_data = merge_results(verify_results, data, out_path=str(Path(out_dir) / "verified_data.json"))
         return {"path": "api", "verify_results": verify_results, "merged_data": merged_data}
 
-    else:
-        # 路径 C：增强重跑
-        verify_results = enhance_verify(source_file, tasks)
-        # 步骤 3：合并结果
-        merged_data = merge_results(verify_results, data, out_path=str(Path(out_dir) / "verified_data.json"))
-        return {"path": "enhance", "verify_results": verify_results, "merged_data": merged_data}
-
 
 # ========== CLI ==========
 
@@ -807,12 +639,6 @@ def main():
     p_api.add_argument("tasks", help="verify_tasks.json 文件路径")
     p_api.add_argument("--provider", "-p", default=None, help="指定 Provider")
 
-    # verify-enhance：增强重跑
-    p_enhance = subparsers.add_parser("verify-enhance", help="增强 PaddleOCR 重跑（路径 C）")
-    p_enhance.add_argument("source", help="原始 PDF 或图片路径")
-    p_enhance.add_argument("tasks", help="verify_tasks.json 文件路径")
-    p_enhance.add_argument("--dpi", type=int, default=300, help="增强 DPI（默认 300）")
-
     # merge：合并复核结果
     p_merge = subparsers.add_parser("merge", help="合并复核结果到原始数据")
     p_merge.add_argument("results", help="verify_results.json 文件路径")
@@ -825,7 +651,7 @@ def main():
     p_auto.add_argument("confusion", help="ocr_confusion_check.py 的输出 JSON 文件")
     p_auto.add_argument("--data", required=True, help="原始数据 JSON 文件")
     p_auto.add_argument("--out", "-o", default="./verify_output", help="输出目录")
-    p_auto.add_argument("--verify-path", choices=["agent", "api", "enhance"], default=None)
+    p_auto.add_argument("--verify-path", choices=["agent", "api"], default=None)
     p_auto.add_argument("--provider", "-p", default=None)
 
     args = parser.parse_args()
@@ -838,14 +664,6 @@ def main():
     elif args.command == "verify-api":
         tasks = json.loads(Path(args.tasks).read_text(encoding="utf-8"))
         results = api_verify(tasks, provider=args.provider)
-        out_file = Path(args.tasks).parent / "verify_results.json"
-        with open(out_file, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        print(f"  [i] 复核结果已写入: {out_file}", file=sys.stderr)
-
-    elif args.command == "verify-enhance":
-        tasks = json.loads(Path(args.tasks).read_text(encoding="utf-8"))
-        results = enhance_verify(args.source, tasks, dpi=args.dpi)
         out_file = Path(args.tasks).parent / "verify_results.json"
         with open(out_file, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)

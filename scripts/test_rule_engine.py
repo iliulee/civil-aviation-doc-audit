@@ -329,6 +329,38 @@ def test_violation_reporter() -> None:
     print(f"  ✓ 所有 findings 字段齐全且 result 映射正确（共 {len(findings)} 条）")
 
 
+# ========== 测试 7：依据类型判定（evidence_type） ==========
+def test_evidence_type() -> None:
+    print("\n[测试 7] 依据类型判定 evidence_type")
+    from review_audit import _infer_evidence_type as ra_type
+    from rule_engine import ViolationReporter as VR
+
+    # 输入：(spec, evidence_file) -> 期望类型
+    cases = [
+        ("MH/T 5078.1-2024", "", "spec"),
+        ("GB 50204-2015", "", "spec"),
+        ("", "机场飞行区总平面布置图.dwg", "drawing"),
+        ("", "桩基平面布置图.pdf", "drawing"),
+        ("", "结构设计说明.dwg", "design_note"),   # 边界：dwg 但名为设计说明 → design_note
+        ("", "结构设计说明.pdf", "design_note"),
+        ("", "混凝土浇筑通知单.pdf", "notice"),
+        ("", "桩基工程变更单.pdf", "notice"),
+        ("", "无依据随意.txt", "engineering_practice"),
+        ("", "", "engineering_practice"),
+    ]
+
+    for spec, fname, expected in cases:
+        r1 = ra_type(spec, fname)
+        r2 = VR._infer_evidence_type(spec, fname)
+        _assert_eq(r1, expected, f"review_audit: ({spec!r}, {fname!r}) → {expected}")
+        _assert_eq(r2, expected, f"rule_engine:   ({spec!r}, {fname!r}) → {expected}")
+        _assert_eq(r1, r2, f"两模块判定一致 ({spec!r}, {fname!r}) 均为 {expected}")
+
+    # 未知类型回退：非空但不在白名单 → 灰色"工程惯例"兜底逻辑由调用方处理，此处仅断言合法值域
+    _assert(set(r1 for _, _, _ in cases) <= {"spec", "drawing", "design_note", "notice", "engineering_practice"},
+            "所有判定结果均在合法值域内")
+
+
 # ========== 主入口 ==========
 def main() -> int:
     print("=" * 60)
@@ -343,6 +375,7 @@ def main() -> int:
         ("SingleDocChecker", test_single_doc_checker),
         ("CrossUnitChecker", test_cross_unit_checker),
         ("ViolationReporter", test_violation_reporter),
+        ("EvidenceType", test_evidence_type),
     ]
 
     failed = []
