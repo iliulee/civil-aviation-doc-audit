@@ -1,0 +1,91 @@
+{
+  "version": "1.4",
+  "description": "模板文件清单 — 统一管理所有 HTML/CSS/JS 模板",
+  "last_updated": "2026-08-10",
+  "templates": [
+    {
+      "src": "data-editor.html",
+      "dst": "数据核对编辑器.html",
+      "desc": "数据核对编辑器（自动加载同级 index.json）",
+      "required": true,
+      "category": "core"
+    },
+    {
+      "src": "project-dashboard.html",
+      "dst": "项目总览.html",
+      "desc": "项目总览仪表盘",
+      "required": true,
+      "category": "core"
+    },
+    {
+      "src": "launcher.html",
+      "dst": "打开审核工具.html",
+      "desc": "审核工具入口导航页（三步指引 UI）",
+      "required": true,
+      "category": "core"
+    },
+    {
+      "src": "tokens.css",
+      "dst": "tokens.css",
+      "desc": "统一设计令牌",
+      "required": true,
+      "category": "core"
+    },
+    {
+      "src": "pdf.min.js",
+      "dst": "pdf.min.js",
+      "desc": "PDF.js 主库（离线）",
+      "required": true,
+      "category": "lib"
+    },
+    {
+      "src": "pdf.worker.min.js",
+      "dst": "pdf.worker.min.js",
+      "desc": "PDF.js Worker（离线）",
+      "required": true,
+      "category": "lib"
+    },
+    {
+      "src": "alignment-view.html",
+      "dst": "文档对齐视图.html",
+      "desc": "文档对齐视图",
+      "required": false,
+      "category": "tool"
+    },
+    {
+      "src": "audit-scope-template.html",
+      "dst": "审核范围模板.html",
+      "desc": "审核范围模板",
+      "required": true,
+      "category": "tool"
+    },
+    {
+      "src": "feedback-collector.html",
+      "dst": "反馈收集.html",
+      "desc": "规则反馈收集面板",
+      "required": true,
+      "category": "tool"
+    },
+    {
+      "src": "rule-editor.html",
+      "dst": "规则编辑器.html",
+      "desc": "离线规则编辑器",
+      "required": true,
+      "category": "tool"
+    },
+    {
+      "src": "rule-manager.html",
+      "dst": "规则管理器.html",
+      "desc": "规则管理 Web 面板",
+      "required": true,
+      "category": "tool"
+    },
+    {
+      "src": "data_templates/碎石桩施工记录.json",
+      "dst": "碎石桩施工记录.json",
+      "desc": "碎石桩施工记录数据模板",
+      "required": true,
+      "category": "data"
+    }
+  ]
+}

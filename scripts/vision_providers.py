@@ -130,6 +130,14 @@ VERIFY_FIELD_PROMPT = (
     '{{"verified_value": "识别到的正确值", "confidence": "high/medium/low", "note": "备注说明"}}\n'
 )
 
+# 手写体专用 Prompt：在 CONSTRUCTION_OCR_PROMPT 基础上追加针对性指令
+HANDWRITTEN_OCR_PROMPT = (
+    "这是一张包含大量手写内容的图片。请注意：\n"
+    "1. 字迹可能潦草、连笔，请结合上下文语境（如金额、日期、专业术语）进行合理推断和纠错；\n"
+    "2. 如果遇到完全无法辨认的字，请用 `[?]` 标记，不要强行编造；\n"
+    "3. 严格输出 JSON 格式。\n"
+)
+
 
 # ========== 核心函数 ==========
 
@@ -172,6 +180,7 @@ def call_vision_api(
     provider: Optional[str] = None,
     api_key: Optional[str] = None,
     timeout: int = 60,
+    system_prompt: Optional[str] = None,
 ) -> dict:
     """
     调用 Vision API 识别图片。
@@ -182,6 +191,7 @@ def call_vision_api(
         provider: 指定 Provider（如 "qwen"）。None 则自动选择最便宜的
         api_key: API Key。None 则从环境变量读取
         timeout: 超时秒数
+        system_prompt: 可选的 System Prompt（如手写体针对性指令）。None 则仅用 user 消息
 
     Returns:
         {"text": "识别结果", "provider": "qwen", "model": "qwen-vl-max"}
@@ -218,15 +228,20 @@ def call_vision_api(
     if provider == "glm":
         headers["Authorization"] = f"Bearer {api_key}"
 
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
+        ],
+    })
+
     payload = {
         "model": config["model"],
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-            ],
-        }],
+        "messages": messages,
         "max_tokens": 2000,
     }
 
@@ -314,18 +329,23 @@ def verify_field_with_api(
         }
 
 
-def ocr_with_api(image_path: str, provider: Optional[str] = None) -> dict:
+def ocr_with_api(image_path: str, provider: Optional[str] = None, is_handwritten: bool = False) -> dict:
     """
     用 Vision API 直接做 OCR（整页识别）。
 
     Args:
         image_path: 图片路径
         provider: 指定 Provider
+        is_handwritten: 手写体标记。为 True 时追加针对手写体的 System Prompt，
+                        引导模型结合上下文推断、用 `[?]` 标记无法辨认字、严格 JSON 输出。
 
     Returns:
         {"text": "...", "provider": "...", "model": "..."}
     """
-    return call_vision_api(image_path, CONSTRUCTION_OCR_PROMPT, provider=provider)
+    system_prompt = None
+    if is_handwritten:
+        system_prompt = HANDWRITTEN_OCR_PROMPT
+    return call_vision_api(image_path, CONSTRUCTION_OCR_PROMPT, provider=provider, system_prompt=system_prompt)
 
 
 # ========== CLI ==========
