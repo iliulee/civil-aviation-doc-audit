@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "description": "推荐值（inferred values）规则配置文件。AI 在数据底座建立阶段（步骤 4）读取此文件，对缺失值做数学关系推算。",
+  "notes": [
+    "每条规则定义：触发条件、计算公式、基准置信度、级联扣减",
+    "最终置信度 = base_confidence - cascade_penalty（源数据混有推断值时）- 0.10（每有一个 OCR 置信度 < 0.5 的源字段）",
+    "置信度 ≥ 0.50 的值参与审核判定；< 0.50 的值仅占位提醒，审核时标记存疑"
+  ],
+  "confidence_color_map": {
+    "0.95-1.00": { "color": "深绿", "label": "可信，直接使用", "audit_usable": true },
+    "0.80-0.94": { "color": "浅绿", "label": "基本可信，瞄一眼即可", "audit_usable": true },
+    "0.50-0.79": { "color": "黄色", "label": "源数据含推断值，仅供参考", "audit_usable": true },
+    "0.30-0.49": { "color": "橙色", "label": "源数据 OCR 置信度低，建议核实", "audit_usable": false },
+    "0.00-0.29": { "color": "红色", "label": "基本是猜的，占位提醒", "audit_usable": false }
+  },
+  "rules": [
+    {
+      "id": "INF-001",
+      "name": "实长 = 桩顶高程 - 桩底高程",
+      "type": "numeric",
+      "condition": "actual_length 为空，且 top_elev 和 bottom_elev 均不为空",
+      "formula": "actual_length = top_elev - bottom_elev",
+      "base_confidence": 0.95,
+      "cascade_penalty": 0.35,
+      "applicable_to": ["桩基", "碎石桩", "CFG桩"],
+      "example": "top_elev=2103.72, bottom_elev=2089.98 → actual_length=13.74"
+    },
+    {
+      "id": "INF-002",
+      "name": "桩顶高程 = 桩底高程 + 实长",
+      "type": "numeric",
+      "condition": "top_elev 为空，且 bottom_elev 和 actual_length 均不为空",
+      "formula": "top_elev = bottom_elev + actual_length",
+      "base_confidence": 0.95,
+      "cascade_penalty": 0.35,
+      "applicable_to": ["桩基", "碎石桩", "CFG桩"],
+      "example": "bottom_elev=2089.98, actual_length=13.74 → top_elev=2103.72"
+    },
+    {
+      "id": "INF-003",
+      "name": "桩底高程 = 桩顶高程 - 实长",
+      "type": "numeric",
+      "condition": "bottom_elev 为空，且 top_elev 和 actual_length 均不为空",
+      "formula": "bottom_elev = top_elev - actual_length",
+      "base_confidence": 0.95,
+      "cascade_penalty": 0.35,
+      "applicable_to": ["桩基", "碎石桩", "CFG桩"],
+      "example": "top_elev=2103.72, actual_length=13.74 → bottom_elev=2089.98"
+    },
+    {
+      "id": "INF-004",
+      "name": "充盈系数 = 灌入量 / (π × (桩径/2)² × 实长)",
+      "type": "numeric",
+      "condition": "filling_coeff 为空，且 volume、diameter、actual_length 均不为空",
+      "formula": "filling_coeff = volume / (π × (diameter/2)² × actual_length)",
+      "base_confidence": 0.85,
+      "cascade_penalty": 0.30,
+      "applicable_to": ["桩基", "碎石桩"],
+      "example": "volume=2.5, diameter=0.8, actual_length=13.74 → filling_coeff≈1.15"
+    },
+    {
+      "id": "INF-005",
+      "name": "灌入量 = 充盈系数 × π × (桩径/2)² × 实长",
+      "type": "numeric",
+      "condition": "volume 为空，且 filling_coeff、diameter、actual_length 均不为空",
+      "formula": "volume = filling_coeff × π × (diameter/2)² × actual_length",
+      "base_confidence": 0.85,
+      "cascade_penalty": 0.30,
+      "applicable_to": ["桩基", "碎石桩"],
+      "example": "filling_coeff=1.15, diameter=0.8, actual_length=13.74 → volume≈2.5"
+    },
+    {
+      "id": "INF-006",
+      "name": "单根桩施工时长 = 拔管时间 - 沉管时间",
+      "type": "numeric",
+      "condition": "duration 为空，且 sink_time 和 pull_time 均不为空",
+      "formula": "duration = pull_time - sink_time",
+      "base_confidence": 0.90,
+      "cascade_penalty": 0.30,
+      "applicable_to": ["碎石桩", "桩基"],
+      "notes": "时间以分钟为单位。如 OCR 将时间认错（如 14:30 认成 14:80），计算结果可能为负数，此时标记为存疑。",
+      "example": "sink_time=80, pull_time=125 → duration=45 分钟"
+    },
+    {
+      "id": "INF-007",
+      "name": "垫层厚度 = 顶面高程 - 底面高程",
+      "type": "numeric",
+      "condition": "thickness 为空，且 top_elev 和 bottom_elev 均不为空",
+      "formula": "thickness = top_elev - bottom_elev",
+      "base_confidence": 0.95,
+      "cascade_penalty": 0.35,
+      "applicable_to": ["垫层", "土方"],
+      "example": "top_elev=2105.00, bottom_elev=2103.50 → thickness=1.50m"
+    }
+  ]
+}
