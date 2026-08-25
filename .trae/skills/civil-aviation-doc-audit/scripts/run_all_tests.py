@@ -64,6 +64,9 @@ def main():
         # v9.6 隐患销号套件：每个已查实根因一条测试，红=复发，改完必须全绿
         results.append(("单元测试: 隐患销号", run_pytest(
             ["scripts/test_regression_hazards.py"], "隐患销号回归（H-1~H-7）")))
+        # v10.0 资料员工作台结构断言（依赖/构建/manifest/数据层/外壳）
+        results.append(("单元测试: 工作台结构", run_pytest(
+            ["scripts/test_workbench.py"], "工作台结构断言（依赖/构建/manifest）")))
 
     # 2. 集成测试（数据底座）
     if only is None or only == "integration":

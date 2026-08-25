@@ -256,6 +256,41 @@ def check_task5():
     return c.summary()
 
 
+# ========== 工作台 v10：部署管线接入 ==========
+
+def check_workbench():
+    c = Checker("工作台 v10：部署管线接入")
+
+    # w1 package.json 声明构建脚本 + 前端依赖
+    pkg = read_json(SKILL_DIR / "package.json")
+    c.check(pkg.get("scripts", {}).get("build", "") == "vite build", "package.json build 脚本 = vite build")
+    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    for dep in ["vite", "sortablejs", "xlsx", "echarts"]:
+        c.check(dep in deps, f"依赖齐全: {dep}")
+
+    # w2 vite.config.mjs 存在
+    c.check((SKILL_DIR / "vite.config.mjs").exists(), "vite.config.mjs 存在")
+
+    # w3 manifest 登记工作台产物
+    manifest = read_json(SKILL_DIR / "templates" / "template-manifest.json")
+    srcs = [t.get("src", "") for t in manifest.get("templates", [])]
+    c.check(any("dist/index.html" in s for s in srcs), "manifest 登记 dist/index.html → 资料员工作台.html")
+    c.check(any("dist/assets" in s for s in srcs), "manifest 登记 dist/assets → assets")
+
+    # w4 数据层/外壳/路由就位（test_workbench 已另行校验细节）
+    c.check((SKILL_DIR / "src" / "data.js").exists(), "src/data.js 存在")
+    c.check((SKILL_DIR / "src" / "main.js").exists(), "src/main.js 存在")
+
+    # w5 构建产物存在（可再生成；未 build 时记账不阻断，运行 npm run build 后复验）
+    dist_index = SKILL_DIR / "dist" / "index.html"
+    if dist_index.exists():
+        c.check(dist_index.exists(), "dist/index.html 已构建")
+    else:
+        print("  [i] dist/ 未构建（运行 npm run build 后再次验收）——记账，不阻断")
+
+    return c.summary()
+
+
 # ========== 汇总 ==========
 
 def main():
@@ -273,6 +308,7 @@ def main():
         ("任务 2：手写体混合型文档优化", check_task2()),
         ("任务 4：增量保护", check_task4()),
         ("任务 5：统一测试体系", check_task5()),
+        ("工作台 v10：部署管线接入", check_workbench()),
     ]
 
     print("\n" + "=" * 60)

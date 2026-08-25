@@ -32,8 +32,10 @@ def test_vite_config_exists():
 
 def test_manifest_has_workbench():
     m = json.loads((SKILL / "templates" / "template-manifest.json").read_text(encoding="utf-8"))
-    srcs = {t["src"] for t in m["templates"]}
-    assert any("workbench" in s for s in srcs), "manifest 未登记 workbench 产物"
+    srcs = [t["src"] for t in m["templates"]]
+    # build_foundation 依据 src 复制 dist/ 产物到数据底座（产品名 dist/index.html、dist/assets，不带 workbench 字样）
+    assert "dist/index.html" in srcs, "manifest 未登记 dist/index.html（资料员工作台总入口）"
+    assert "dist/assets" in srcs, "manifest 未登记 dist/assets（工作台静态资源）"
 
 
 # --- Task 1 数据层断言（追加） ---
