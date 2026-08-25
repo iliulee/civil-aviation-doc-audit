@@ -1,0 +1,21 @@
+{
+  "name": "civil-aviation-doc-audit",
+  "version": "1.0.0",
+  "description": "> 民航工程施工资料合规性审核 Skill v9.7.1\r > 适用：MH/T 5078.1~5078.6-2024 系列 + CCAR-165-R1 + MH 5031-2025 等民航规范\r > 五大专业全覆盖：场道 / 空管 / 助航 / 弱电 / 供油",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "echarts": "^6.1.0",
+    "sortablejs": "^1.15.7",
+    "xlsx": "^0.18.5"
+  }
+}
