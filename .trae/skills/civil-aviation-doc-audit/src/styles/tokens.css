@@ -96,6 +96,14 @@ body {
 .wb-btn.primary:hover { background: var(--color-accent-hover); }
 .wb-btn:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ---- 输入框 ---- */
+.wb-input {
+  padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  font-size: 13px; font-family: var(--font-ui); color: var(--color-text-primary);
+  background: var(--color-bg-surface); transition: border-color .15s;
+}
+.wb-input:focus { outline: none; border-color: var(--color-border-focus); }
+
 /* ---- 导航 ---- */
 .wb-nav {
   display: flex; gap: 4px; padding: 8px 20px; background: var(--color-bg-surface);
@@ -169,6 +177,7 @@ body {
   border-radius: var(--radius-md); padding: 10px 12px; margin-top: 8px; box-shadow: var(--shadow-sm);
   cursor: grab; font-size: 13px;
 }
+.wb-board-list { min-height: 48px; }
 .wb-board-card:active { cursor: grabbing; }
 .wb-board-card.sortable-ghost { opacity: .4; }
 .wb-board-card.sortable-drag { box-shadow: var(--shadow-lg); }
