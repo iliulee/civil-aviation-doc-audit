@@ -56,5 +56,5 @@ def test_src_main_js_has_module_registry_and_router():
     # 七模块注册表（总览/核对/看板/台账/概览/销号/外部）
     for mod in ["overview", "verify", "board", "ledger", "quality", "closing", "external"]:
         assert mod in text, f"模块注册表缺少 {mod}"
-    assert "import()" in text, "缺少动态 import 路由"
+    assert "import(" in text, "缺少动态 import 路由"
     assert "views/" in text, "路由未指向 views/ 子目录"

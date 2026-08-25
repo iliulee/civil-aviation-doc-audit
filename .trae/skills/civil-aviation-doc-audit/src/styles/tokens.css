@@ -1,0 +1,192 @@
+/* ============================================================================
+   Design Tokens — 民航工程审核 · 统一设计令牌
+   单一真相源：所有 HTML 页面共享此文件（源自 templates/tokens.css）
+============================================================================ */
+:root {
+  /* ---- 语义信号色 ---- */
+  --color-accent:          #2563eb;   /* 选中/主操作 */
+  --color-accent-hover:    #1d4ed8;
+  --color-accent-light:    #eff6ff;
+
+  --color-success:         #0d9488;   /* 已核对/通过 */
+  --color-success-light:   #f0fdfa;
+  --color-success-border:  #99f6e4;
+
+  --color-warning:         #d97706;   /* 待核对/告警 */
+  --color-warning-light:   #fffbeb;
+  --color-warning-border:  #fde68a;
+
+  --color-danger:          #dc2626;   /* 否决/加载失败 */
+  --color-danger-light:    #fef2f2;
+  --color-danger-border:   #fecaca;
+
+  --color-neutral:         #6b7280;   /* 非文档/灰 */
+  --color-neutral-light:   #f3f4f6;
+
+  /* ---- 背景色 ---- */
+  --color-bg-app:          #f4f6f9;
+  --color-bg-surface:      #ffffff;
+  --color-bg-header:       #0f172a;
+  --color-bg-panel-hdr:    #f8fafc;
+
+  /* ---- 文字色 ---- */
+  --color-text-primary:    #1e293b;
+  --color-text-secondary:  #64748b;
+  --color-text-tertiary:   #94a3b8;
+  --color-text-inverse:    #f1f5f9;
+
+  /* ---- 边框色 ---- */
+  --color-border:          #e2e8f0;
+  --color-border-light:    #f1f5f9;
+  --color-border-focus:    #2563eb;
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* ---- 阴影 ---- */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+  --shadow-overlay: 0 12px 40px rgba(0,0,0,0.24);
+
+  /* ---- 字体 ---- */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+}
+
+/* ============================================================================
+   资料员工作台 · 外壳与通用组件（Vite 唯一 CSS 入口）
+   类名以 .wb- 前缀，便于 Playwright 稳定选中
+============================================================================ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--font-ui);
+  color: var(--color-text-primary);
+  background: var(--color-bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- 顶栏 ---- */
+.wb-topbar {
+  display: flex; align-items: center; gap: 16px;
+  height: 56px; padding: 0 20px;
+  background: var(--color-bg-header); color: var(--color-text-inverse);
+}
+.wb-topbar .wb-brand { font-size: 16px; font-weight: 600; letter-spacing: .5px; }
+.wb-topbar .wb-project { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wb-topbar .wb-project-status {
+  font-size: 12px; padding: 2px 10px; border-radius: 999px;
+  background: rgba(255,255,255,.12); color: var(--color-text-inverse);
+  white-space: nowrap;
+}
+.wb-topbar .wb-project-status.ok { background: var(--color-success); }
+.wb-topbar .wb-project-status.empty { background: var(--color-neutral); }
+
+/* ---- 按钮 ---- */
+.wb-btn {
+  border: 1px solid var(--color-border); background: var(--color-bg-surface);
+  color: var(--color-text-primary); padding: 8px 14px; border-radius: var(--radius-md);
+  font-size: 13px; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.wb-btn:hover { background: var(--color-accent-light); border-color: var(--color-border-focus); }
+.wb-btn.primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.wb-btn.primary:hover { background: var(--color-accent-hover); }
+.wb-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---- 导航 ---- */
+.wb-nav {
+  display: flex; gap: 4px; padding: 8px 20px; background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border); overflow-x: auto;
+}
+.wb-module-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: transparent; padding: 8px 14px; border-radius: var(--radius-md);
+  font-size: 13px; color: var(--color-text-secondary); cursor: pointer; white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.wb-module-btn:hover { background: var(--color-neutral-light); color: var(--color-text-primary); }
+.wb-module-btn.active {
+  color: var(--color-accent); font-weight: 600;
+  background: var(--color-accent-light); border-bottom-color: var(--color-accent);
+}
+
+/* ---- 内容区 ---- */
+.wb-main { padding: 20px; }
+.wb-main > .wb-view { animation: wb-fade .18s ease; }
+@keyframes wb-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.wb-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 90px 20px; text-align: center; color: var(--color-text-secondary);
+}
+.wb-empty .wb-empty-icon { font-size: 52px; }
+.wb-empty .wb-empty-title { font-size: 18px; font-weight: 600; color: var(--color-text-primary); }
+.wb-empty .wb-empty-sub { font-size: 13px; max-width: 520px; line-height: 1.7; }
+
+/* ---- 通用卡片与统计卡 ---- */
+.wb-card {
+  background: var(--color-bg-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 16px;
+}
+.wb-stats { display: grid; gap: 12px; margin-bottom: 16px; }
+.wb-stat-card {
+  background: var(--color-bg-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); padding: 14px 16px; box-shadow: var(--shadow-sm);
+}
+.wb-stat-card .wb-stat-label { font-size: 12px; color: var(--color-text-secondary); }
+.wb-stat-card .wb-stat-value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+.wb-stat-card .wb-stat-hint { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+/* ---- 表格 ---- */
+.wb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wb-table th, .wb-table td {
+  border: 1px solid var(--color-border); padding: 8px 10px; text-align: left; vertical-align: top;
+}
+.wb-table th { background: var(--color-bg-panel-hdr); font-weight: 600; white-space: nowrap; }
+.wb-table tr:hover td { background: var(--color-accent-light); }
+
+/* ---- 徽章 ---- */
+.wb-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+.wb-badge.ok { background: var(--color-success-light); color: var(--color-success); }
+.wb-badge.warn { background: var(--color-warning-light); color: var(--color-warning); }
+.wb-badge.danger { background: var(--color-danger-light); color: var(--color-danger); }
+.wb-badge.neutral { background: var(--color-neutral-light); color: var(--color-neutral); }
+
+/* ---- 看板（拖拽用 SortableJS，样式在此供 Board 视图引用） ---- */
+.wb-board { display: flex; gap: 14px; align-items: flex-start; overflow-x: auto; }
+.wb-board-col {
+  flex: 1; min-width: 220px; background: var(--color-neutral-light);
+  border-radius: var(--radius-lg); padding: 10px;
+}
+.wb-board-col .wb-board-col-hdr {
+  font-size: 13px; font-weight: 600; padding: 4px 6px; display: flex; justify-content: space-between; align-items: center;
+}
+.wb-board-card {
+  background: var(--color-bg-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: 10px 12px; margin-top: 8px; box-shadow: var(--shadow-sm);
+  cursor: grab; font-size: 13px;
+}
+.wb-board-card:active { cursor: grabbing; }
+.wb-board-card.sortable-ghost { opacity: .4; }
+.wb-board-card.sortable-drag { box-shadow: var(--shadow-lg); }
+
+/* ---- 进度轴 ---- */
+.wb-progress-axis { display: flex; align-items: center; gap: 0; margin: 8px 0 18px; overflow-x: auto; }
+.wb-pa-step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); white-space: nowrap; }
+.wb-pa-step .dot { width: 22px; height: 22px; border-radius: 50%; background: var(--color-neutral-light); display: flex; align-items: center; justify-content: center; font-size: 11px; }
+.wb-pa-step.done .dot { background: var(--color-success); color: #fff; }
+.wb-pa-step.now .dot { background: var(--color-accent); color: #fff; }
+.wb-pa-step.now { color: var(--color-accent); font-weight: 600; }
+.wb-pa-line { width: 34px; height: 2px; background: var(--color-border); flex-shrink: 0; }
+.wb-pa-line.done { background: var(--color-success); }
+
+/* ---- 明细容器 ---- */
+.wb-section { margin-bottom: 18px; }
+.wb-section-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.wb-section-hdr h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.wb-list { list-style: none; margin: 0; padding: 0; }
+.wb-list li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--color-border-light); font-size: 13px; }
+.wb-list li:last-child { border-bottom: none; }
