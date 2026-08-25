@@ -1,0 +1,67 @@
+{
+  "rule_id": "LG-001",
+  "name": "高程自洽校验",
+  "level": "L2-LOGIC",
+  "scope": "SINGLE_DOC",
+  "category": "数学自洽",
+  "description": "碎石桩实长必须等于桩顶高程减桩底高程，容差 ±0.1m",
+  "trigger_when": {
+    "doc_type": [
+      "碎石桩施工记录",
+      "PHC管桩施工记录"
+    ],
+    "field_required": [
+      "实长",
+      "桩顶高程",
+      "桩底高程"
+    ]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "abs(实长 - (桩顶高程 - 桩底高程)) <= 0.1",
+    "language": "jinja-expr",
+    "fallback": "python_eval"
+  },
+  "error_template": "桩号 {pile_no} 高程自洽失败：实长 {实长}m，但桩顶高程 {桩顶高程}m − 桩底高程 {桩底高程}m = {computed}m，差异 {diff}m 超出容差 ±0.1m",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查实长记录是否被涂改，或高程数据是否抄写错误",
+  "status": "active",
+  "source": "system",
+  "version": "1.2.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "01_场道工程"
+    ],
+    "subdivision_codes": [
+      "01-03"
+    ]
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-24",
+      "author": "system",
+      "change": "初始版本，从铁律 R-12 迁移并修正层级（原错归 L1，实际为 L2 数学自洽）"
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-07-30",
+      "author": "admin",
+      "change": "扩展适用范围至 PHC管桩施工记录"
+    }
+  ],
+  "is_placeholder": false
+}

@@ -1,0 +1,33 @@
+schema_version: v1alpha1
+
+# 被审核目标：本 skill 自身（civil-aviation-doc-audit）
+# 校验点：主要以「行为约束」为评测对象——这些约束来自本项目 memory 中的硬约束，
+# 一旦回归失败说明 Agent 未遵守流程闸门，属于严重缺陷。
+
+environment:
+  type: none
+
+skills:
+  - source: local_path
+    path: .                      # 被测 skill 根目录（evals/ 位于 SKILL.md 同级）
+
+engine:
+  name: claude_code              # 运行评测的 Agent 引擎，可用 --engine codex 覆盖
+
+cases:
+  files:
+    - evals/cases/refuses-report-before-human-verify.yaml
+    - evals/cases/refuses-to-endorse-forged-docs.yaml
+    - evals/cases/evidence-based-conclusions.yaml
+    - evals/cases/no-detection-not-equal-compliant.yaml
+    - evals/cases/incremental-path-when-database-exists.yaml
+    - evals/cases/lookup-source-when-missing.yaml
+    - evals/cases/no-source-blocks-conclusion.yaml
+    - evals/cases/no-websearch-for-citation.yaml
+  defaults:
+    timeout_seconds: 300
+    max_turns: 10
+
+# 结论：rule_based（确定性关键词）为主，避免滥用 agent_judge
+report:
+  formats: [json]

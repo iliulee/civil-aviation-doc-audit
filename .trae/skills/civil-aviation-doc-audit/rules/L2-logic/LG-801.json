@@ -1,0 +1,57 @@
+{
+  "rule_id": "LG-801",
+  "name": "见证取样与报告编号对应",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "试验检测一致性",
+  "description": "见证记录编号 = 试验报告编号。矛盾表现：见证记录显示取样 3 组，报告只出 2 份。",
+  "trigger_when": {
+    "doc_type": [
+      "见证取样记录",
+      "试验检测报告"
+    ],
+    "field_required": [
+      "见证编号",
+      "报告编号"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "count(见证取样记录) == count(试验检测报告) and all(见证编号 in 试验报告编号 for 见证编号 in 见证取样编号)",
+    "language": "python_eval"
+  },
+  "error_template": "试验检测矛盾：见证取样 {见证取样数量} 组，但试验报告仅 {报告数量} 份，编号 {缺失编号} 无对应报告",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查试验报告是否漏出，或见证取样记录错误",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.8.1 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

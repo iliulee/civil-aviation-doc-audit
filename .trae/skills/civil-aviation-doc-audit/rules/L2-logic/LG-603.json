@@ -1,0 +1,60 @@
+{
+  "rule_id": "LG-603",
+  "name": "停工/复工闭环",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "因果一致性",
+  "description": "暂停指令 → 复工报审 → 后续施工。矛盾表现：停工指令无复工报审就继续施工。",
+  "trigger_when": {
+    "doc_type": [
+      "工程暂停令",
+      "复工报审表",
+      "复工令",
+      "施工记录"
+    ],
+    "field_required": [
+      "暂停令编号",
+      "暂停日期",
+      "复工日期"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "exists(复工报审表 and 复工令 where 暂停令编号 == 工程暂停令编号) and all(施工日期 >= 复工令日期 for 施工日期 in 暂停期间后施工记录)",
+    "language": "python_eval"
+  },
+  "error_template": "因果矛盾：工程暂停令 {暂停令编号} 签发日期 {暂停日期}，但无复工报审/复工令，或暂停期间有施工记录 {违规施工日期}",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查复工手续是否补办，或暂停期间是否违规施工",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.6.3 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

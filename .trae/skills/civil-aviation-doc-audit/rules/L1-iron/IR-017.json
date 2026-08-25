@@ -1,0 +1,57 @@
+{
+  "rule_id": "IR-017",
+  "name": "合计值反向验证",
+  "level": "L1-IRON",
+  "scope": "CROSS_DOC",
+  "category": "数据校验",
+  "description": "当施工日志/汇总表有合计值时，必须与施工记录实际数据逐项核对。对比结果分类：一致=可信；不一致=标记\"合计值存疑\"记录差异值；施工记录无合计行=标记\"合计值来源不明\"。合计值来源不明的资料，在审核结论中不下\"数据合格\"结论。缺合计行+有合计值同时出现时形成最高优先级审计线索。",
+  "trigger_when": {
+    "doc_type": [
+      "施工日志",
+      "施工记录",
+      "汇总表"
+    ],
+    "field_required": [
+      "合计值"
+    ]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "合计值反向验证失败：{issue}",
+  "severity_on_violation": "Fatal",
+  "remediation": "逐页核对施工记录实际合计与施工日志合计值；无合计行标记\"合计值来源不明\"不下合格结论",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-17 迁移"
+    }
+  ],
+  "is_placeholder": true
+}

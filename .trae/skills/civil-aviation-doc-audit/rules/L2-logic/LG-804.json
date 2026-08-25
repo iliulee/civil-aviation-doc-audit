@@ -1,0 +1,58 @@
+{
+  "rule_id": "LG-804",
+  "name": "现场检测与实验室检测逻辑匹配",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "试验检测一致性",
+  "description": "压实度+地基承载力、含水率+压实度 应数据匹配。矛盾表现：现场压实度合格但承载力不合格。",
+  "trigger_when": {
+    "doc_type": [
+      "现场检测报告",
+      "实验室检测报告"
+    ],
+    "field_required": [
+      "检测项目",
+      "检测结论",
+      "检测点编号"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "not any(现场压实度结论 == '合格' and 地基承载力结论 == '不合格' for 同一检测点 in 检测结果)",
+    "language": "python_eval"
+  },
+  "error_template": "试验检测矛盾：检测点 {检测点编号} 现场压实度 {现场压实度结论}，但地基承载力 {地基承载力结论}，数据逻辑不匹配",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查检测数据是否真实，或检测方法/点位不一致",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.8.4 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

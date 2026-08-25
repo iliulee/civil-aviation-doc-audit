@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "description": "表格 schema 注册表（自成长）。当值格式锚点无法推断列角色（首次见到的表格）时，AI 读取此文件按列名/表头文字匹配已知 schema；人工确认未知表格的列语义后，沉淀为新 schema 供复用。",
+  "notes": [
+    "schema_status = known_domain：schema 已确认，可按列映射执行完整规则审核",
+    "schema_status = unknown_domain：schema 未确认，仅执行通用检查（类型/非空/列错位），不执行领域规则",
+    "匹配方式：doc_type 关键词 + 表头文字（规范化后包含匹配），多命中取表头覆盖度最高者",
+    "人工确认新 schema 后 status 由 pending_confirmation 提升为 known_domain"
+  ],
+  "schemas": [
+    {
+      "schema_id": "PILE-CFG-001",
+      "name": "碎石桩施工记录表",
+      "status": "known_domain",
+      "doc_type_keywords": ["碎石桩", "cfg", "桩基施工记录", "振冲碎石桩"],
+      "header_aliases": {
+        "pile_no": ["桩号", "序号", "编号"],
+        "design_length": ["设计桩长", "设计长度"],
+        "diameter": ["桩径", "直径"],
+        "sink_start": ["沉管开始", "沉管起"],
+        "sink_end": ["沉管结束", "沉管止"],
+        "pull_start": ["拔管开始", "拔管起"],
+        "pull_end": ["拔管结束", "拔管止"],
+        "bottom_elev": ["桩底高程", "桩底标高"],
+        "top_elev": ["桩顶高程", "桩顶标高"],
+        "actual_length": ["实际桩长", "实长", "成桩桩长"],
+        "current": ["密实电流", "电流"],
+        "re_penetration": ["反插次数", "反插"],
+        "volume": ["灌入量", "灌石量"],
+        "filling_coeff": ["充盈系数", "充盈率"],
+        "verticality": ["竖直度", "垂直度"]
+      },
+      "confirmed_by": "system",
+      "confirmed_at": "2026-08-12T00:00:00+08:00",
+      "source": "table_schema_initial"
+    }
+  ]
+}

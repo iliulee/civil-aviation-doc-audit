@@ -1,0 +1,60 @@
+{
+  "rule_id": "LG-606",
+  "name": "同一桩号跨资料数据矛盾（铁律 15 配套）",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "因果一致性",
+  "description": "同一桩号/同一条目在多份资料中数据不一致 → 至少有一份数据错误。矛盾表现：DOC-A 中 Z418 实长 13.2m，DOC-B 中同一桩号实长 9.0m。此时应同时做单表自洽校验（铁律 12），自洽通过的值更可信。",
+  "trigger_when": {
+    "doc_type": [
+      "桩基施工记录",
+      "施工日志",
+      "检验批"
+    ],
+    "field_required": [
+      "桩号",
+      "实长"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "all(实长A == 实长B for 实长A, 实长B in 同一桩号跨资料实长对比)",
+    "language": "python_eval"
+  },
+  "error_template": "因果矛盾：桩号 {桩号} 在 {资料A} 中实长 {实长A}m，在 {资料B} 中实长 {实长B}m，差异 {差值}m，至少一份数据错误",
+  "severity_on_violation": "Fatal",
+  "remediation": "调取原始施工底稿验证，做单表自洽校验，自洽通过的值更可信",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "01_场道工程"
+    ],
+    "subdivision_codes": [
+      "01-03"
+    ]
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.6.6 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

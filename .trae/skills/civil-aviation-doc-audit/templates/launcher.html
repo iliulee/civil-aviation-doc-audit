@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>审核工具导航</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f0f2f5;
+  display: flex; justify-content: center; align-items: center;
+  min-height: 100vh; padding: 20px;
+}
+.card {
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,.08);
+  max-width: 520px; width: 100%; padding: 32px;
+}
+h1 { font-size: 20px; color: #1c1f26; margin-bottom: 4px; }
+.sub { font-size: 13px; color: #8c939d; margin-bottom: 24px; }
+
+.step { margin-bottom: 20px; }
+.step-header {
+  font-size: 14px; font-weight: 600; color: #5a6270;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+}
+.step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #2a4d7a; color: #fff; font-size: 12px; font-weight: 700;
+}
+.step-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 18px; border-radius: 8px;
+  text-decoration: none; font-size: 15px; font-weight: 500;
+  transition: background .15s, transform .1s;
+}
+.step-btn:hover { transform: translateY(-1px); }
+.step-btn.primary { background: #2a4d7a; color: #fff; }
+.step-btn.primary:hover { background: #1e3a5f; }
+.step-btn.secondary { background: #f4f6fa; color: #2a4d7a; border: 1px solid #e3e6ec; }
+.step-btn.secondary:hover { background: #e8ecf2; }
+.step-btn.disabled { opacity: 0.4; pointer-events: none; }
+.step-btn .icon { font-size: 20px; width: 28px; text-align: center; }
+.step-btn .arrow { margin-left: auto; font-size: 14px; opacity: 0.5; }
+.step-desc { font-size: 12px; color: #8c939d; margin-top: 6px; padding-left: 28px; }
+
+.divider { height: 1px; background: #e3e6ec; margin: 20px 0; }
+
+.other-tools {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.other-tools a {
+  padding: 8px 14px; border-radius: 6px;
+  background: #f4f6fa; color: #5a6270;
+  text-decoration: none; font-size: 13px;
+  border: 1px solid #e3e6ec; transition: background .15s;
+}
+.other-tools a:hover { background: #e8ecf2; }
+
+.meta {
+  background: #fafbfc; border: 1px solid #e3e6ec; border-radius: 8px;
+  padding: 14px 16px; font-size: 13px; color: #5a6270; line-height: 1.8;
+  margin-top: 20px;
+}
+.meta b { color: #1c1f26; }
+.footer { text-align: center; font-size: 12px; color: #b0b8c1; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1 id="projectName">项目审核工具</h1>
+  <p class="sub" id="versionInfo">版本 —</p>
+
+  <!-- 第 1 步：核对数据 -->
+  <div class="step">
+    <div class="step-header"><span class="step-num">1</span> 核对数据</div>
+    <a href="数据核对编辑器.html" class="step-btn primary">
+      <span class="icon">✏️</span>
+      <span>打开数据核对编辑器</span>
+      <span class="arrow">→</span>
+    </a>
+    <p class="step-desc">逐份核对 OCR 识别结果，确认无误后标记"已核对"</p>
+  </div>
+
+  <!-- 第 2 步：查看报告 -->
+  <div class="step">
+    <div class="step-header"><span class="step-num">2</span> 查看报告</div>
+    <a id="linkReport" href="#" class="step-btn secondary">
+      <span class="icon">📄</span>
+      <span>查看最新审核报告</span>
+      <span class="arrow">→</span>
+    </a>
+    <p class="step-desc">核对完成后运行审核，在此查看审核报告</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 其他工具 -->
+  <div class="step">
+    <div class="step-header">其他工具</div>
+    <div class="other-tools">
+      <a href="项目总览.html">📊 项目总览</a>
+      <a href="文档对齐视图.html">📐 文档对齐</a>
+    </div>
+    <div class="rule-tool" style="margin-top:10px;padding:10px;background:#f7f7f7;border:1px solid #e3e3e3;border-radius:6px;">
+      <div style="font-weight:600;margin-bottom:6px;">🔧 规则管理</div>
+      <div style="font-size:12px;color:#666;line-height:1.6;margin-bottom:8px;">
+        浏览器无法直接启动本地程序，请先在「数据底座」文件夹中双击 <b>规则管理工具.bat</b>（首次需等待 3 秒启动服务），
+        再点击下面按钮打开面板。若已启动，可直接打开无需重复操作。
+      </div>
+      <a href="http://127.0.0.1:8765/" target="_blank" style="display:inline-block;padding:6px 14px;background:#1a73e8;color:#fff;border-radius:4px;text-decoration:none;font-size:13px;">打开规则管理面板</a>
+    </div>
+  </div>
+
+  <!-- 项目状态 -->
+  <div class="meta" id="metaInfo">
+    <b>审核状态</b><br>
+    数据底座尚未建立，请先运行审核流程。
+  </div>
+
+  <p class="footer">双击上方按钮即可打开对应工具</p>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// 此文件由 AI 在阶段 1 步骤 7 / 增量 I-4 中覆盖生成
+// 模板源文件：templates/launcher.html
+// 版本：v8.7
+//
+// 🔴 设计原则：数据嵌入而非 fetch()
+//    file:// 协议下 fetch() 会被浏览器 CORS 拦截
+//    因此 AI 生成时直接把数据写入 __PROJECT_DATA__ 占位符
+// ═══════════════════════════════════════════
+
+var __PROJECT_DATA__ = __PROJECT_DATA_PLACEHOLDER__;
+
+(function() {
+  var data = __PROJECT_DATA__;
+  var metaEl = document.getElementById('metaInfo');
+  var nameEl = document.getElementById('projectName');
+  var verEl = document.getElementById('versionInfo');
+  var linkReport = document.getElementById('linkReport');
+
+  if (data && data.project_name) {
+    nameEl.textContent = data.project_name;
+    verEl.textContent = '版本 ' + (data.skill_version || '—');
+
+    var totalIssues = (data.fatal || 0) + (data.sanity_check || 0) + (data.best_practice || 0);
+
+    metaEl.innerHTML =
+      '<b>审核状态</b><br>' +
+      '上次审核：' + (data.updated_at || data.created_at || '—') + '<br>' +
+      '当前批次：第 ' + (data.latest_batch || 1) + ' 批（' + (data.new_count || data.total_docs || 0) + ' 份资料）<br>' +
+      '数据底座：' + (data.total_docs || 0) + ' 份文档<br>' +
+      '累计问题：' + totalIssues + ' 条（' + (data.fatal || 0) + ' Fatal / ' + (data.sanity_check || 0) + ' Sanity Check / ' + (data.best_practice || 0) + ' Best Practice）';
+
+    if (data.report_file) {
+      linkReport.href = data.report_file;
+      linkReport.classList.remove('disabled');
+    } else {
+      linkReport.classList.add('disabled');
+      linkReport.title = '尚未生成审核报告';
+    }
+  }
+})();
+</script>
+</body>
+</html>

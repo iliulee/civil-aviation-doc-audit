@@ -1,0 +1,53 @@
+{
+  "rule_id": "IR-005",
+  "name": "标准是归档",
+  "level": "L1-IRON",
+  "scope": "SINGLE_DOC",
+  "category": "合规底线",
+  "description": "按 MH/T 5078.1-2024，资料审核标准是达到分类组卷编目、可移交归档的标准，不是收集齐全即可。",
+  "trigger_when": {
+    "doc_type": [
+      "*"
+    ],
+    "field_required": []
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "资料未达到移交归档标准：{issue}",
+  "severity_on_violation": "Fatal",
+  "remediation": "按 MH/T 5078.1-2024 完善分类组卷编目，达到可移交归档标准",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-05 迁移"
+    }
+  ],
+  "is_placeholder": true
+}

@@ -1,0 +1,56 @@
+{
+  "rule_id": "LG-108",
+  "name": "节假日异常施工需有加班审批",
+  "level": "L3-BUSINESS",
+  "scope": "CROSS_DOC",
+  "category": "时间轴一致性",
+  "description": "节假日有施工记录但无加班审批。矛盾表现：国庆、春节有施工记录但无任何说明或加班审批。人工检查要点：识别国庆、春节、元旦等法定节假日，核查当天是否有施工记录，若有则需对应加班审批或调休说明。",
+  "trigger_when": {
+    "doc_type": [
+      "施工日志",
+      "加班审批表"
+    ],
+    "field_required": [
+      "日期"
+    ]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "节假日异常：{节假日日期}（{节假日名称}）有施工记录 {施工内容}，但无加班审批或说明",
+  "severity_on_violation": "Best Practice",
+  "remediation": "核查节假日施工是否真实，补办加班审批或调休说明",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.1.8 迁移"
+    }
+  ],
+  "is_placeholder": true
+}

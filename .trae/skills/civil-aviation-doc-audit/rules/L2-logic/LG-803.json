@@ -1,0 +1,61 @@
+{
+  "rule_id": "LG-803",
+  "name": "不合格报告处理闭环",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "试验检测一致性",
+  "description": "不合格报告 → 复验/退货/降级使用。矛盾表现：报告不合格但材料已使用且无复验。",
+  "trigger_when": {
+    "doc_type": [
+      "试验检测报告",
+      "复验报告",
+      "退货记录",
+      "降级使用记录",
+      "材料使用记录"
+    ],
+    "field_required": [
+      "报告编号",
+      "检测结论",
+      "处理方式"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "all(检测结论 == '合格' or exists(复验报告 or 退货记录 or 降级使用记录 where 关联报告编号 == 报告编号) for 报告 in 试验检测报告)",
+    "language": "python_eval"
+  },
+  "error_template": "试验检测矛盾：报告 {报告编号} 结论为 {检测结论}（不合格），但材料已使用且无复验/退货/降级使用记录",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查不合格材料是否违规使用，补办复验或退货手续",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.8.3 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

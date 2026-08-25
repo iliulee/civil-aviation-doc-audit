@@ -1,0 +1,56 @@
+{
+  "rule_id": "LG-304",
+  "name": "同一签字人在不同资料的笔迹一致",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "人员一致性",
+  "description": "笔迹特征稳定（可通过 OCR + 视觉对比）。矛盾表现：明显不同笔迹的\"同一人签字\"，存在代签嫌疑。",
+  "trigger_when": {
+    "doc_type": [
+      "*"
+    ],
+    "field_required": [
+      "签字人",
+      "签字图像"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "all(笔迹相似度(签字A, 签字B) >= 0.85 for 签字A, 签字B in 同一签字人所有笔迹)",
+    "language": "python_eval"
+  },
+  "error_template": "人员矛盾：签字人 {签字人} 在 {资料A} 与 {资料B} 中笔迹相似度 {相似度} 低于阈值 0.85，疑似代签",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查是否代签，必要时调取本人确认",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.3.4 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

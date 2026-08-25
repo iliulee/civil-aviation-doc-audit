@@ -1,0 +1,55 @@
+{
+  "rule_id": "IR-011",
+  "name": "全列提取",
+  "level": "L1-IRON",
+  "scope": "SINGLE_DOC",
+  "category": "数据校验",
+  "description": "提取表格时必须逐列读取表头，不能只读结果列（如实长、充盈系数），必须同时读计算列（桩底高程、桩顶高程、灌入量）；读完后对每一对可推导关系做自洽校验，自洽校验通过前不得进入跨资料对比。",
+  "trigger_when": {
+    "doc_type": [
+      "施工记录",
+      "检验批",
+      "检测报告"
+    ],
+    "field_required": []
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "表格数据提取不完整（漏列或仅读结果列）：{issue}",
+  "severity_on_violation": "Fatal",
+  "remediation": "重新提取表格，逐列读取表头，确保结果列与计算列均被覆盖",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 SKILL.md 铁律 R-11 迁移"
+    }
+  ],
+  "is_placeholder": true
+}

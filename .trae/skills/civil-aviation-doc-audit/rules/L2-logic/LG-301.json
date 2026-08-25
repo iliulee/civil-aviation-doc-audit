@@ -1,0 +1,58 @@
+{
+  "rule_id": "LG-301",
+  "name": "施工日志人员 = 作业班组 = 考勤表",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "人员一致性",
+  "description": "三处出现的人员名单应一致：施工日志记录的人员、实际作业班组、考勤表。矛盾表现：施工日志写\"张三班组\"，考勤表无此人。",
+  "trigger_when": {
+    "doc_type": [
+      "施工日志",
+      "班组记录",
+      "考勤表"
+    ],
+    "field_required": [
+      "人员姓名",
+      "日期"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "set(施工日志人员) == set(考勤表人员) and set(施工日志人员) == set(作业班组人员)",
+    "language": "python_eval"
+  },
+  "error_template": "人员矛盾：施工日志人员 {施工日志人员} 与考勤表 {考勤表人员} 或作业班组 {作业班组人员} 不一致",
+  "severity_on_violation": "Sanity Check",
+  "remediation": "核查人员是否漏记或冒名顶替",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.3.1 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

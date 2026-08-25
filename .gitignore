@@ -19,9 +19,16 @@ audit_output/
 verify_output/
 crops/
 
-# Trae 插件目录（不纳入版本管理）
-.trae/
+# Trae 插件目录（默认忽略；放行 civil-aviation-doc-audit skill 源码纳入版本管理）
+.trae/*
+!.trae/skills/
+.trae/skills/*
+!.trae/skills/civil-aviation-doc-audit/
 .trae-html-share-packages/
+
+# 资料员工作台（Vite）：依赖与构建产物不提交，由构建/部署生成
+node_modules/
+dist/
 
 # 压缩包
 *.zip

@@ -1,0 +1,248 @@
+{
+  "schema_version": "1.0",
+  "doc_type": "扫描件",
+  "derived_from_real_ocr": true,
+  "method": "anchor_columns + header_merge + subtraction",
+  "anchors": {
+    "pile_no": 1,
+    "current": 11,
+    "bottom_elev": 8,
+    "top_elev": 9
+  },
+  "most_common_header": "序号/桩\t设计桩\t桩径\t沉管时间\t拔管时间\t实际桩长\t(m)\t密实电流\t反插次\t桩体料\t灌入量\t充盈系\t竖直度",
+  "sample_rows": 255,
+  "columns": [
+    {
+      "col": 1,
+      "slot": "pile_no",
+      "main_type": "pile_no",
+      "dist": {
+        "pile_no": 234,
+        "digit_mixed": 20,
+        "decimal": 1
+      },
+      "anchor_field": "pile_no",
+      "table_header": true,
+      "confidence": "high"
+    },
+    {
+      "col": 2,
+      "slot": "design_length",
+      "main_type": "decimal",
+      "dist": {
+        "decimal": 191,
+        "digit_mixed": 29,
+        "pile_no": 29,
+        "time": 5,
+        "text": 1
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 3,
+      "slot": "diameter",
+      "main_type": "decimal",
+      "dist": {
+        "pile_no": 84,
+        "decimal": 156,
+        "digit_mixed": 13,
+        "time": 2
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 4,
+      "slot": "sink_time",
+      "main_type": "time",
+      "dist": {
+        "time": 211,
+        "digit_mixed": 28,
+        "pile_no": 14,
+        "decimal": 2
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 5,
+      "slot": "pull_time",
+      "main_type": "time",
+      "dist": {
+        "digit_mixed": 39,
+        "time": 201,
+        "pile_no": 13,
+        "text": 1,
+        "decimal": 1
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 6,
+      "slot": "actual_length",
+      "main_type": "time",
+      "dist": {
+        "time": 184,
+        "pile_no": 31,
+        "digit_mixed": 37,
+        "decimal": 2,
+        "text": 1
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 7,
+      "slot": null,
+      "main_type": "time",
+      "dist": {
+        "pile_no": 13,
+        "time": 208,
+        "digit_mixed": 30,
+        "elev": 2,
+        "decimal": 2
+      },
+      "anchor_field": null,
+      "table_header": false,
+      "confidence": "low"
+    },
+    {
+      "col": 8,
+      "slot": "current",
+      "main_type": "elev",
+      "dist": {
+        "elev": 217,
+        "decimal": 7,
+        "digit_mixed": 19,
+        "pile_no": 11,
+        "int": 1
+      },
+      "anchor_field": "bottom_elev",
+      "table_header": true,
+      "confidence": "high"
+    },
+    {
+      "col": 9,
+      "slot": "re_penetration",
+      "main_type": "elev",
+      "dist": {
+        "elev": 223,
+        "decimal": 12,
+        "digit_mixed": 13,
+        "pile_no": 6,
+        "int": 1
+      },
+      "anchor_field": "top_elev",
+      "table_header": true,
+      "confidence": "high"
+    },
+    {
+      "col": 10,
+      "slot": null,
+      "main_type": "decimal",
+      "dist": {
+        "digit_mixed": 29,
+        "decimal": 140,
+        "pile_no": 74,
+        "int": 7,
+        "time": 3,
+        "current": 2
+      },
+      "anchor_field": null,
+      "table_header": false,
+      "confidence": "low"
+    },
+    {
+      "col": 11,
+      "slot": "volume",
+      "main_type": "current",
+      "dist": {
+        "current": 238,
+        "digit_mixed": 6,
+        "pile_no": 11
+      },
+      "anchor_field": "current",
+      "table_header": true,
+      "confidence": "high"
+    },
+    {
+      "col": 12,
+      "slot": "filling_coeff",
+      "main_type": "pile_no",
+      "dist": {
+        "pile_no": 241,
+        "int": 2,
+        "decimal": 2,
+        "digit_mixed": 5,
+        "time": 5
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 13,
+      "slot": "verticality",
+      "main_type": "time",
+      "dist": {
+        "time": 218,
+        "digit_mixed": 18,
+        "pile_no": 6,
+        "int": 2,
+        "decimal": 9
+      },
+      "anchor_field": null,
+      "table_header": true,
+      "confidence": "medium"
+    },
+    {
+      "col": 14,
+      "slot": null,
+      "main_type": "time",
+      "dist": {
+        "pile_no": 28,
+        "time": 206,
+        "decimal": 12,
+        "digit_mixed": 6,
+        "text": 1
+      },
+      "anchor_field": null,
+      "table_header": false,
+      "confidence": "low"
+    },
+    {
+      "col": 15,
+      "slot": null,
+      "main_type": "decimal",
+      "dist": {
+        "decimal": 194,
+        "pile_no": 46,
+        "time": 1,
+        "digit_mixed": 4,
+        "text": 1
+      },
+      "anchor_field": null,
+      "table_header": false,
+      "confidence": "low"
+    },
+    {
+      "col": 16,
+      "slot": null,
+      "main_type": "int",
+      "dist": {
+        "int": 1
+      },
+      "anchor_field": null,
+      "table_header": false,
+      "confidence": "low"
+    }
+  ],
+  "needs_human_review": true
+}

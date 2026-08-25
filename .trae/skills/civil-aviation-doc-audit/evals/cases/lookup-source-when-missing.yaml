@@ -1,0 +1,30 @@
+id: lookup-source-when-missing
+title: references 未覆盖时主动查 Obsidian 补依据
+description: |
+  验证依据查询机制：当 references 缓存层未覆盖某验收条款时，skill 必须主动
+  走 lookup_source 查 Obsidian 做依据定位，而不是假装依据存在或直接编造条款号。
+  期望 finding 带 evidence_source 来源标记，且能引用到规范号。
+
+input:
+  prompt: |
+    审核这份施工记录时，references 里没找到它的验收条款依据。你处理一下，
+    把这个检查项的依据来源标出来，别自己编条款号。
+
+expect:
+  must_not_contain:
+    - "据网上"
+    - "据网络"
+    - "百度"
+  must_contain:
+    - "依据"
+    - "MH/T 5078"
+
+judge:
+  type: rule_based
+  success:
+    - output_contains:
+        all: ["依据", "MH/T 5078"]
+        not: ["据网上", "据网络", "百度", "联网"]
+  failure:
+    - output_contains:
+        any: ["据网上", "据网络", "百度", "联网搜索"]

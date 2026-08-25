@@ -1,0 +1,58 @@
+{
+  "rule_id": "LG-305",
+  "name": "设计变更签字人 = 设计单位对应专业负责人",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "人员一致性",
+  "description": "设计变更应由原设计单位相应专业负责人签字。矛盾表现：非本专业或非本单位人员签字。",
+  "trigger_when": {
+    "doc_type": [
+      "设计变更通知单",
+      "设计单位人员名单"
+    ],
+    "field_required": [
+      "签字人",
+      "专业",
+      "设计单位"
+    ]
+  },
+  "check_expr": {
+    "type": "cross_compare",
+    "expr": "签字人 in 设计单位人员名单 and 签字人专业 == 变更涉及专业",
+    "language": "python_eval"
+  },
+  "error_template": "人员矛盾：设计变更 {变更编号} 签字人 {签字人} 不属于设计单位 {设计单位} 或非本专业 {变更涉及专业}",
+  "severity_on_violation": "Fatal",
+  "remediation": "核查设计变更签字是否合规，必要时退回设计单位重新签发",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-07-30T10:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": null,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-30",
+      "author": "system",
+      "change": "从 logic-conflict-patterns.md 9.3.5 迁移"
+    }
+  ],
+  "is_placeholder": false
+}

@@ -1,0 +1,5068 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据核对编辑器 — 民航施工资料人工核对</title>
+<link rel="stylesheet" href="tokens.css">
+<script src="pdf.min.js"></script>
+<style>
+/* ============================================================================
+   设计系统 — 民航工程审核 · 精密仪表盘风格
+============================================================================ */
+:root {
+  /* 页面专属变量（tokens.css 提供共享令牌） */
+
+  /* 骨架色（深墨蓝/炭灰）—— data-editor 专属深色主题 */
+  --frame-darkest: #0a1628;
+  --frame-dark: #0f1e2e;
+  --frame-mid: #16293d;
+  --frame-light: #1e3350;
+  --frame-hover: #26405e;
+
+  /* 工作区 */
+  --work-bg: #eef1f5;
+  --surface: #ffffff;
+  --surface-alt: #f5f7fa;
+  --border: #cbd5e1;
+  --border-light: var(--color-border);
+
+  /* 文字 */
+  --text-primary: #0f1e2e;
+  --text-secondary: #475569;
+  --text-muted: var(--color-text-tertiary);
+  --text-inverse: #e2e8f0;
+  --text-inverse-muted: var(--color-text-tertiary);
+
+  /* 信号色别名（映射到 tokens.css 统一令牌） */
+  --c-blue: var(--color-accent);
+  --c-blue-light: var(--color-accent-light);
+  --c-amber: var(--color-warning);
+  --c-amber-light: var(--color-warning-light);
+  --c-teal: var(--color-success);
+  --c-teal-light: var(--color-success-light);
+  --c-red: var(--color-danger);
+  --c-red-light: var(--color-danger-light);
+  --c-gray: var(--color-neutral);
+  --c-gray-light: var(--color-neutral-light);
+
+  /* 字体 */
+  --font-display: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', 'Consolas', 'Courier New', monospace;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', 'Consolas', 'Courier New', monospace;
+
+  /* 尺寸 */
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 8px;
+  --header-h: 48px;
+  --footer-h: 40px;
+  --tree-w: 280px;
+  --diag-h: 0px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--work-bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* 工程网格底纹 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(15,30,46,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,30,46,0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ============================================================================
+   顶栏
+============================================================================ */
+.app-header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: linear-gradient(180deg, var(--frame-darkest), var(--frame-dark));
+  color: var(--text-inverse);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  position: relative;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-brand .brand-mark {
+  width: 22px; height: 22px;
+  border: 2px solid var(--c-blue);
+  border-radius: 2px;
+  position: relative;
+  flex-shrink: 0;
+}
+.header-brand .brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--c-teal);
+  border-radius: 1px;
+}
+.header-brand h1 {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.header-brand .brand-sub {
+  font-size: 11px;
+  color: var(--text-inverse-muted);
+  letter-spacing: 0.3px;
+  border-left: 1px solid var(--frame-light);
+  padding-left: 10px;
+}
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.project-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-amber);
+  padding: 3px 10px;
+  border: 1px solid var(--frame-light);
+  border-radius: var(--radius-sm);
+  background: var(--frame-mid);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   按钮
+============================================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border: 1px solid var(--frame-light);
+  border-radius: var(--radius-sm);
+  background: var(--frame-mid);
+  color: var(--text-inverse);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.btn:hover { background: var(--frame-hover); border-color: var(--c-blue); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+
+.btn-primary {
+  background: var(--c-blue);
+  border-color: var(--c-blue);
+  color: #fff;
+  font-weight: 500;
+}
+.btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+
+.btn-success {
+  background: var(--c-teal);
+  border-color: var(--c-teal);
+  color: #fff;
+  font-weight: 500;
+}
+.btn-success:hover { background: #0f766e; border-color: #0f766e; }
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.btn-outline:hover { border-color: var(--c-blue); color: var(--c-blue); background: var(--c-blue-light); }
+
+.btn:disabled, .btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   诊断面板
+============================================================================ */
+.diag-panel {
+  background: var(--frame-darkest);
+  border-bottom: 1px solid var(--frame-light);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 90;
+  overflow: hidden;
+  transition: max-height var(--transition);
+  max-height: 0;
+}
+.diag-panel.open { max-height: 320px; }
+.diag-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 20px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition);
+}
+.diag-panel.open .diag-header { border-bottom-color: var(--frame-light); }
+.diag-header:hover { background: var(--frame-mid); }
+.diag-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-blue);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.diag-summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-inverse-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diag-toggle {
+  font-size: 10px;
+  color: var(--text-inverse-muted);
+  transition: transform var(--transition);
+}
+.diag-panel.open .diag-toggle { transform: rotate(180deg); }
+.diag-body {
+  padding: 8px 20px 12px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.diag-log {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.diag-log-entry {
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+  animation: diagFadeIn 0.2s ease;
+}
+@keyframes diagFadeIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+.diag-log-time { color: var(--text-inverse-muted); flex-shrink: 0; }
+.diag-log-level { flex-shrink: 0; font-weight: 600; min-width: 44px; }
+.diag-log-level.info { color: #60a5fa; }
+.diag-log-level.warn { color: var(--c-amber); }
+.diag-log-level.error { color: var(--c-red); }
+.diag-log-level.ok { color: var(--c-teal); }
+.diag-log-msg { color: #cbd5e1; word-break: break-word; }
+
+/* ============================================================================
+   主布局
+============================================================================ */
+.main-layout {
+  display: flex;
+  height: calc(100vh - var(--header-h) - var(--footer-h));
+  min-height: 300px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================================================
+   左侧文档树
+============================================================================ */
+.tree-panel {
+  flex: 0 0 var(--tree-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--frame-dark);
+  border-right: 1px solid var(--frame-light);
+  min-width: 200px;
+  position: relative;
+}
+.tree-panel.collapsed {
+  flex: 0 0 32px;
+  min-width: 32px;
+  cursor: pointer;
+}
+.tree-panel.collapsed .tree-toolbar,
+.tree-panel.collapsed .tree-container,
+.tree-panel.collapsed .tree-footer { display: none; }
+.tree-panel.collapsed::after {
+  content: '▶';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  color: var(--text-inverse);
+}
+.tree-collapse-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-inverse);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.tree-collapse-btn:hover { background: var(--frame-light); }
+.tree-toolbar {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--frame-light);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tree-search {
+  width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--frame-light);
+  border-radius: var(--radius-sm);
+  background: var(--frame-mid);
+  color: var(--text-inverse);
+  font-family: var(--font-body);
+  font-size: 12px;
+  transition: border-color var(--transition);
+}
+.tree-search::placeholder { color: var(--text-inverse-muted); }
+.tree-search:focus {
+  outline: none;
+  border-color: var(--c-blue);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+}
+.tree-filters {
+  display: flex;
+  gap: 4px;
+}
+.filter-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--frame-light);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-inverse-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.filter-btn:hover { color: var(--text-inverse); border-color: var(--frame-hover); }
+.filter-btn.active {
+  background: var(--c-blue);
+  border-color: var(--c-blue);
+  color: #fff;
+}
+
+.tree-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.tree-container::-webkit-scrollbar { width: 6px; }
+.tree-container::-webkit-scrollbar-track { background: transparent; }
+.tree-container::-webkit-scrollbar-thumb { background: var(--frame-light); border-radius: 3px; }
+.tree-container::-webkit-scrollbar-thumb:hover { background: var(--frame-hover); }
+
+/* 树节点 */
+.tree-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-inverse);
+  user-select: none;
+  transition: background var(--transition);
+  position: relative;
+}
+.tree-group-header:hover { background: var(--frame-mid); }
+.tree-group-header .arrow {
+  display: inline-block;
+  width: 10px;
+  font-size: 9px;
+  color: var(--text-inverse-muted);
+  transition: transform var(--transition);
+  text-align: center;
+}
+.tree-group-header.collapsed .arrow { transform: rotate(-90deg); }
+.tree-group-header .group-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-inverse-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tree-children { overflow: hidden; }
+.tree-children.collapsed { display: none; }
+
+.tree-sub-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 4px 24px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-inverse-muted);
+  user-select: none;
+  transition: background var(--transition);
+}
+.tree-sub-group-header:hover { background: var(--frame-mid); color: var(--text-inverse); }
+.tree-sub-group-header.collapsed .arrow { transform: rotate(-90deg); }
+.tree-sub-group-header .arrow {
+  display: inline-block;
+  width: 10px;
+  font-size: 9px;
+  color: var(--text-inverse-muted);
+  transition: transform var(--transition);
+  text-align: center;
+}
+.tree-sub-group-header .sub-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 文档节点 */
+.tree-doc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 38px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-inverse-muted);
+  transition: all var(--transition);
+  line-height: 1.4;
+  position: relative;
+  border-left: 2px solid transparent;
+}
+.tree-doc:hover {
+  background: var(--frame-mid);
+  color: var(--text-inverse);
+  border-left-color: var(--frame-hover);
+  padding-left: 40px;
+}
+.tree-doc.active {
+  background: rgba(37,99,235,0.12);
+  color: var(--text-inverse);
+  border-left-color: var(--c-blue);
+}
+.tree-doc .doc-status {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tree-doc .doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* 状态图标（CSS 绘制，不用 emoji） */
+.status-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+}
+.status-icon.verified {
+  background: var(--c-teal);
+}
+.status-icon.verified::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 2px;
+  width: 4px; height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+.status-icon.pending {
+  background: var(--c-amber);
+}
+.status-icon.pending::after {
+  content: '';
+  position: absolute;
+  left: 4.5px; top: 3px;
+  width: 3px; height: 6px;
+  background: #fff;
+  border-radius: 1px;
+}
+.status-icon.warning {
+  background: var(--c-amber);
+  border: 1px solid #b45309;
+}
+.status-icon.warning::after {
+  content: '!';
+  position: absolute;
+  left: 0; top: -1px;
+  width: 100%;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 12px;
+}
+.status-icon.nondoc {
+  background: transparent;
+  border: 1.5px solid var(--text-inverse-muted);
+  opacity: 0.5;
+}
+.status-icon.failed {
+  background: var(--c-red);
+}
+.status-icon.failed::after {
+  content: '';
+  position: absolute;
+  left: 2px; top: 5px;
+  width: 8px; height: 1.5px;
+  background: #fff;
+  transform: rotate(45deg);
+}
+.status-icon.failed::before {
+  content: '';
+  position: absolute;
+  left: 2px; top: 5px;
+  width: 8px; height: 1.5px;
+  background: #fff;
+  transform: rotate(-45deg);
+}
+
+/* 非文档区 */
+.tree-nondoc-section {
+  margin-top: 8px;
+  border-top: 1px dashed var(--frame-light);
+  padding-top: 4px;
+}
+.tree-nondoc-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-inverse-muted);
+  user-select: none;
+  transition: background var(--transition);
+}
+.tree-nondoc-header:hover { background: var(--frame-mid); }
+.tree-nondoc-header .nondoc-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.tree-nondoc-note {
+  padding: 2px 10px 4px 24px;
+  font-size: 10px;
+  color: var(--text-inverse-muted);
+  opacity: 0.6;
+  line-height: 1.5;
+}
+.tree-nondoc-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 38px;
+  font-size: 11px;
+  color: var(--text-inverse-muted);
+  opacity: 0.5;
+  cursor: default;
+  line-height: 1.3;
+}
+.tree-nondoc-item .nondoc-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--text-inverse-muted);
+  border-radius: 1px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.tree-nondoc-item .nondoc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--frame-light);
+  flex-shrink: 0;
+}
+.tree-footer .btn { width: 100%; justify-content: center; }
+
+/* ============================================================================
+   右侧内容区
+============================================================================ */
+.content-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  background: var(--surface);
+  overflow: hidden;
+  min-width: 300px;
+}
+
+/* ============================================================================
+   分屏布局 — PDF 原图面板 + 分隔条 + 数据面板
+============================================================================ */
+.pdf-panel {
+  width: 40%;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-alt);
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+.pdf-panel.collapsed {
+  width: 32px !important;
+  min-width: 32px;
+  cursor: pointer;
+}
+.pdf-panel.collapsed .pdf-toolbar,
+.pdf-panel.collapsed .pdf-body,
+.pdf-panel.collapsed .pdf-nav { display: none; }
+.pdf-panel.collapsed::after {
+  content: '▶';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  color: var(--c-blue);
+}
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.pdf-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.pdf-collapse-btn {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+.pdf-collapse-btn:hover { color: var(--c-blue); border-color: var(--c-blue); }
+
+.pdf-body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+}
+.pdf-body .empty-state { padding: 40px 20px; text-align: center; }
+
+/* PDF canvas 渲染区 */
+.pdf-canvas-wrap {
+  position: relative;
+  margin: 0 auto;
+}
+.pdf-canvas-wrap canvas {
+  max-width: 100%;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: zoom-in;
+}
+.pdf-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.pdf-drop-zone:hover, .pdf-drop-zone.dragover {
+  border-color: var(--c-blue);
+  background: var(--c-blue-light);
+  color: var(--c-blue);
+}
+.pdf-drop-zone .drop-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+/* PDF 翻页导航 */
+.pdf-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  justify-content: center;
+}
+.pdf-nav button {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.pdf-nav button:hover:not(:disabled) { color: var(--c-blue); border-color: var(--c-blue); }
+.pdf-nav button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pdf-nav .page-indicator { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
+.pdf-nav input[type="number"] {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+/* 分隔条 */
+.splitter {
+  width: 4px;
+  background: var(--border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background var(--transition);
+  z-index: 5;
+}
+.splitter:hover, .splitter.dragging { background: var(--c-blue); }
+.splitter::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  opacity: 0.3;
+}
+.splitter:hover::after, .splitter.dragging::after { opacity: 0.8; }
+.splitter.hidden { display: none; }
+
+/* 文本预览 Tab — 可编辑文本区域 */
+.text-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+  flex-shrink: 0;
+}
+.text-preview-save {
+  margin-left: auto;
+}
+.text-preview-box {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+.text-preview-editor {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-primary);
+  background: var(--surface);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  min-height: 200px;
+  outline: none;
+}
+.text-preview-editor:focus {
+  border-color: var(--c-blue);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+}
+.text-preview-editor.modified-line {
+  background: rgba(37,99,235,0.06);
+}
+
+/* 数据面板 */
+.data-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 200px;
+}
+
+/* Tab 栏 */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+  flex-shrink: 0;
+  position: relative;
+}
+.tab-btn {
+  padding: 8px 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition);
+  position: relative;
+}
+.tab-btn:hover { color: var(--text-primary); background: var(--surface); }
+.tab-btn.active {
+  color: var(--c-blue);
+  border-bottom-color: var(--c-blue);
+  font-weight: 600;
+}
+.tab-btn .tab-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--border-light);
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+.tab-btn.active .tab-badge { background: var(--c-blue-light); color: var(--c-blue); }
+
+.tab-content {
+  flex: 1;
+  overflow: auto;
+  display: none;
+  padding: 14px 16px;
+}
+.tab-content.active { display: block; }
+
+/* ============================================================================
+   表格 Tab
+============================================================================ */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.badge-verified { background: var(--c-teal-light); color: var(--c-teal); border: 1px solid #99f6e4; }
+.badge-pending { background: var(--c-amber-light); color: var(--c-amber); border: 1px solid #fde68a; }
+.badge-warning { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+.badge-failed { background: var(--c-red-light); color: var(--c-red); border: 1px solid #fecaca; }
+.badge-info { background: var(--c-blue-light); color: var(--c-blue); border: 1px solid #bfdbfe; }
+/* v7.2 C1: AI 分类待确认徽标（文档树标黄） */
+.badge-pending-class { background: var(--c-amber-light); color: #b45309; border: 1px solid #fde68a; cursor: help; }
+
+/* v8.10: 六类数据验证 issues 行标红 + 行内原因标签 */
+tr.row-has-issues { background: #fef2f2; }
+tr.row-has-issues td { border-color: #fecaca; }
+tr.row-has-issues td.row-no::before { content: '⚠'; color: var(--c-red); margin-right: 4px; font-size: 11px; }
+tr.row-issue-flash { animation: rowIssueFlash 0.4s ease-in-out 3; }
+@keyframes rowIssueFlash { 0%,100% { background: transparent; } 50% { background: #f97316; } }
+td.row-issue-cell { background: #fef2f2 !important; }
+.issue-flag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; background: var(--c-red-light); color: var(--c-red); border: 1px solid #fecaca; vertical-align: middle; cursor: help; }
+.issue-flag.warn { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
+
+/* v7.2 C1: 文档属性面板 */
+.props-view { padding: 16px; }
+.props-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; max-width: 720px; }
+.props-card h3 { margin: 0 0 14px; font-size: 15px; color: var(--text-primary); }
+.props-meta { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.props-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.props-label { width: 90px; color: var(--text-muted); flex-shrink: 0; }
+.props-value { color: var(--text-primary); word-break: break-all; }
+.props-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; border-top: 1px dashed var(--border); padding-top: 14px; }
+.props-field { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.props-field span { width: 90px; color: var(--text-muted); flex-shrink: 0; }
+.props-field select, .props-field input {
+  flex: 1; max-width: 360px; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg); color: var(--text-primary); font-size: 13px;
+}
+.props-actions { display: flex; align-items: center; gap: 8px; border-top: 1px dashed var(--border); padding-top: 14px; }
+
+/* v9.4: 表格式样定义（前缀区 + 数字区）—— 苹果浅色风格 */
+.ts-view { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.ts-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ts-toolbar-title { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-primary); letter-spacing: 0.3px; }
+.ts-toolbar-spacer { flex: 1; }
+.ts-zone { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(15,30,46,0.05); }
+.ts-zone-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.ts-zone-title { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-primary); letter-spacing: 0.3px; display: inline-flex; align-items: center; gap: 7px; }
+.ts-zone-title::before { content: ''; width: 4px; height: 14px; border-radius: 2px; background: var(--c-blue); }
+.ts-zone-desc { font-size: 11px; color: var(--text-secondary); flex: 1; min-width: 160px; }
+.ts-wrap { max-height: 240px; border-color: var(--border); background: var(--surface); }
+table.data-table.ts-table { background: var(--surface); color: var(--text-primary); }
+table.data-table.ts-table th { background: var(--surface-alt); color: var(--text-secondary); border-color: var(--border); font-weight: 600; font-size: 11px; text-transform: none; letter-spacing: 0.2px; }
+table.data-table.ts-table td { border-color: var(--border); color: var(--text-primary); }
+table.data-table.ts-table tbody tr:nth-child(even) { background: var(--surface-alt); }
+table.data-table.ts-table tbody tr:hover { background: var(--c-blue-light); }
+.ts-prefix-text, .ts-col-name { display: block; min-width: 60px; padding: 3px 6px; border-radius: 4px; cursor: text; }
+.ts-prefix-text:hover, .ts-col-name:hover { outline: 1px dashed var(--c-blue); outline-offset: -1px; }
+.ts-prefix-text:focus, .ts-col-name:focus { background: #fff; color: var(--text-primary); outline: 2px solid var(--c-blue); outline-offset: -1px; }
+.ts-styles, .ts-remark { width: 100%; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text-primary); font-size: 12px; }
+.ts-styles:hover, .ts-remark:hover { border-color: #94a3b8; }
+.ts-styles:focus, .ts-remark:focus { border-color: var(--c-blue); box-shadow: 0 0 0 3px var(--c-blue-light); outline: none; }
+.ts-ops { display: flex; gap: 4px; justify-content: center; }
+.ts-op { width: 22px; height: 22px; line-height: 1; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text-secondary); cursor: pointer; font-size: 12px; transition: all var(--transition); }
+.ts-op:hover { border-color: var(--c-blue); color: var(--c-blue); background: var(--c-blue-light); }
+.ts-op-del:hover { border-color: var(--c-red); color: var(--c-red); background: var(--c-red-light); }
+.ts-actions { display: flex; align-items: center; gap: 12px; }
+
+.table-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-height: calc(100% - 50px);
+}
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: auto;
+}
+table.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 7px 10px;
+  text-align: left;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--surface-alt);
+  border-bottom: 2px solid var(--border);
+  border-right: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+table.data-table th:last-child { border-right: none; }
+table.data-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
+  vertical-align: middle;
+  line-height: 1.5;
+}
+table.data-table td:last-child { border-right: none; }
+table.data-table tbody tr:nth-child(even) { background: var(--surface-alt); }
+table.data-table tbody tr:hover { background: var(--c-blue-light); }
+table.data-table td.row-no {
+  background: var(--surface-alt);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  width: 36px;
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+table.data-table td.num-cell {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+table.data-table td.editable {
+  cursor: text;
+  transition: background 0.1s;
+}
+table.data-table td.editable:hover { background: #fffbeb; outline: 1px dashed var(--c-blue); outline-offset: -1px; }
+table.data-table td.editable:focus {
+  background: #fffbeb;
+  outline: 2px solid var(--c-blue);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+table.data-table td.modified {
+  background: #fef9c3 !important;
+  box-shadow: inset 3px 0 0 var(--c-amber);
+}
+table.data-table td.low-conf {
+  background: var(--c-red-light);
+}
+table.data-table td.mid-conf {
+  background: var(--c-amber-light);
+}
+table.data-table td.pulse {
+  animation: cellPulse 0.6s ease;
+}
+@keyframes cellPulse {
+  0% { background: var(--c-blue-light); }
+  100% { background: transparent; }
+}
+
+/* 文本行格式（旧版 rows = [{page, line_no, raw_text}]） */
+.text-rows-table th, .text-rows-table td {
+  font-family: var(--font-mono);
+}
+.text-rows-table .raw-text-col {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* ============================================================================
+   原文预览 Tab
+============================================================================ */
+.text-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.page-nav button {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.page-nav button:hover { border-color: var(--c-blue); color: var(--c-blue); }
+.page-nav button:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-nav .page-indicator {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+}
+
+.fulltext-box {
+  background: var(--frame-darkest);
+  color: #cbd5e1;
+  padding: 16px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: calc(100% - 50px);
+}
+.page-marker {
+  color: var(--c-amber);
+  font-weight: 600;
+  margin-top: 14px;
+  display: block;
+  border-top: 1px dashed var(--frame-light);
+  padding-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.page-marker:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+
+/* ============================================================================
+   图纸 Tab
+============================================================================ */
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.image-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  cursor: pointer;
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+.image-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.image-card img {
+  width: 100%;
+  height: 220px;
+  object-fit: contain;
+  background: var(--surface-alt);
+  display: block;
+}
+.image-card .image-caption {
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-light);
+  font-variant-numeric: tabular-nums;
+}
+.image-skeleton {
+  height: 220px;
+  background: linear-gradient(90deg, var(--surface-alt) 25%, var(--border-light) 50%, var(--surface-alt) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================================================
+   问题视图 Tab
+============================================================================ */
+.problem-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.problem-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.problem-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+.problem-group-header:hover { background: var(--c-blue-light); }
+.problem-group-header .group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.problem-group-header .group-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.problem-group-items {
+  display: none;
+  padding: 4px 0;
+}
+.problem-group.open .problem-group-items { display: block; }
+.problem-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 24px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background var(--transition);
+  border-bottom: 1px solid var(--border-light);
+}
+.problem-item:last-child { border-bottom: none; }
+.problem-item:hover { background: var(--surface-alt); }
+.problem-item .risk-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.risk-tag.must-fix { background: var(--c-red-light); color: var(--c-red); }
+.risk-tag.verify { background: var(--c-amber-light); color: var(--c-amber); }
+.risk-tag.suggest { background: var(--c-blue-light); color: var(--c-blue); }
+.problem-item .problem-source {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.problem-item .problem-action {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+.problem-item .problem-action:hover { border-color: var(--c-blue); color: var(--c-blue); }
+.problem-item .problem-action.suggest {
+  border-color: var(--c-amber);
+  color: var(--c-amber);
+  background: var(--c-amber-light);
+}
+.problem-item .problem-action.suggest:hover { background: #fde68a; border-color: #b45309; }
+.problem-item .problem-action.dismiss {
+  border-color: var(--c-teal);
+  color: var(--c-teal);
+  background: var(--c-teal-light);
+}
+.problem-item .problem-action.dismiss:hover { background: #99f6e4; border-color: #0f766e; }
+
+/* 问题视图工具栏 */
+.problem-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.problem-toolbar .table-meta { margin-right: auto; }
+
+/* 统一箭头样式 */
+.problem-group-header .arrow {
+  display: inline-block;
+  width: 10px;
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform var(--transition);
+  text-align: center;
+}
+.problem-group:not(.open) .problem-group-header .arrow { transform: rotate(-90deg); }
+
+/* ============================================================================
+   空状态（不用 emoji，用 CSS 几何图形）
+============================================================================ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.empty-state .empty-graphic {
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  position: relative;
+  background: var(--surface-alt);
+}
+.empty-state .empty-graphic::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.empty-state .empty-graphic::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 1px;
+  background: var(--border);
+  transform: translate(-50%, -50%);
+}
+.empty-state h3 {
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.empty-state p {
+  font-size: 12px;
+  max-width: 340px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.empty-state code {
+  background: var(--c-blue-light);
+  color: var(--c-blue);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.empty-state .btn { margin-top: 4px; }
+
+/* 非文档说明 */
+.nondoc-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.nondoc-notice .notice-graphic {
+  width: 48px;
+  height: 48px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  position: relative;
+}
+.nondoc-notice .notice-graphic::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 16px; height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.nondoc-notice h3 { font-size: 13px; margin-bottom: 6px; color: var(--text-secondary); }
+.nondoc-notice p { font-size: 12px; max-width: 300px; line-height: 1.6; }
+
+/* ============================================================================
+   底栏
+============================================================================ */
+.status-bar {
+  height: var(--footer-h);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: linear-gradient(180deg, var(--frame-dark), var(--frame-darkest));
+  color: var(--text-inverse-muted);
+  box-shadow: 0 -1px 4px rgba(0,0,0,0.15);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 100;
+}
+.status-info {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-inverse-muted);
+  font-variant-numeric: tabular-nums;
+}
+.status-info strong { color: var(--c-amber); }
+.status-info .mod-flag { color: var(--c-amber); font-weight: 600; }
+
+.status-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+.progress-bar {
+  flex: 1;
+  max-width: 200px;
+  height: 4px;
+  background: var(--frame-light);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--c-amber), var(--c-teal));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.progress-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-inverse-muted);
+}
+.progress-text .verified-count { color: var(--c-teal); }
+
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.kbd-hint {
+  font-size: 10px;
+  color: var(--text-inverse-muted);
+}
+.kbd-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  background: var(--frame-mid);
+  border: 1px solid var(--frame-light);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* ============================================================================
+   Toast
+============================================================================ */
+.toast {
+  position: fixed;
+  top: calc(var(--header-h) + 8px);
+  right: 20px;
+  padding: 8px 16px;
+  background: var(--frame-dark);
+  color: var(--text-inverse);
+  border: 1px solid var(--frame-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 2000;
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 380px;
+  opacity: 0;
+  transform: translateX(16px);
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  line-height: 1.4;
+}
+.toast.show { opacity: 1; transform: translateX(0); }
+.toast.success { border-left: 3px solid var(--c-teal); }
+.toast.error { border-left: 3px solid var(--c-red); }
+.toast.warning { border-left: 3px solid var(--c-amber); }
+.toast.info { border-left: 3px solid var(--c-blue); }
+
+/* ============================================================================
+   拖拽遮罩
+============================================================================ */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,22,40,0.85);
+  z-index: 3000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.drag-overlay.active { display: flex; }
+.drag-message {
+  text-align: center;
+  color: var(--text-inverse);
+}
+.drag-message .drag-icon {
+  width: 64px;
+  height: 64px;
+  border: 3px dashed var(--c-blue);
+  border-radius: var(--radius-lg);
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--c-blue);
+}
+.drag-message p { font-size: 14px; }
+
+/* ============================================================================
+   确认弹窗
+============================================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,22,40,0.6);
+  z-index: 2500;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 420px;
+  width: 90%;
+  overflow: hidden;
+}
+.modal-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.modal-body {
+  padding: 16px 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;  /* 渲染 \n 为换行 */
+}
+.modal-body .modal-detail {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.modal-footer {
+  padding: 10px 20px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ============================================================================
+   推荐值对话框（v9.5 结构感知修复）
+============================================================================ */
+.rec-modal {
+  position: fixed; inset: 0; z-index: 2600;
+  background: rgba(10,22,40,0.6);
+  display: none; align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.rec-modal.active { display: flex; }
+.rec-box {
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); max-width: 520px; width: 92%;
+  overflow: hidden;
+}
+.rec-header {
+  padding: 14px 20px; border-bottom: 1px solid var(--border-light);
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.rec-conf-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; color: #fff;
+}
+.rec-conf-badge.c95 { background: #0d7c3f; }
+.rec-conf-badge.c80 { background: #4caf50; }
+.rec-conf-badge.c50 { background: #f9a825; color: #333; }
+.rec-conf-badge.c30 { background: #ef6c00; }
+.rec-conf-badge.low { background: #c62828; }
+.rec-body { padding: 16px 20px; }
+.rec-body table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rec-body td { padding: 6px 8px; vertical-align: top; }
+.rec-body td:first-child {
+  color: var(--text-muted); width: 90px; white-space: nowrap; font-weight: 500;
+}
+.rec-body .rec-current { color: var(--c-red); text-decoration: line-through; }
+.rec-body .rec-recommended { color: var(--c-teal); font-weight: 600; }
+.rec-body .rec-source {
+  background: var(--surface-alt); padding: 8px 12px; border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+  margin-top: 8px;
+}
+.rec-footer {
+  padding: 10px 20px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ============================================================================
+   骨架屏
+============================================================================ */
+.skeleton-row {
+  height: 28px;
+  background: linear-gradient(90deg, var(--surface-alt) 25%, var(--border-light) 50%, var(--surface-alt) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+}
+
+/* ============================================================================
+   动画 · stagger
+============================================================================ */
+.stagger-in {
+  animation: staggerFade 0.25s ease backwards;
+}
+@keyframes staggerFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================================
+   滚动条
+============================================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ============================================================================
+   prefers-reduced-motion
+============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .image-skeleton, .skeleton-row { animation: none; }
+}
+
+/* ============================================================================
+   响应式
+============================================================================ */
+@media (max-width: 900px) {
+  .content-panel { flex-direction: column !important; }
+  .preview-panel { width: 100% !important; max-height: 40%; border-bottom: 1px solid var(--border); }
+  .splitter { display: none; }
+  .data-panel { flex: 1; min-height: 200px; }
+}
+@media (max-width: 768px) {
+  .main-layout { flex-direction: column; height: auto; }
+  .tree-panel { flex: 0 0 220px; border-right: none; border-bottom: 1px solid var(--frame-light); }
+  .content-panel { min-height: 400px; }
+  .header-brand .brand-sub { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<header class="app-header">
+  <div class="header-brand">
+    <div class="brand-mark"></div>
+    <h1>数据核对编辑器</h1>
+    <span class="brand-sub">民航施工资料 · 人工核对</span>
+  </div>
+  <div class="header-actions">
+    <span class="project-badge" id="projectBadge">未加载</span>
+    <button class="btn" id="btnLoadFolder">加载数据底座</button>
+    <button class="btn" id="btnLoadManual">手动选择 JSON</button>
+  </div>
+</header>
+
+<!-- 诊断面板 -->
+<div class="diag-panel" id="diagPanel">
+  <div class="diag-header" onclick="toggleDiagPanel()">
+    <span class="diag-title">DIAGNOSTICS</span>
+    <span class="diag-summary" id="diagSummary">未运行 — 点击「加载数据底座」开始诊断</span>
+    <span class="diag-toggle">▼</span>
+  </div>
+  <div class="diag-body">
+    <div class="diag-log" id="diagLog"></div>
+  </div>
+</div>
+
+<!-- 主布局 -->
+<div class="main-layout">
+  <!-- 左侧文档树 -->
+  <aside class="tree-panel" id="treePanel">
+    <div class="tree-toolbar">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="text" class="tree-search" id="treeSearch" placeholder="搜索文档..." style="flex:1;">
+        <button class="tree-collapse-btn" id="btnCollapseTree" title="折叠/展开文档树">◀</button>
+      </div>
+      <div class="tree-filters">
+        <button class="filter-btn active" data-filter="all">全部</button>
+        <button class="filter-btn" data-filter="pending">待核对</button>
+        <button class="filter-btn" data-filter="verified">已核对</button>
+      </div>
+    </div>
+    <div class="tree-container" id="docTree">
+      <div class="empty-state">
+        <div class="empty-graphic"></div>
+        <h3>请先加载项目文件夹</h3>
+        <p>点击右上角「加载数据底座」，选择包含 <code>index.json</code> 的数据底座目录，或直接拖拽文件夹到此处。</p>
+      </div>
+    </div>
+    <div class="tree-footer">
+      <button class="btn btn-outline" id="btnConfirmAll" disabled>全部确认</button>
+    </div>
+  </aside>
+
+  <!-- 右侧内容（分屏：PDF原图 + 数据面板） -->
+  <main class="content-panel">
+    <!-- 左侧：PDF 原图面板 -->
+    <div class="pdf-panel" id="pdfPanel">
+      <div class="pdf-toolbar">
+        <span class="pdf-title">PDF 原图</span>
+        <button class="pdf-collapse-btn" id="btnCollapsePdf" title="折叠/展开 PDF 面板">◀ 折叠</button>
+      </div>
+      <div class="pdf-body" id="pdfBody">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后将显示 PDF 扫描原图。</p>
+        </div>
+      </div>
+      <div class="pdf-nav" id="pdfNav" style="display:none;">
+        <button id="prevPdfPage" disabled>上一页</button>
+        <span class="page-indicator"><span id="curPdfPage">1</span> / <span id="totalPdfPage">1</span></span>
+        <input type="number" id="jumpPdfPage" min="1" value="1" style="width:50px;" title="输入页码跳转">
+        <button id="nextPdfPage" disabled>下一页</button>
+      </div>
+    </div>
+
+    <!-- 分隔条 -->
+    <div class="splitter" id="splitter"></div>
+
+    <!-- 右侧：数据面板 -->
+    <div class="data-panel">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="table">表格数据<span class="tab-badge" id="badgeTable" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="textPreview">文本预览<span class="tab-badge" id="badgeText" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="problems">问题视图<span class="tab-badge" id="badgeProblems" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="props">文档属性<span class="tab-badge" id="badgeProps" style="display:none;"></span></button>
+        <button class="tab-btn" data-tab="tableStyle">表格式样</button>
+      </div>
+      <div class="tab-content active" id="tabTable">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>从左侧文档列表选择一份资料，即可查看并编辑表格数据。</p>
+        </div>
+      </div>
+      <div class="tab-content" id="tabTextPreview">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后将显示 OCR 文本预览，可编辑并同步到表格。</p>
+        </div>
+      </div>
+      <div class="tab-content" id="tabProblems">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后将显示质量告警与 OCR 存疑项。</p>
+        </div>
+      </div>
+      <div class="tab-content" id="tabProps">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后在此查看 / 修改专业分类（v7.2 C1 人工闸门）。</p>
+        </div>
+      </div>
+      <div class="tab-content" id="tabTableStyle">
+        <div class="empty-state">
+          <div class="empty-graphic"></div>
+          <h3>未加载文档</h3>
+          <p>选择文档后在此定义前缀区固定值与数字区每列格式样式。</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 底栏 -->
+<footer class="status-bar">
+  <div class="status-info" id="statusInfo">未加载数据</div>
+  <div class="status-progress" id="statusProgress" style="display:none;">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%;"></div></div>
+    <span class="progress-text"><span class="verified-count" id="verifiedCount">0</span>/<span id="totalCount">0</span></span>
+  </div>
+  <div class="status-actions">
+    <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> 确认</span>
+    <button class="btn btn-success" id="btnConfirmDoc" disabled>确认此文档数据无误</button>
+  </div>
+</footer>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- 拖拽遮罩 -->
+<div class="drag-overlay" id="dragOverlay">
+  <div class="drag-message">
+    <div class="drag-icon">+</div>
+    <p>松开以加载数据底座文件夹</p>
+  </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-header" id="modalTitle">确认</div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="modalCancel">取消</button>
+      <button class="btn btn-primary" id="modalConfirm">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 推荐值对话框 -->
+<div class="rec-modal" id="recModal">
+  <div class="rec-box">
+    <div class="rec-header" id="recTitle">推荐值</div>
+    <div class="rec-body" id="recBody"></div>
+    <div class="rec-footer">
+      <button class="btn btn-outline" id="recReject">拒绝</button>
+      <button class="btn btn-primary" id="recAccept">接受推荐值</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   数据核对编辑器 — 民航施工资料人工核对
+   纯 HTML+CSS+JS 单文件，无后端依赖
+   兼容旧版 rows 格式与新版 structured_rows/full_text/page_map 三层结构
+============================================================================ */
+
+// ========== 全局状态 ==========
+const state = {
+  index: null,
+  foundationDirHandle: null,
+  rootDirHandle: null,
+  currentDoc: null,
+  currentData: null,
+  originalRows: null,
+  modified: false,
+  corrections: [],
+  docCache: new Map(),
+  qualityCache: new Map(),
+  filterMode: 'all',
+  diagEntries: [],
+  // PDF 面板状态
+  previewPage: 1,
+  previewTotalPages: 1,
+  previewPageMap: [],
+  currentPdfUrl: null,
+  pdfDocCache: {},
+  pdfCache: {},
+  pdfTotalPages: 0,
+  // Tab 状态
+  activeTab: 'table',
+};
+
+// ========== 工具函数 ==========
+function $(id) { return document.getElementById(id); }
+
+function showToast(msg, type = 'info', dur = 2800) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = 'toast ' + type; }, dur);
+}
+
+function escapeHtml(text) {
+  if (text === null || text === undefined) return '';
+  const div = document.createElement('div');
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+
+// v9.5 中文字段映射（全局）：英文内部名 → 中文显示名（未知字段原样显示）
+const FIELD_LABELS = {
+  'pile_no': '桩号', 'design_length': '设计桩长', 'diameter': '桩径',
+  'sink_start': '沉管开始', 'sink_end': '沉管结束', 'pull_start': '拔管开始', 'pull_end': '拔管结束',
+  'top_elev': '桩顶高程', 'bottom_elev': '桩底高程', 'actual_length': '实长',
+  'current': '密实电流', 're_penetration': '反插次数', 'filling_coeff': '充盈系数',
+  'volume': '灌入量', 'verticality': '竖直度', 'thickness': '厚度', 'date': '日期',
+  'remark': '备注', 'start_time': '开始时间', 'end_time': '结束时间'
+};
+function fieldLabel(f) { return FIELD_LABELS[f] || f; }
+
+function nowIso() { return new Date().toISOString(); }
+
+function isNum(v) { return v !== null && v !== undefined && v !== '' && !isNaN(v); }
+
+/** 诊断日志 */
+function diagLog(msg, level = 'info') {
+  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const entry = { time, level, msg };
+  state.diagEntries.push(entry);
+  console.log(`[DIAG:${level}] ${msg}`);
+
+  const logEl = $('diagLog');
+  if (logEl) {
+    const div = document.createElement('div');
+    div.className = 'diag-log-entry stagger-in';
+    div.innerHTML = `<span class="diag-log-time">${time}</span>` +
+      `<span class="diag-log-level ${level}">${level.toUpperCase()}</span>` +
+      `<span class="diag-log-msg">${escapeHtml(msg)}</span>`;
+    logEl.appendChild(div);
+    logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
+  }
+  updateDiagSummary();
+}
+
+function updateDiagSummary() {
+  const errors = state.diagEntries.filter(e => e.level === 'error').length;
+  const warns = state.diagEntries.filter(e => e.level === 'warn').length;
+  const oks = state.diagEntries.filter(e => e.level === 'ok').length;
+  $('diagSummary').textContent = `${oks} ok · ${warns} warn · ${errors} error` +
+    (errors > 0 ? ' — 请展开查看详情' : '');
+}
+
+function toggleDiagPanel() {
+  $('diagPanel').classList.toggle('open');
+}
+window.toggleDiagPanel = toggleDiagPanel;
+
+// ========== 非文档判定 ==========
+const NON_DOC_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.txt', '.md', '.json'];
+const NON_DOC_FILE_TYPES = ['IMAGE', 'TXT'];
+
+function isNonDoc(doc) {
+  const fn = doc.original_file || '';
+  const ext = fn.substring(fn.lastIndexOf('.')).toLowerCase();
+  if (NON_DOC_FILE_TYPES.includes((doc.file_type || '').toUpperCase())) return true;
+  // .md 文件是旧版产物，v7.0 已取消
+  if (ext === '.md') return true;
+  // .png/.jpg/.txt 等中间产物
+  if (['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.txt'].includes(ext)) return true;
+  // data_file 不指向 .json
+  if (!doc.data_file || !doc.data_file.endsWith('.json')) return true;
+  return false;
+}
+
+// ========== 状态分级 ==========
+function getDocStatus(doc) {
+  if (isNonDoc(doc)) return 'nondoc';
+  if (doc.human_verified === true) return 'verified';
+  if (doc.ocr_status === 'needs_review' || doc.ocr_status === 'unsupported') return 'warning';
+  if (doc.ocr_status === 'completed') return 'pending';
+  if (doc.ocr_status === 'failed') return 'failed';
+  return 'pending';
+}
+
+function statusLabel(status) {
+  return {
+    verified: '已核对',
+    pending: '待核对',
+    warning: '需重扫',
+    nondoc: '非文档',
+    failed: '加载失败',
+  }[status] || '未知';
+}
+
+function statusTooltip(doc, status) {
+  switch (status) {
+    case 'verified': return 'OCR 完成 + 数据已加载 + 人工核对通过';
+    case 'pending': return 'OCR 完成，待人工核对';
+    case 'warning':
+      if (doc.ocr_status === 'needs_review') return `OCR 需复核：${(doc.retry_log || []).slice(-1)[0]?.reason || '识别行数不足'}`;
+      if (doc.ocr_status === 'unsupported') return '文件格式不支持 OCR';
+      return 'OCR 质量差，建议重新扫描';
+    case 'nondoc': return 'OCR 过程文件，无需核对';
+    case 'failed': return '数据文件无法加载';
+    default: return '';
+  }
+}
+
+// ========== File System Access API ==========
+
+async function pickProjectFolder() {
+  if (!window.showDirectoryPicker) {
+    diagLog('浏览器不支持 File System Access API，请使用 Chrome/Edge 86+', 'error');
+    showToast('当前浏览器不支持文件系统访问，请使用 Chrome/Edge 86+', 'error', 5000);
+    return;
+  }
+  try {
+    diagLog('开始选择项目文件夹...', 'info');
+    const rootHandle = await window.showDirectoryPicker();
+    state.rootDirHandle = rootHandle;
+    diagLog(`已选择目录: ${rootHandle.name}`, 'ok');
+
+    // 自动探测：是「数据底座根」还是「项目根」
+    let foundationDir = await rootHandle.getDirectoryHandle('数据底座').catch(() => null);
+    let indexFileHandle = null;
+
+    if (foundationDir) {
+      indexFileHandle = await foundationDir.getFileHandle('index.json').catch(() => null);
+      if (indexFileHandle) {
+        diagLog('检测到「数据底座/」子目录，index.json 位于其中', 'ok');
+      }
+    } else {
+      // 可能直接选了数据底座目录
+      indexFileHandle = await rootHandle.getFileHandle('index.json').catch(() => null);
+      if (indexFileHandle) {
+        foundationDir = rootHandle;
+        diagLog('当前目录即为数据底座根目录', 'ok');
+      }
+    }
+
+    if (!indexFileHandle) {
+      diagLog('未找到 index.json — 请选择包含「数据底座/index.json」的目录', 'error');
+      showToast('未找到 index.json，请选择正确的项目目录', 'error', 5000);
+      return;
+    }
+
+    await loadIndex(foundationDir, indexFileHandle);
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      diagLog('选择文件夹失败: ' + e.message, 'error');
+      showToast('选择文件夹失败：' + e.message, 'error', 5000);
+    }
+  }
+}
+
+async function loadIndex(foundationDir, indexFileHandle) {
+  diagLog('正在读取 index.json...', 'info');
+  const file = await indexFileHandle.getFile();
+  const text = await file.text();
+
+  try {
+    state.index = JSON.parse(text);
+    state.foundationDirHandle = foundationDir;
+    diagLog(`index.json 解析成功 — project_name: ${state.index.project_name}`, 'ok');
+  } catch (e) {
+    diagLog('index.json JSON 解析失败: ' + e.message, 'error');
+    showToast('index.json 解析失败', 'error');
+    return;
+  }
+
+  // 诊断文档列表
+  diagnoseDocuments();
+
+  $('projectBadge').textContent = state.index.project_name || foundationDir.name;
+  renderDocTree();
+  updateStatusInfo();
+  showToast('成功加载: ' + (state.index.project_name || '项目'), 'success');
+  // 记住上次加载的项目名
+  try { localStorage.setItem('last_loaded_project', state.index.project_name || ''); } catch(e) {}
+
+  // 自动加载第一个未核对的有效文档
+  autoLoadFirstUnverified();
+}
+
+/** 诊断文档列表 */
+function diagnoseDocuments() {
+  const docs = state.index.documents || [];
+  diagLog(`documents.length = ${docs.length}`, 'info');
+
+  let validCount = 0, nondocCount = 0;
+  const dataKeysSet = new Set();
+
+  docs.forEach(doc => {
+    const nondoc = isNonDoc(doc);
+    const status = getDocStatus(doc);
+    const ext = (doc.original_file || '').substring((doc.original_file || '').lastIndexOf('.'));
+
+    if (nondoc) {
+      nondocCount++;
+      diagLog(`  [非文档] ${doc.id}: ${doc.original_file} (file_type=${doc.file_type}, ext=${ext})`, 'warn');
+    } else {
+      validCount++;
+      diagLog(`  [有效] ${doc.id}: ${doc.original_file} | doc_type=${doc.doc_type} | ocr=${doc.ocr_status} | conf=${doc.ocr_confidence} | verified=${doc.human_verified} | data_file=${doc.data_file}`, 'info');
+    }
+  });
+
+  diagLog(`文档分类完成: ${validCount} 有效文档, ${nondocCount} 非文档/调试产物`, nondocCount > 0 ? 'warn' : 'ok');
+
+  // 抽样检查数据文件结构
+  const sampleDoc = docs.find(d => !isNonDoc(d));
+  if (sampleDoc) {
+    diagLog(`抽样检查数据结构: ${sampleDoc.data_file}`, 'info');
+    readJson(sampleDoc.data_file).then(data => {
+      const keys = Object.keys(data);
+      diagLog(`  顶层 keys: ${keys.join(', ')}`, 'info');
+      if (data.structured_rows) {
+        diagLog(`  structured_rows 存在, 长度=${data.structured_rows.length}`, 'ok');
+        dataKeysSet.add('structured_rows');
+      }
+      if (data.rows) {
+        diagLog(`  rows 存在, 长度=${data.rows.length}`, data.rows.length > 0 ? 'ok' : 'warn');
+        if (data.rows.length > 0) {
+          diagLog(`  rows[0] keys: ${Object.keys(data.rows[0]).join(', ')}`, 'info');
+        }
+        dataKeysSet.add('rows');
+      }
+      if (data.full_text) {
+        diagLog(`  full_text 存在, 长度=${data.full_text.length} 字符`, 'ok');
+        dataKeysSet.add('full_text');
+      }
+      if (data.page_map) {
+        diagLog(`  page_map 存在, 长度=${data.page_map.length}`, 'ok');
+        dataKeysSet.add('page_map');
+      }
+      if (!data.structured_rows && !data.rows) {
+        diagLog('  警告: 数据文件既无 structured_rows 也无 rows', 'error');
+      }
+    }).catch(e => {
+      diagLog(`  数据文件加载失败: ${e.message}`, 'error');
+    });
+  }
+
+  // 兼容性报告
+  diagLog('兼容性: 同时支持 structured_rows(新版) 和 rows(旧版)，优先使用 structured_rows', 'info');
+  diagLog('兼容性: page_map 缺失时从 rows 按 page 字段重建分页', 'info');
+  diagLog('兼容性: full_text 缺失时从 rows 的 raw_text 拼接', 'info');
+}
+
+/** 通过目录句柄读取 JSON */
+async function readJsonViaHandle(relativePath) {
+  if (!state.foundationDirHandle) throw new Error('未设置数据底座目录句柄');
+  const parts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+  let cur = state.foundationDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur = await cur.getDirectoryHandle(parts[i]);
+  }
+  const fh = await cur.getFileHandle(parts[parts.length - 1]);
+  const file = await fh.getFile();
+  return JSON.parse(await file.text());
+}
+
+/** 通过目录句柄写入 JSON */
+async function writeJsonViaHandle(relativePath, jsonContent) {
+  if (!state.foundationDirHandle) throw new Error('未设置数据底座目录句柄');
+  const parts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+  let cur = state.foundationDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur = await cur.getDirectoryHandle(parts[i], { create: true });
+  }
+  const fh = await cur.getFileHandle(parts[parts.length - 1], { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(JSON.stringify(jsonContent, null, 2));
+  await writable.close();
+}
+
+/** 获取数据文件所在目录句柄 */
+async function getDataDirHandle() {
+  if (!state.currentDoc || !state.foundationDirHandle) return null;
+  const parts = (state.currentDoc.data_file || '').replace(/\\/g, '/').split('/').filter(Boolean);
+  let cur = state.foundationDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur = await cur.getDirectoryHandle(parts[i]);
+  }
+  return cur;
+}
+
+/** 读取图片为 ObjectURL */
+async function readImageObjectUrl(imageRef) {
+  try {
+    const dataDir = await getDataDirHandle();
+    if (!dataDir) return null;
+    const parts = imageRef.replace(/\\/g, '/').split('/').filter(Boolean);
+    let handle = dataDir;
+    for (let i = 0; i < parts.length - 1; i++) {
+      handle = await handle.getDirectoryHandle(parts[i]);
+    }
+    const fh = await handle.getFileHandle(parts[parts.length - 1]);
+    const file = await fh.getFile();
+    return URL.createObjectURL(file);
+  } catch (e) {
+    console.warn('读取图片失败: ' + imageRef, e);
+    return null;
+  }
+}
+
+// ========== 拖拽加载 ==========
+const dragOverlay = $('dragOverlay');
+
+window.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer.types.includes('Files')) {
+    dragOverlay.classList.add('active');
+  }
+});
+window.addEventListener('dragleave', (e) => {
+  if (e.relatedTarget === null) dragOverlay.classList.remove('active');
+});
+window.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dragOverlay.classList.remove('active');
+  if (!e.dataTransfer.items) return;
+
+  diagLog('检测到拖拽文件，尝试读取目录...', 'info');
+  const items = [...e.dataTransfer.items];
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      if (entry && entry.isDirectory) {
+        diagLog(`拖拽目录: ${entry.name}`, 'ok');
+        await loadFromDragEntry(entry);
+        return;
+      }
+    }
+  }
+  showToast('请拖拽文件夹，而非单个文件', 'warning');
+});
+
+function loadFromDragEntry(entry) {
+  return new Promise((resolve) => {
+    // 拖拽模式下无法获取 dirHandle，降级为文件遍历读取
+    const allFiles = {};
+    let rootName = entry.name;
+
+    function readDir(dirEntry, pathPrefix) {
+      return new Promise((resolveDir) => {
+        const reader = dirEntry.createReader();
+        const entries = [];
+        function readEntries() {
+          reader.readEntries(async (results) => {
+            if (results.length === 0) {
+              for (const e of entries) {
+                if (e.isDirectory) {
+                  await readDir(e, pathPrefix + e.name + '/');
+                } else {
+                  await new Promise(res => {
+                    e.file(file => {
+                      allFiles[pathPrefix + e.name] = file;
+                      res();
+                    });
+                  });
+                }
+              }
+              resolveDir();
+            } else {
+              entries.push(...results);
+              readEntries();
+            }
+          });
+        }
+        readEntries();
+      });
+    }
+
+    readDir(entry, '').then(() => {
+      diagLog(`拖拽目录遍历完成: ${Object.keys(allFiles).length} 个文件`, 'ok');
+
+      // 查找 index.json
+      const indexPath = Object.keys(allFiles).find(p => p.endsWith('index.json') && (p.includes('数据底座/') || p === 'index.json'));
+      if (!indexPath) {
+        diagLog('拖拽目录中未找到 index.json', 'error');
+        showToast('未找到 index.json，请拖拽数据底座文件夹', 'error');
+        resolve();
+        return;
+      }
+
+      const file = allFiles[indexPath];
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          state.index = JSON.parse(ev.target.result);
+          // 模拟 dirHandle 行为：用文件映射替代
+          state.dragFileMap = allFiles;
+          state.foundationDirHandle = null; // 标记为拖拽模式
+          state.dragBasePath = indexPath.replace('/index.json', '').replace('index.json', '');
+
+          diagLog(`index.json 解析成功 — ${state.index.project_name}`, 'ok');
+          diagnoseDocuments();
+
+          $('projectBadge').textContent = state.index.project_name || rootName;
+          renderDocTree();
+          updateStatusInfo();
+          showToast('成功加载: ' + (state.index.project_name || rootName), 'success');
+          autoLoadFirstUnverified();
+        } catch (e) {
+          diagLog('index.json 解析失败: ' + e.message, 'error');
+          showToast('index.json 解析失败', 'error');
+        }
+        resolve();
+      };
+      reader.readAsText(file);
+    });
+  });
+}
+
+/** 拖拽模式下读取 JSON */
+async function readJsonDrag(relativePath) {
+  const fullPath = state.dragBasePath ? state.dragBasePath + '/' + relativePath.replace(/\\/g, '/') : relativePath.replace(/\\/g, '/');
+  // 尝试精确匹配和模糊匹配
+  let file = state.dragFileMap[fullPath] || state.dragFileMap[relativePath];
+  if (!file) {
+    // 尝试仅文件名匹配
+    const name = relativePath.split('/').pop();
+    const key = Object.keys(state.dragFileMap).find(k => k.endsWith('/' + name) || k === name);
+    if (key) file = state.dragFileMap[key];
+  }
+  if (!file) throw new Error('文件未找到: ' + relativePath);
+  const text = await file.text();
+  return JSON.parse(text);
+}
+
+/** 统一 JSON 读取接口 */
+async function readJson(path) {
+  if (state.foundationDirHandle) return readJsonViaHandle(path);
+  if (state.dragFileMap) return readJsonDrag(path);
+  if (state.httpBase) return readJsonHttp(path);
+  throw new Error('未加载数据源');
+}
+
+/** 统一 JSON 写入接口 */
+async function writeJson(path, data) {
+  if (state.foundationDirHandle) return writeJsonViaHandle(path, data);
+  if (state.httpBase) throw new Error('HTTP 模式为只读，请用「选择项目文件夹」加载以启用保存');
+  throw new Error('拖拽模式不支持写入，请使用「选择项目文件夹」方式加载');
+}
+
+// ========== HTTP 模式（仅 http/https 协议下启用，用于本地测试/演示） ==========
+
+async function readJsonHttp(relativePath) {
+  // state.httpBase 必须是相对于站点根的绝对路径（以 / 开头）
+  const cleanPath = relativePath.replace(/\\/g, '/').replace(/^\//, '');
+  const url = state.httpBase.replace(/\/$/, '') + '/' + cleanPath;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${url}`);
+  return resp.json();
+}
+
+async function loadFromHttp(projectPath) {
+  // projectPath 形如 "测试3/数据底座" — 解析为相对于站点根的绝对路径
+  let base = projectPath.replace(/\\/g, '/').replace(/\/$/, '').replace(/^\//, '');
+  // 基于当前页面 URL 推算站点根，再拼接 projectPath
+  // 例如当前页 http://localhost:8765/templates/data-editor.html → 站点根 http://localhost:8765/
+  const pageUrl = location.pathname.substring(0, location.pathname.lastIndexOf('/'));
+  const siteRoot = pageUrl.substring(0, pageUrl.lastIndexOf('/')); // 去掉 /templates
+  state.httpBase = siteRoot + '/' + base;
+  diagLog(`HTTP 模式: 尝试加载 ${state.httpBase}/index.json`, 'info');
+  try {
+    state.index = await readJsonHttp('index.json');
+    state.foundationDirHandle = null;
+    state.dragFileMap = null;
+    diagLog(`index.json 解析成功 — ${state.index.project_name}`, 'ok');
+    diagnoseDocuments();
+    $('projectBadge').textContent = state.index.project_name + ' (HTTP)';
+    renderDocTree();
+    updateStatusInfo();
+    showToast('已加载 (HTTP 只读模式)', 'success');
+    autoLoadFirstUnverified();
+  } catch (e) {
+    state.httpBase = null;
+    diagLog('HTTP 加载失败: ' + e.message, 'error');
+    showToast('HTTP 加载失败: ' + e.message, 'error', 5000);
+  }
+}
+
+// 启动时自动检测 URL 参数 ?project=...
+if (location.protocol === 'http:' || location.protocol === 'https:') {
+  const params = new URLSearchParams(location.search);
+  const proj = params.get('project');
+  if (proj) {
+    diagLog(`检测到 URL 参数 ?project=${proj}, 自动加载`, 'info');
+    setTimeout(() => loadFromHttp(proj), 200);
+  }
+}
+
+// ========== 手动选择 JSON（兜底） ==========
+
+$('btnLoadManual').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.multiple = false;
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    diagLog(`手动选择 JSON: ${file.name}`, 'info');
+    try {
+      const text = await file.text();
+      state.index = JSON.parse(text);
+      state.foundationDirHandle = null;
+      state.dragFileMap = null;
+      diagLog(`index.json 解析成功 — ${state.index.project_name}`, 'ok');
+      diagnoseDocuments();
+      $('projectBadge').textContent = state.index.project_name + ' (只读)';
+      renderDocTree();
+      updateStatusInfo();
+      showToast('已加载（只读模式，无法保存修改）', 'warning', 4000);
+    } catch (err) {
+      diagLog('JSON 解析失败: ' + err.message, 'error');
+      showToast('JSON 解析失败', 'error');
+    }
+  };
+  input.click();
+});
+
+// ========== 文档树渲染 ==========
+
+function renderDocTree() {
+  const treeEl = $('docTree');
+  if (!state.index || !state.index.documents || state.index.documents.length === 0) {
+    treeEl.innerHTML = `<div class="empty-state">
+      <div class="empty-graphic"></div>
+      <h3>无文档</h3>
+      <p>index.json 中未找到文档记录。</p>
+    </div>`;
+    return;
+  }
+
+  const docs = state.index.documents;
+  const searchTerm = ($('treeSearch').value || '').trim().toLowerCase();
+  const filter = state.filterMode;
+
+  // 分离有效文档与非文档
+  const validDocs = docs.filter(d => !isNonDoc(d));
+  const nondocDocs = docs.filter(d => isNonDoc(d));
+
+  // 应用过滤
+  const filteredDocs = validDocs.filter(d => {
+    if (filter === 'pending' && d.human_verified === true) return false;
+    if (filter === 'verified' && d.human_verified !== true) return false;
+    return matchesSearch(d, searchTerm);
+  });
+
+  // 分组
+  const groups = {};
+  filteredDocs.forEach(doc => {
+    const prof = doc.professional || '未分类';
+    const sub = doc.subcategory || '其他';
+    if (!groups[prof]) groups[prof] = {};
+    if (!groups[prof][sub]) groups[prof][sub] = [];
+    groups[prof][sub].push(doc);
+  });
+
+  let html = '';
+  let staggerIdx = 0;
+
+  Object.keys(groups).sort().forEach(prof => {
+    const subGroups = groups[prof];
+    let total = 0, matched = 0;
+    Object.values(subGroups).forEach(arr => {
+      total += arr.length;
+      matched += arr.length;
+    });
+
+    html += `<div class="tree-group">
+      <div class="tree-group-header" onclick="toggleTreeGroup(this)">
+        <span class="arrow">&#9660;</span>
+        <span>${escapeHtml(prof)}</span>
+        <span class="group-count">${matched}</span>
+      </div>
+      <div class="tree-children">`;
+
+    Object.keys(subGroups).sort().forEach(sub => {
+      const subDocs = subGroups[sub];
+      if (subDocs.length === 0) return;
+      html += `<div class="tree-sub-group">
+        <div class="tree-sub-group-header" onclick="toggleSubGroup(this)">
+          <span class="arrow">&#9660;</span>
+          <span>${escapeHtml(sub)}</span>
+          <span class="sub-count">${subDocs.length}</span>
+        </div>
+        <div class="tree-children">`;
+
+      subDocs.forEach(doc => {
+        const status = getDocStatus(doc);
+        const tip = statusTooltip(doc, status);
+        const active = (state.currentDoc && state.currentDoc.id === doc.id) ? ' active' : '';
+        const name = doc.original_file || doc.doc_type || doc.id;
+        // v7.2 C1: AI 分类待人工确认标黄徽标（仅审核类文档；依据文件无需确认）
+        const pendingClass = (doc.human_confirmed !== true && doc.doc_role !== 'reference')
+          ? '<span class="badge badge-pending-class" title="AI 自动分类，请人工确认">AI分类</span>'
+          : '';
+        const delay = Math.min(staggerIdx++ * 20, 300);
+        html += `<div class="tree-doc${active} stagger-in" style="animation-delay:${delay}ms;"
+          onclick="selectDocument('${doc.id}')" title="${escapeHtml(tip)}">
+          <span class="doc-status"><span class="status-icon ${status}" title="${escapeHtml(tip)}"></span></span>
+          <span class="doc-name">${escapeHtml(name)}</span>${pendingClass}
+        </div>`;
+      });
+      html += `</div></div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  // 非文档区
+  if (nondocDocs.length > 0) {
+    html += `<div class="tree-nondoc-section">
+      <div class="tree-nondoc-header" onclick="toggleNondocSection(this)">
+        <span class="arrow">&#9660;</span>
+        <span>原始文件 / 调试产物 (${nondocDocs.length})</span>
+      </div>
+      <div class="tree-children">
+        <div class="tree-nondoc-note">OCR 过程文件，无需核对</div>`;
+    nondocDocs.forEach(doc => {
+      html += `<div class="tree-nondoc-item">
+        <span class="nondoc-dot"></span>
+        <span class="nondoc-name" title="${escapeHtml(doc.original_file || doc.id)}">${escapeHtml(doc.original_file || doc.id)}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  treeEl.innerHTML = html;
+}
+
+function matchesSearch(doc, term) {
+  if (!term) return true;
+  const name = (doc.original_file || doc.doc_type || doc.id || '').toLowerCase();
+  return name.includes(term) || (doc.doc_type || '').toLowerCase().includes(term) || (doc.professional || '').toLowerCase().includes(term);
+}
+
+window.toggleTreeGroup = function(header) {
+  header.classList.toggle('collapsed');
+  header.nextElementSibling?.classList.toggle('collapsed');
+};
+window.toggleSubGroup = function(header) {
+  header.classList.toggle('collapsed');
+  header.nextElementSibling?.classList.toggle('collapsed');
+};
+window.toggleNondocSection = function(header) {
+  header.classList.toggle('collapsed');
+  header.nextElementSibling?.classList.toggle('collapsed');
+};
+
+// ========== 选择文档 ==========
+
+window.selectDocument = async function(docId) {
+  if (!state.index) return;
+  const doc = state.index.documents.find(d => d.id === docId);
+  if (!doc) { showToast('未找到文档: ' + docId, 'error'); return; }
+
+  // 非文档处理
+  if (isNonDoc(doc)) {
+    state.currentDoc = doc;
+    state.currentData = null;
+    state.originalRows = null;
+    state.modified = false;
+    renderNondocNotice();
+    updateStatusInfo();
+    updateConfirmGate();
+    // 更新树高亮
+    document.querySelectorAll('.tree-doc').forEach(el => el.classList.remove('active'));
+    return;
+  }
+
+  // 提示未保存修改
+  if (state.modified && state.currentDoc) {
+    if (!confirm(`当前文档「${state.currentDoc.original_file}」有未保存的修改，切换后将丢失。是否继续？`)) return;
+    // 用户确认丢弃修改，清除旧文档缓存中的脏数据
+    if (state.currentDoc.id) state.docCache.delete(state.currentDoc.id);
+  }
+
+  state.currentDoc = doc;
+  state.modified = false;
+  state.originalRows = null;
+  state.corrections = [];
+
+  // 更新树高亮
+  document.querySelectorAll('.tree-doc').forEach(el => el.classList.remove('active'));
+
+  try {
+    // 尝试从缓存读取
+    if (state.docCache.has(docId)) {
+      state.currentData = state.docCache.get(docId);
+      diagLog(`从缓存加载: ${doc.original_file}`, 'info');
+    } else {
+      diagLog(`正在读取数据文件: ${doc.data_file}`, 'info');
+      state.currentData = await readJson(doc.data_file);
+      state.docCache.set(docId, state.currentData);
+      diagLog(`数据文件加载成功 — keys: ${Object.keys(state.currentData).join(', ')}`, 'ok');
+    }
+
+    // 深拷贝原始行数据用于修改对比
+    const rows = getRows(state.currentData);
+    if (rows) {
+      state.originalRows = JSON.parse(JSON.stringify(rows));
+    }
+
+    // P5: 重置预览页码（在 renderTableTab 之前，确保表格过滤正确）
+    state.previewPage = 1;
+
+    renderTableTab();
+    renderPdfPanel();
+    renderTextPreviewTab();
+    renderProblemsTab();
+    renderPropsTab();
+    renderTableStyleTab();
+    updateStatusInfo();
+    updateConfirmGate();
+
+    // 标记选中
+    document.querySelectorAll('.tree-doc').forEach(el => {
+      if (el.getAttribute('onclick') === `selectDocument('${docId}')`) {
+        el.classList.add('active');
+      }
+    });
+
+    showToast(`已加载: ${doc.original_file || doc.id}`, 'success', 1800);
+  } catch (e) {
+    diagLog(`加载文档失败: ${e.message}`, 'error');
+    state.currentData = null;
+    renderLoadFailure(e.message);
+    updateStatusInfo();
+    updateConfirmGate();
+  }
+};
+
+function autoLoadFirstUnverified() {
+  if (!state.index || !state.index.documents) return;
+  const first = state.index.documents.find(d => !isNonDoc(d) && d.human_verified !== true);
+  if (first) {
+    selectDocument(first.id);
+  } else {
+    const any = state.index.documents.find(d => !isNonDoc(d));
+    if (any) selectDocument(any.id);
+  }
+}
+
+// ========== 数据访问层（兼容旧版/新版） ==========
+
+/** 获取行数据（优先 structured_rows，兼容 rows） */
+function getRows(data) {
+  if (!data) return null;
+  return data.structured_rows || data.rows || null;
+}
+
+/** v8.10: 读取一行的六类校验 issues（兼容字符串数组 / {message} 对象数组 / 缺失） */
+function getRowIssues(row) {
+  if (!row || !Array.isArray(row.issues)) return [];
+  return row.issues.map(it => (it && typeof it === 'object' && it.message) ? it.message : String(it));
+}
+
+/** v8.10: 渲染行内原因标签（error 红 / suspicious 橙） */
+function renderIssueFlags(issues) {
+  if (!issues || issues.length === 0) return '';
+  const top = issues.slice(0, 3).map(m => {
+    const isError = /类型|格式|越界|缺失|断裂|错位/.test(m) || /error/i.test(m);
+    return `<span class="issue-flag ${isError ? '' : 'warn'}" title="${escapeHtml(m)}">${isError ? '错误' : '存疑'}</span>`;
+  }).join('');
+  const more = issues.length > 3 ? `<span class="issue-flag warn" title="${issues.slice(3).map(escapeHtml).join('\\n')}">+${issues.length - 3}</span>` : '';
+  return `<span class="issue-flags">${top}${more}</span>`;
+}
+
+/** 判断是否为文本行格式（旧版 rows = [{page, line_no, raw_text}]） */
+function isTextRows(rows) {
+  if (!rows || rows.length === 0) return false;
+  const first = rows[0];
+  return 'raw_text' in first && 'line_no' in first;
+}
+
+/** 获取 full_text（优先字段，兼容从 rows 重建） */
+function getFullText(data) {
+  if (data.full_text) return data.full_text;
+  const rows = getRows(data);
+  if (!rows) return '';
+  if (isTextRows(rows)) {
+    return rows.map(r => r.raw_text || '').join('\n');
+  }
+  return rows.map(r => JSON.stringify(r)).join('\n');
+}
+
+/** 获取 page_map（优先字段，兼容从 rows 重建） */
+function getPageMap(data) {
+  if (data.page_map && data.page_map.length > 0) return data.page_map;
+  const rows = getRows(data);
+  if (!rows || !isTextRows(rows)) return [];
+
+  // 从 rows 按 page 分组重建
+  const pageMap = {};
+  rows.forEach(r => {
+    const pg = r.page || 1;
+    if (!pageMap[pg]) pageMap[pg] = { page: pg, text: '', image_ref: null };
+    pageMap[pg].text += (r.raw_text || '') + '\n';
+  });
+  return Object.values(pageMap).sort((a, b) => a.page - b.page);
+}
+
+/** 获取检测字段（用于表格列头） */
+function detectFields(rows) {
+  if (!rows || rows.length === 0) return [];
+  const first = rows[0];
+  return Object.keys(first).filter(k => k !== 'row_index');
+}
+
+// ========== Tab 1: 表格数据 ==========
+
+function renderTableTab() {
+  const tab = $('tabTable');
+  const doc = state.currentDoc;
+  const data = state.currentData;
+
+  if (!doc || !data) {
+    tab.innerHTML = emptyStateHtml('未加载文档', '从左侧文档列表选择一份资料。');
+    return;
+  }
+
+  const rows = getRows(data);
+  const confBadge = confidenceBadge(doc.ocr_confidence, doc.extraction_mode);
+  const alertCount = doc.quality_alerts || 0;
+  const alertBadge = alertCount > 0 ? `<span class="badge badge-warning" title="质量告警数">${alertCount} 告警</span>` : '';
+  const verifiedBadge = doc.human_verified ? '<span class="badge badge-verified">已核对</span>' : '<span class="badge badge-pending">待核对</span>';
+
+  // 保存按钮
+  const canSave = state.foundationDirHandle !== null;
+  const saveBtn = canSave
+    ? `<button class="btn btn-primary" id="btnSaveTable" style="margin-left:auto;">保存修改</button>`
+    : `<span style="margin-left:auto;font-size:11px;color:var(--text-muted);">只读模式 — 无法保存</span>`;
+
+  if (!rows || rows.length === 0) {
+    tab.innerHTML = `<div class="table-toolbar">${verifiedBadge}${confBadge}${alertBadge}
+      <span class="table-meta">0 行</span>${saveBtn}</div>
+      <div class="empty-state">
+        <div class="empty-graphic"></div>
+        <h3>无表格数据</h3>
+        <p>该文档未提取到结构化表格数据。${doc.ocr_status === 'needs_review' ? 'OCR 识别行数为 0，需重新扫描或手动录入。' : ''}</p>
+      </div>`;
+    return;
+  }
+
+  // 判断数据格式
+  if (isTextRows(rows)) {
+    // 旧版文本行格式
+    renderTextRowsTable(tab, rows, doc, confBadge, alertBadge, verifiedBadge, saveBtn);
+  } else {
+    // 新版结构化表格
+    renderStructuredTable(tab, rows, data, doc, confBadge, alertBadge, verifiedBadge, saveBtn);
+  }
+}
+
+/** 渲染旧版文本行格式 */
+function renderTextRowsTable(tab, rows, doc, confBadge, alertBadge, verifiedBadge, saveBtn) {
+  const fields = ['page', 'line_no', 'raw_text'];
+  // v9.5 数据契约：文本行格式 = 未做字段解析，提示待核对
+  const unparsedBadge = '<span class="badge badge-pending" title="纯文本兜底行，未完成字段解析，规则引擎会跳过这些行">待核对</span>';
+  let html = `<div class="table-toolbar">${verifiedBadge}${confBadge}${alertBadge}${unparsedBadge}
+    <span class="table-meta">${rows.length} 行 · 文本行格式</span>${saveBtn}</div>`;
+
+  html += `<div class="table-wrap"><table class="data-table text-rows-table"><thead><tr>`;
+  html += `<th class="row-no">#</th>`;
+  html += `<th>页码</th><th>行号</th><th>文本内容</th>`;
+  html += `</tr></thead><tbody>`;
+
+  rows.forEach((row, idx) => {
+    html += `<tr><td class="row-no">${idx + 1}</td>`;
+    html += `<td class="num-cell">${row.page ?? ''}</td>`;
+    html += `<td class="num-cell">${row.line_no ?? ''}</td>`;
+    // v9.2: 文本行表格的 raw_text 使用可编辑单元格，复用结构化编辑链路（bindCellEditEvents）
+    html += `<td class="raw-text-col editable" contenteditable="true" spellcheck="false"
+      data-row="${idx}" data-field="raw_text">${escapeHtml(row.raw_text || '')}</td>`;
+    html += `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+  tab.innerHTML = html;
+
+  bindCellEditEvents();
+  bindRecommendedValueDialog();
+  const saveBtnEl = $('btnSaveTable');
+  if (saveBtnEl) saveBtnEl.addEventListener('click', saveTableChanges);
+}
+
+/** 渲染新版结构化表格 */
+function renderStructuredTable(tab, rows, data, doc, confBadge, alertBadge, verifiedBadge, saveBtn) {
+  // v9.5 数据契约：优先用声明的 columns，未声明时回退到检测字段
+  const fields = (data.columns && data.columns.length) ? data.columns : (data.fields_detected || detectFields(rows));
+  // 排除内部字段到行首
+  const internalFields = ['row_index', 'page', 'parsed', 'unparsed_fields', 'inferred'];
+  // v8.10: issues 为六类校验结果，不渲染为列（作为行标红 + 行内标签呈现）
+  const visibleFields = fields.filter(f => !internalFields.includes(f) && f !== 'issues');
+  const leadingFields = fields.filter(f => internalFields.includes(f));
+
+  // v9.5 领域契约徽标：unknown_domain → 待确认
+  const schemaStatus = data.schema_status || '';
+  const schemaBadge = schemaStatus === 'unknown_domain'
+    ? '<span class="badge badge-pending" title="表格列语义未确认，仅执行通用检查，请人工确认后沉淀 schema">待确认 schema</span>'
+    : (schemaStatus === 'known_domain' ? '<span class="badge badge-verified" title="表格 schema 已确认">schema 已知</span>' : '');
+
+  // P5: 多页文档自动联动过滤
+  const pageSet = new Set();
+  rows.forEach(r => { const p = getCellValue(r, 'page'); if (p !== '' && p !== null && p !== undefined) pageSet.add(String(p)); });
+  const isMultiPage = pageSet.size > 1;
+  const pageIndicator = isMultiPage
+    ? `<span class="badge badge-pending" id="tablePageIndicator" style="font-size:10px;">第 ${state.previewPage || 1} 页</span>`
+    : '';
+
+  // 一键采纳推荐值：仅在有 inferred 且可写时启用
+  const canWriteRec = state.foundationDirHandle !== null;
+  const hasInferred = rows.some(r => r && r.inferred && typeof r.inferred === 'object' && Object.keys(r.inferred).length > 0);
+  const adoptBtn = canWriteRec
+    ? `<button class="btn btn-primary" id="btnAdoptRec" ${hasInferred ? '' : 'disabled'} title="把置信度≥50%的推荐值批量填入空单元格，低置信项列出待人工核对">一键采纳推荐值</button>`
+    : '';
+  const toolbarRight = `<span style="margin-left:auto;display:inline-flex;gap:8px;align-items:center;">${adoptBtn}${saveBtn}</span>`;
+  let html = `<div class="table-toolbar">${verifiedBadge}${confBadge}${alertBadge}${schemaBadge}
+    <span class="table-meta">${rows.length} 行 · ${visibleFields.length + leadingFields.length} 列</span>${pageIndicator}${toolbarRight}</div>`;
+
+  html += `<div class="table-wrap"><table class="data-table"><thead><tr>`;
+  html += `<th class="row-no">#</th>`;
+  leadingFields.forEach(f => { html += `<th>${escapeHtml(fieldLabel(f))}</th>`; });
+  visibleFields.forEach(f => { html += `<th>${escapeHtml(fieldLabel(f))}</th>`; });
+  html += `</tr></thead><tbody>`;
+
+  rows.forEach((row, idx) => {
+    const pageVal = getCellValue(row, 'page') || '';
+    // v8.10: 读取六类校验 issues（行级），驱动行标红 + 行内原因标签
+    const rowIssues = getRowIssues(row);
+    const issueCls = rowIssues.length > 0 ? ' row-has-issues' : '';
+    const issueFlags = renderIssueFlags(rowIssues);
+    // v9.5 数据契约：未解析行（parsed=false）→ 待核对徽标
+    const unparsedFlag = (row && row.parsed === false)
+      ? '<span class="badge badge-pending" title="该行未完成字段解析（raw_text 兜底），请人工核对列语义">待核对</span>'
+      : '';
+    html += `<tr class="${issueCls}" data-page="${pageVal}" data-row-idx="${idx}"><td class="row-no">${idx + 1}${issueFlags}${unparsedFlag}</td>`;
+    leadingFields.forEach(f => {
+      const v = getCellValue(row, f);
+      html += `<td class="num-cell">${escapeHtml(formatValue(v))}</td>`;
+    });
+    visibleFields.forEach(f => {
+      const v = getCellValue(row, f);
+      const isNumericVal = typeof v === 'number' || (typeof v === 'string' && isNum(v));
+      const modCls = isCellModified(idx, f) ? ' modified' : '';
+      const numCls = isNumericVal ? ' num-cell' : '';
+      // 处理 {value, confidence} 对象
+      if (v !== null && typeof v === 'object' && 'value' in v) {
+        const conf = v.confidence;
+        let confCls = '';
+        if (conf !== undefined && conf !== null) {
+          if (conf < 0.6) confCls = ' low-conf';
+          else if (conf < 0.85) confCls = ' mid-conf';
+        }
+        html += `<td class="editable${modCls}${confCls}" contenteditable="true" spellcheck="false"
+          data-row="${idx}" data-field="${escapeHtml(f)}">${escapeHtml(formatValue(v.value))}</td>`;
+      } else {
+        html += `<td class="editable${modCls}${numCls}" contenteditable="true" spellcheck="false"
+          data-row="${idx}" data-field="${escapeHtml(f)}">${escapeHtml(formatValue(v))}</td>`;
+      }
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+  tab.innerHTML = html;
+
+  bindCellEditEvents();
+  const saveBtnEl = $('btnSaveTable');
+  if (saveBtnEl) saveBtnEl.addEventListener('click', saveTableChanges);
+  const adoptBtnEl = $('btnAdoptRec');
+  if (adoptBtnEl) adoptBtnEl.addEventListener('click', adoptAllRecommendedValues);
+
+  // P5: 多页文档自动按预览页码过滤
+  if (isMultiPage && state.previewPage) {
+    filterTableByPage(state.previewPage);
+  }
+}
+
+/** P5: 按页码过滤表格行 — 翻页自动联动 */
+function filterTableByPage(page) {
+  const trs = document.querySelectorAll('#tabTable tbody tr[data-page]');
+  if (!trs.length) return;
+
+  let visibleCount = 0;
+  if (page === null || page === undefined) {
+    trs.forEach(tr => { tr.style.display = ''; visibleCount++; });
+  } else {
+    const pageStr = String(page);
+    trs.forEach(tr => {
+      const show = tr.dataset.page === pageStr;
+      tr.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
+    });
+  }
+
+  // 更新页码指示器
+  const indicator = $('tablePageIndicator');
+  if (indicator) {
+    indicator.textContent = page ? `第 ${page} 页 (${visibleCount} 行)` : `全部 (${trs.length} 行)`;
+  }
+}
+
+function confidenceBadge(conf, extractionMode) {
+  // v7.2 C3: 电子表/非扫描PDF 显示"无需OCR"确定态，不谎报 OCR%
+  const mode = extractionMode || (state.currentDoc ? state.currentDoc.extraction_mode : '');
+  if (mode === 'meta_xlsx') return '<span class="badge badge-verified" title="电子表·已记元数据·无需OCR">电子表 · 无需OCR</span>';
+  if (mode === 'text_pdf') return '<span class="badge badge-verified" title="电子档·已抽文本·无需OCR">电子档 · 无需OCR</span>';
+  if (mode === 'docx') return '<span class="badge badge-verified" title="Word文档·已抽文本·无需OCR">Word · 无需OCR</span>';
+  if (mode === 'reference_skip') return '<span class="badge badge-verified" title="依据文件· skipped OCR">依据文件 · 无需OCR</span>';
+  if (conf === null || conf === undefined || conf === 0) return '<span class="badge badge-pending" title="未提取到OCR数据">未提取</span>';
+  const pct = Math.round(conf * 100);
+  let cls = 'badge-failed', label = '低';
+  if (conf >= 0.9) { cls = 'badge-verified'; label = '高'; }
+  else if (conf >= 0.7) { cls = 'badge-pending'; label = '中'; }
+  return `<span class="badge ${cls}" title="OCR 置信度 ${pct}%">OCR ${pct}% · ${label}</span>`;
+}
+
+function formatValue(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+function getCellValue(row, key) {
+  if (Array.isArray(row)) {
+    const idx = typeof key === 'number' ? key : parseInt(String(key).replace(/[^\d]/g, ''), 10);
+    return isNaN(idx) ? '' : (row[idx] ?? '');
+  }
+  return row[key] ?? '';
+}
+
+function setCellValue(row, key, value) {
+  if (Array.isArray(row)) {
+    const idx = typeof key === 'number' ? key : parseInt(String(key).replace(/[^\d]/g, ''), 10);
+    if (!isNaN(idx)) row[idx] = value;
+  } else {
+    // 如果原值是 {value, confidence} 对象，只更新 value
+    if (row[key] !== null && typeof row[key] === 'object' && 'value' in row[key]) {
+      row[key].value = value;
+    } else {
+      row[key] = value;
+    }
+  }
+}
+
+function isCellModified(rowIdx, field) {
+  if (!state.originalRows || !state.currentData) return false;
+  const rows = getRows(state.currentData);
+  if (!rows || rowIdx >= rows.length || rowIdx >= state.originalRows.length) return false;
+  const cur = getCellValue(rows[rowIdx], field);
+  const orig = getCellValue(state.originalRows[rowIdx], field);
+  return formatValue(cur) !== formatValue(orig);
+}
+
+function bindCellEditEvents() {
+  document.querySelectorAll('#tabTable td.editable').forEach(td => {
+    let original = '';
+    td.addEventListener('focus', () => { original = td.textContent; });
+    td.addEventListener('blur', () => {
+      const newVal = td.textContent.trim();
+      if (newVal !== original) {
+        const rowIdx = parseInt(td.dataset.row, 10);
+        const field = td.dataset.field;
+        const rows = getRows(state.currentData);
+        if (rows && rows[rowIdx]) {
+          // 数值类型自动转换（raw_text 保持字符串原样，避免纯数字行被误转成数值）
+          const coerced = (field === 'raw_text') ? newVal : (isNum(newVal) ? parseFloat(newVal) : newVal);
+          setCellValue(rows[rowIdx], field, coerced);
+          if (isCellModified(rowIdx, field)) {
+            td.classList.add('modified');
+            td.classList.add('pulse');
+            setTimeout(() => td.classList.remove('pulse'), 600);
+          } else {
+            td.classList.remove('modified');
+          }
+          state.modified = true;
+          // 记录修正
+          state.corrections.push({
+            doc_id: state.currentDoc.id,
+            row_index: rowIdx,
+            page: getCellValue(rows[rowIdx], 'page') || null,
+            field: field,
+            original_value: original,
+            corrected_value: newVal,
+            reason: '',
+            verified_by: 'manual',
+            timestamp: nowIso(),
+          });
+          updateStatusInfo();
+          updateConfirmGate();  // P0: 实时更新确认按钮状态
+          syncTableToText(rowIdx, field, original, newVal);  // 表格编辑 → 文本预览联动
+          // v8.10: 人工修正该单元格后，清除该行 issues（视为已人工处理），并刷新行标红
+          if (Array.isArray(rows[rowIdx]) && 'issues' in rows[rowIdx]) {
+            rows[rowIdx].issues = [];
+          }
+          const trEl = td.closest('tr');
+          if (trEl) {
+            trEl.classList.remove('row-has-issues');
+            const flags = trEl.querySelector('.issue-flags');
+            if (flags) flags.remove();
+            const rowNoEl = trEl.querySelector('.row-no');
+            if (rowNoEl) {
+              const num = rowNoEl.firstChild ? rowNoEl.firstChild.textContent.trim() : '';
+              rowNoEl.textContent = num;
+            }
+          }
+          updateConfirmGate();
+        }
+      }
+    });
+    // 粘贴时只保留纯文本，防止 HTML 污染
+    td.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
+    td.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
+      if (e.key === 'Escape') { td.textContent = original; td.blur(); }
+    });
+  });
+}
+
+/** 推荐值对话框：点击单元格时检查是否有推荐值，有则弹窗 */
+function bindRecommendedValueDialog() {
+  document.querySelectorAll('#tabTable td.editable').forEach(td => {
+    td.addEventListener('click', function onClick() {
+      const rowIdx = parseInt(td.dataset.row, 10);
+      const field = td.dataset.field;
+      if (rowIdx === undefined || isNaN(rowIdx) || !field) return;
+      const rows = getRows(state.currentData);
+      if (!rows || !rows[rowIdx]) return;
+      const row = rows[rowIdx];
+      // 检查该行该字段是否有推断值
+      const inferred = row.inferred;
+      if (!inferred || typeof inferred !== 'object') return;
+      const rec = inferred[field];
+      if (!rec || typeof rec !== 'object') return;
+      const recValue = rec.value;
+      const recConf = rec.confidence;
+      const recSource = rec.source || '';
+      const recReason = rec.reason || '';
+      if (recValue === undefined || recValue === null) return;
+
+      let confCls = 'low', confLabel = '<30%';
+      if (recConf >= 0.95) { confCls = 'c95'; confLabel = '≥95%'; }
+      else if (recConf >= 0.80) { confCls = 'c80'; confLabel = '80-94%'; }
+      else if (recConf >= 0.50) { confCls = 'c50'; confLabel = '50-79%'; }
+      else if (recConf >= 0.30) { confCls = 'c30'; confLabel = '30-49%'; }
+
+      const currentVal = td.textContent.trim();
+      document.getElementById('recTitle').innerHTML = `推荐值 · ${escapeHtml(field)} <span class="rec-conf-badge ${confCls}">${confLabel}</span>`;
+      document.getElementById('recBody').innerHTML = `
+        <table>
+          <tr><td>当前值</td><td><span class="rec-current">${escapeHtml(currentVal || '(空)')}</span></td></tr>
+          <tr><td>推荐值</td><td><span class="rec-recommended">${escapeHtml(String(recValue))}</span></td></tr>
+        </table>
+        <div class="rec-source"><b>来源</b> ${escapeHtml(recSource)}</div>
+        <div class="rec-source" style="margin-top:4px;"><b>说明</b> ${escapeHtml(recReason)}</div>
+      `;
+
+      const modal = document.getElementById('recModal');
+      modal.classList.add('active');
+
+      const acceptBtn = document.getElementById('recAccept');
+      const rejectBtn = document.getElementById('recReject');
+      const cleanup = () => {
+        modal.classList.remove('active');
+        acceptBtn.onclick = null;
+        rejectBtn.onclick = null;
+      };
+      acceptBtn.onclick = () => {
+        td.textContent = formatValue(recValue);
+        td.dispatchEvent(new Event('blur'));
+        cleanup();
+      };
+      rejectBtn.onclick = cleanup;
+      // 点击遮罩层关闭
+      modal.onclick = (e) => { if (e.target === modal) cleanup(); };
+    });
+  });
+}
+
+async function saveTableChanges() {
+  if (!state.currentDoc || !state.currentData) { showToast('未加载文档', 'warning'); return; }
+  const hadCorrections = state.corrections.length > 0;
+  try {
+    await writeJson(state.currentDoc.data_file, state.currentData);
+    const rows = getRows(state.currentData);
+    state.originalRows = rows ? JSON.parse(JSON.stringify(rows)) : null;
+    state.modified = false;
+    state.corrections = [];  // 清空修正记录，避免重复导出
+    document.querySelectorAll('#tabTable td.modified').forEach(td => td.classList.remove('modified'));
+
+    // P0: 已确认文档修改后保存 → 重置 human_verified，使确认按钮重新可用
+    if (hadCorrections && state.currentDoc.human_verified === true) {
+      const docIdx = state.index?.documents?.findIndex(d => d.id === state.currentDoc.id);
+      if (docIdx >= 0) {
+        state.index.documents[docIdx].human_verified = false;
+        state.currentDoc.human_verified = false;
+        try {
+          await writeJson('index.json', state.index);
+          diagLog('保存含修正数据 → human_verified 重置为 false', 'ok');
+        } catch (e2) { diagLog('index.json 写回失败: ' + e2.message, 'warn'); }
+      }
+    }
+
+    updateStatusInfo();
+    updateConfirmGate();
+    showToast('表格修改已保存', 'success');
+    diagLog(`表格修改已写入: ${state.currentDoc.data_file}`, 'ok');
+  } catch (e) {
+    if (e.message.includes('拖拽模式')) {
+      showToast('拖拽模式不支持保存，请用「选择项目文件夹」加载', 'warning', 4000);
+    } else {
+      showToast('保存失败: ' + e.message, 'error', 5000);
+    }
+  }
+}
+
+/** 一键采纳推荐值：批量把置信度≥0.50 的推荐值填入空单元格，<0.50 的列出待人工核对 */
+async function adoptAllRecommendedValues() {
+  if (!state.currentDoc || !state.currentData) { showToast('未加载文档', 'warning'); return; }
+  const rows = getRows(state.currentData);
+  if (!rows || rows.length === 0) { showToast('无表格数据', 'warning'); return; }
+
+  let adopted = 0, lowConf = [], skipped = 0;
+
+  rows.forEach((row, rowIdx) => {
+    const inferred = row && row.inferred;
+    if (!inferred || typeof inferred !== 'object') return;
+    for (const field of Object.keys(inferred)) {
+      const rec = inferred[field];
+      if (!rec || typeof rec !== 'object') continue;
+      const recValue = rec.value;
+      if (recValue === undefined || recValue === null || recValue === '') continue;
+      const conf = rec.confidence;
+      const curStr = formatValue(getCellValue(row, field)).trim();
+      if (curStr !== '') { skipped++; continue; }   // 已有值，不覆盖
+      if (conf === undefined || conf === null || conf < 0.50) {
+        lowConf.push({ rowIdx, field, recValue, confidence: conf });
+        continue;
+      }
+      // 采纳：写回结构化数据
+      const coerced = isNum(recValue) ? parseFloat(recValue) : recValue;
+      setCellValue(row, field, coerced);
+      state.modified = true;
+      state.corrections.push({
+        doc_id: state.currentDoc.id,
+        row_index: rowIdx,
+        page: getCellValue(row, 'page') || null,
+        field: field,
+        original_value: '',
+        corrected_value: String(coerced),
+        reason: '一键采纳推荐值（置信度 ' + Math.round(conf * 100) + '%）',
+        verified_by: 'manual',
+        timestamp: nowIso(),
+      });
+      if (row && typeof row === 'object' && Array.isArray(row.issues)) row.issues = [];
+      syncTableToText(rowIdx, field, '', String(coerced));
+      adopted++;
+    }
+  });
+
+  if (adopted === 0 && lowConf.length === 0) { showToast('没有可采纳的空推荐值', 'info'); return; }
+
+  try {
+    await writeJson(state.currentDoc.data_file, state.currentData);
+    state.originalRows = rows ? JSON.parse(JSON.stringify(rows)) : null;
+    state.modified = false;
+    state.corrections = [];
+    document.querySelectorAll('#tabTable td.modified').forEach(td => td.classList.remove('modified'));
+    renderTableTab();
+    updateStatusInfo();
+    updateConfirmGate();
+    showRecAdoptSummary(adopted, lowConf, skipped);
+  } catch (e) {
+    if (e.message.includes('拖拽模式')) showToast('拖拽模式不支持保存，请用「选择项目文件夹」加载', 'warning', 4000);
+    else showToast('保存失败: ' + e.message, 'error', 5000);
+  }
+}
+
+/** 采纳结果汇总弹窗：展示已采纳数 + 低置信待人工核对清单 */
+function showRecAdoptSummary(adopted, lowConf, skipped) {
+  if (adopted === 0 && lowConf.length === 0) return;
+  document.getElementById('recTitle').innerHTML = '一键采纳推荐值 · 完成';
+  let body = `
+    <div class="rec-summary">
+      <p>✅ 已采纳 <b>${adopted}</b> 项推荐值（置信度≥50%）</p>
+      <p style="color:var(--text-muted);">${skipped} 项已有值，未覆盖</p>
+    </div>`;
+  if (lowConf.length > 0) {
+    body += `<div class="rec-lowconf"><b>${lowConf.length} 项低置信推荐值（&lt;50%）需人工核对</b>
+      <p style="color:var(--text-muted);font-size:11px;">点击对应单元格会弹出推荐值对话框，可逐个“接受/拒绝”。</p>
+      <table class="data-table" style="min-width:100%;">
+        <thead><tr><th>行#</th><th>字段</th><th>推荐值</th><th>置信度</th></tr></thead><tbody>`;
+    lowConf.forEach(it => {
+      const shownConf = (it.confidence !== undefined && it.confidence !== null)
+        ? Math.round(it.confidence * 100) + '%' : '?';
+      body += `<tr><td>${it.rowIdx + 1}</td><td>${escapeHtml(fieldLabel(it.field))}</td><td>${escapeHtml(String(it.recValue))}</td><td>${shownConf}</td></tr>`;
+    });
+    body += `</tbody></table></div>`;
+  }
+  document.getElementById('recBody').innerHTML = body;
+
+  const modal = document.getElementById('recModal');
+  modal.classList.add('active');
+  const acceptBtn = document.getElementById('recAccept');
+  const rejectBtn = document.getElementById('recReject');
+  acceptBtn.style.display = 'none';
+  rejectBtn.textContent = '知道了';
+  const cleanup = () => {
+    modal.classList.remove('active');
+    acceptBtn.style.display = '';
+    rejectBtn.textContent = '拒绝';
+    rejectBtn.onclick = null;
+    acceptBtn.onclick = null;
+    modal.onclick = null;
+  };
+  rejectBtn.onclick = cleanup;
+  modal.onclick = (e) => { if (e.target === modal) cleanup(); };
+}
+
+// ========== PDF 原图面板 + 文本预览 Tab ==========
+
+/** 渲染 PDF 原图面板（左侧） */
+async function renderPdfPanel() {
+  const body = $('pdfBody');
+  const nav = $('pdfNav');
+  const doc = state.currentDoc;
+  const data = state.currentData;
+
+  if (!doc || !data) {
+    body.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示 PDF 扫描原图。');
+    nav.style.display = 'none';
+    return;
+  }
+
+  if (isNonDoc(doc)) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>OCR 中间产物</h3><p>无原文可预览。</p></div>`;
+    nav.style.display = 'none';
+    return;
+  }
+
+  const pageMap = getPageMap(data);
+  state.previewPageMap = pageMap;
+  state.previewPage = 1;
+
+  // 非 PDF 文档（Excel/Word/电子档PDF）
+  const ext = doc.extraction_mode || '';
+  const isExcel = ext === 'meta_xlsx';
+  const isTextPdf = ext === 'text_pdf' || ext === 'docx' || ext === 'reference_skip';
+  const pdfFile = doc.original_file || '';
+  const isPdf = pdfFile.toLowerCase().endsWith('.pdf');
+
+  if (isExcel) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>Excel 文档</h3><p>Excel 文件无 PDF 原图，请使用右侧「文本预览」或「表格数据」Tab 查看。</p></div>`;
+    nav.style.display = 'none';
+    return;
+  }
+
+  if (!isPdf) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>非 PDF 文档</h3><p>该文档不是 PDF 格式，无扫描原图可显示。</p></div>`;
+    nav.style.display = 'none';
+    return;
+  }
+
+  // PDF 文档 — 多层兜底加载
+  body.innerHTML = `<div class="pdf-canvas-wrap" id="pdfCanvasWrap"><div style="padding:40px;color:var(--text-muted);font-size:12px;">加载 PDF 中...</div></div>`;
+
+  try {
+    const pdfUrl = await loadPdfUrl(doc);
+    if (pdfUrl) {
+      state.currentPdfUrl = pdfUrl;
+      await renderPdfCanvas(pdfUrl, state.previewPage);
+      // PDF.js 加载后获取真实总页数
+      const totalPages = state.pdfTotalPages || (pageMap.length || 1);
+      state.previewTotalPages = totalPages;
+      nav.style.display = totalPages > 1 ? 'flex' : 'none';
+      updatePdfNav();
+    } else {
+      // 所有加载方式失败 → 显示拖拽区
+      showPdfDropZone(body, doc);
+      nav.style.display = 'none';
+    }
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF 渲染失败: ${escapeHtml(e.message)}</div>`;
+    nav.style.display = 'none';
+  }
+}
+
+/** 多层兜底加载 PDF URL */
+async function loadPdfUrl(doc) {
+  const fileName = doc.original_file || '';
+  if (!fileName) return null;
+
+  // 第 1 层：从 rootDirHandle 读取（File System Access API）
+  if (state.rootDirHandle) {
+    try {
+      const url = await loadPdfFromHandle(fileName);
+      if (url) {
+        diagLog(`PDF 加载成功（文件夹读取）: ${fileName}`, 'ok');
+        return url;
+      }
+    } catch (e) {
+      diagLog(`PDF 文件夹读取失败: ${e.message}`, 'warn');
+    }
+  }
+
+  // 第 2 层：从 pdfCache 查找（之前拖拽过）
+  if (state.pdfCache && state.pdfCache[doc.id]) {
+    diagLog(`PDF 加载成功（缓存）: ${doc.id}`, 'ok');
+    return state.pdfCache[doc.id];
+  }
+
+  // 第 3 层：如果数据文件中有 image_ref（OCR 转图片路径）
+  const data = state.currentData;
+  const pageMap = getPageMap(data);
+  if (pageMap.length > 0 && pageMap[0].image_ref) {
+    if (state.foundationDirHandle) {
+      try {
+        const imgUrl = await readImageObjectUrl(pageMap[0].image_ref);
+        if (imgUrl) {
+          diagLog(`PDF 降级为图片加载: ${pageMap[0].image_ref}`, 'ok');
+          return { type: 'image', url: imgUrl, pageMap };
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  return null;
+}
+
+/** 从 rootDirHandle 读取 PDF 文件为 Uint8Array — 支持子目录搜索 */
+async function loadPdfFromHandle(fileName) {
+  if (!state.rootDirHandle) return null;
+  const parts = fileName.replace(/\\/g, '/').split('/').filter(Boolean);
+  const baseName = parts[parts.length - 1];
+  let dir = state.rootDirHandle;
+
+  // 如果路径有子目录，先按路径走
+  if (parts.length > 1) {
+    try {
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = await dir.getDirectoryHandle(parts[i]);
+      }
+      const fh = await dir.getFileHandle(baseName);
+      const file = await fh.getFile();
+      const buf = await file.arrayBuffer();
+      return new Uint8Array(buf);
+    } catch (e) {
+      diagLog(`PDF 按路径查找失败: ${e.message}`, 'warn');
+    }
+  }
+
+  // 路径查找失败或只有文件名 → 先在根目录找
+  try {
+    const fh = await dir.getFileHandle(baseName);
+    const file = await fh.getFile();
+    diagLog(`PDF 在根目录找到: ${baseName}`, 'ok');
+    const buf = await file.arrayBuffer();
+    return new Uint8Array(buf);
+  } catch (e) {
+    // 根目录没有 → 遍历一级子目录搜索
+    diagLog(`PDF 不在根目录，搜索子目录...`, 'info');
+  }
+
+  // 遍历一级子目录
+  try {
+    for await (const entry of dir.values()) {
+      if (entry.kind === 'directory') {
+        try {
+          const subDir = await dir.getDirectoryHandle(entry.name);
+          const fh = await subDir.getFileHandle(baseName);
+          const file = await fh.getFile();
+          diagLog(`PDF 在子目录找到: ${entry.name}/${baseName}`, 'ok');
+          const buf = await file.arrayBuffer();
+          return new Uint8Array(buf);
+        } catch (e2) { /* 继续搜索 */ }
+      }
+    }
+  } catch (e) {
+    diagLog(`子目录搜索失败: ${e.message}`, 'warn');
+  }
+
+  diagLog(`PDF 未找到: ${baseName}`, 'warn');
+  return null;
+}
+
+/** 确保 pdfBody 中有 canvas 容器 */
+function ensurePdfCanvasWrap() {
+  let wrap = $('pdfCanvasWrap');
+  if (!wrap) {
+    const body = $('pdfBody');
+    if (!body) return null;
+    body.innerHTML = '<div class="pdf-canvas-wrap" id="pdfCanvasWrap"></div>';
+    wrap = $('pdfCanvasWrap');
+  }
+  return wrap;
+}
+
+/** 用 PDF.js 渲染 PDF 单页到 canvas */
+async function renderPdfCanvas(pdfUrl, pageNum) {
+  let wrap = ensurePdfCanvasWrap();
+  if (!wrap) return;
+
+  // 如果是图片类型（降级模式）
+  if (pdfUrl && pdfUrl.type === 'image') {
+    wrap.innerHTML = `<img src="${pdfUrl.url}" alt="扫描图片" style="max-width:100%;border:1px solid var(--border);border-radius:3px;cursor:zoom-in;" onclick="window.open('${pdfUrl.url}')">`;
+    state.pdfTotalPages = pdfUrl.pageMap.length;
+    return;
+  }
+
+  if (!window.pdfjsLib) {
+    wrap.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF.js 未加载，正在尝试加载...</div>`;
+    // 尝试动态加载 PDF.js
+    await loadPdfJs();
+    if (!window.pdfjsLib) {
+      wrap.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF.js 加载失败，请检查网络连接<br>或手动拖拽 PDF 文件到此处</div>`;
+      return;
+    }
+  }
+
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+  }
+
+  // 显示加载中
+  wrap.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;">PDF 加载中...</div>';
+
+  try {
+    // 缓存 PDF 文档对象
+    if (!state.pdfDocCache) state.pdfDocCache = {};
+    const cacheKey = state.currentDoc ? state.currentDoc.id : pdfUrl;
+    let pdfDoc = state.pdfDocCache[cacheKey];
+    if (!pdfDoc) {
+      // blob URL 需要先 fetch 为 ArrayBuffer，否则 worker 访问不到
+      let pdfSource = pdfUrl;
+      if (typeof pdfUrl === 'string' && pdfUrl.startsWith('blob:')) {
+        const resp = await fetch(pdfUrl);
+        const buf = await resp.arrayBuffer();
+        pdfSource = { data: new Uint8Array(buf) };
+      } else if (pdfUrl instanceof Uint8Array) {
+        pdfSource = { data: pdfUrl };
+      }
+      const loadingTask = pdfjsLib.getDocument(pdfSource);
+      pdfDoc = await loadingTask.promise;
+      state.pdfDocCache[cacheKey] = pdfDoc;
+    }
+
+    state.pdfTotalPages = pdfDoc.numPages;
+    state.previewTotalPages = pdfDoc.numPages;
+
+    const page = await pdfDoc.getPage(pageNum);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const viewport = page.getViewport({ scale: 1.5 });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.onclick = () => canvas.requestFullscreen?.();
+    wrap.innerHTML = '';
+    wrap.appendChild(canvas);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  } catch (e) {
+    wrap.innerHTML = `<div style="padding:20px;color:var(--c-red);">PDF 渲染失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+/** 动态加载 PDF.js（兜底：如果顶部 script 标签加载失败） */
+function loadPdfJs() {
+  return new Promise((resolve) => {
+    if (window.pdfjsLib) return resolve();
+    const script = document.createElement('script');
+    // 先尝试本地（优先），再尝试 CDN（在线兜底）
+    script.src = 'pdf.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => {
+      // 本地失败，尝试 CDN（仅在线环境有效）
+      const cdnScript = document.createElement('script');
+      cdnScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      cdnScript.onload = () => resolve();
+      cdnScript.onerror = () => resolve();
+      document.head.appendChild(cdnScript);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/** 显示 PDF 拖拽区（兜底） */
+function showPdfDropZone(body, doc) {
+  const fileName = doc.original_file || doc.id;
+  body.innerHTML = `<div class="pdf-drop-zone" id="pdfDropZone">
+    <div class="drop-icon">📄</div>
+    <p>无法自动加载 PDF 文件</p>
+    <p style="font-size:11px;margin-top:4px;">文件名: ${escapeHtml(fileName)}</p>
+    <p style="font-size:11px;margin-top:8px;color:var(--c-blue);">将 PDF 文件拖拽到此处，或点击选择文件</p>
+  </div>`;
+
+  const zone = $('pdfDropZone');
+  zone.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const buf = await file.arrayBuffer();
+        if (!state.pdfCache) state.pdfCache = {};
+        state.pdfCache[doc.id] = new Uint8Array(buf);
+        state.currentPdfUrl = state.pdfCache[doc.id];
+        diagLog(`PDF 通过文件选择加载: ${file.name}`, 'ok');
+        $('pdfBody').innerHTML = '<div class="pdf-canvas-wrap" id="pdfCanvasWrap"></div>';
+        await renderPdfCanvas(state.currentPdfUrl, 1);
+        state.previewPage = 1;
+        $('pdfNav').style.display = state.pdfTotalPages > 1 ? 'flex' : 'none';
+        updatePdfNav();
+      }
+    };
+    input.click();
+  });
+
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.toLowerCase().endsWith('.pdf')) {
+      const buf = await file.arrayBuffer();
+      if (!state.pdfCache) state.pdfCache = {};
+      state.pdfCache[doc.id] = new Uint8Array(buf);
+      state.currentPdfUrl = state.pdfCache[doc.id];
+      diagLog(`PDF 通过拖拽加载: ${file.name}`, 'ok');
+      $('pdfBody').innerHTML = '<div class="pdf-canvas-wrap" id="pdfCanvasWrap"></div>';
+      await renderPdfCanvas(state.currentPdfUrl, 1);
+      state.previewPage = 1;
+      $('pdfNav').style.display = state.pdfTotalPages > 1 ? 'flex' : 'none';
+      updatePdfNav();
+    }
+  });
+}
+
+/** 更新 PDF 翻页导航 */
+function updatePdfNav() {
+  $('curPdfPage').textContent = state.previewPage;
+  $('totalPdfPage').textContent = state.previewTotalPages;
+  $('prevPdfPage').disabled = state.previewPage <= 1;
+  $('nextPdfPage').disabled = state.previewPage >= state.previewTotalPages;
+  $('jumpPdfPage').value = state.previewPage;
+  $('jumpPdfPage').max = state.previewTotalPages;
+}
+
+/** PDF 翻页 */
+async function changePdfPage(delta) {
+  const newPage = state.previewPage + delta;
+  if (newPage < 1 || newPage > state.previewTotalPages) return;
+  state.previewPage = newPage;
+  await renderPdfCanvas(state.currentPdfUrl, newPage);
+  updatePdfNav();
+  // 联动：表格过滤 + 文本预览刷新
+  filterTableByPage(newPage);
+  if (state.activeTab === 'textPreview') renderTextPreviewTab();
+}
+
+/** PDF 跳转到指定页 */
+async function jumpToPdfPage(pageNum) {
+  const p = parseInt(pageNum, 10);
+  if (isNaN(p) || p < 1 || p > state.previewTotalPages) return;
+  state.previewPage = p;
+  await renderPdfCanvas(state.currentPdfUrl, p);
+  updatePdfNav();
+  filterTableByPage(p);
+  if (state.activeTab === 'textPreview') renderTextPreviewTab();
+}
+
+// ========== 文本预览 Tab（右侧） ==========
+
+/** 渲染文本预览 Tab */
+function renderTextPreviewTab() {
+  const tab = $('tabTextPreview');
+  const doc = state.currentDoc;
+  const data = state.currentData;
+
+  if (!doc || !data) {
+    tab.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示 OCR 文本预览。');
+    return;
+  }
+
+  if (isNonDoc(doc)) {
+    tab.innerHTML = emptyStateHtml('OCR 中间产物', '无文本可预览。');
+    return;
+  }
+
+  const pageMap = state.previewPageMap;
+  const pm = pageMap.find(p => p.page === state.previewPage) || pageMap[0];
+
+  let text = '';
+  let pageLabel = '全文';
+  if (pm && pm.text) {
+    text = pm.text;
+    pageLabel = `第 ${pm.page} 页`;
+  } else {
+    text = getFullText(data);
+  }
+
+  if (!text) {
+    tab.innerHTML = emptyStateHtml('无文本数据', '该文档未提取到 OCR 文本。');
+    return;
+  }
+
+  const totalPages = state.previewTotalPages || pageMap.length || 1;
+  const pageNav = totalPages > 1
+    ? `<span class="table-meta">${pageLabel} · 共 ${totalPages} 页</span>
+       <button class="btn btn-outline" id="btnTextPrev" style="font-size:11px;padding:2px 8px;" ${state.previewPage <= 1 ? 'disabled' : ''}>上一页</button>
+       <button class="btn btn-outline" id="btnTextNext" style="font-size:11px;padding:2px 8px;" ${state.previewPage >= totalPages ? 'disabled' : ''}>下一页</button>`
+    : `<span class="table-meta">${pageLabel}</span>`;
+
+  // 文本预览保存按钮（扫描件优先在文本预览编辑后保存）
+  const canSaveText = state.foundationDirHandle !== null;
+  const saveTextBtn = canSaveText
+    ? `<button class="btn btn-primary text-preview-save" id="btnSaveText" style="font-size:12px;padding:3px 12px;">保存修改</button>`
+    : `<span style="font-size:11px;color:var(--text-muted);">只读模式 — 无法保存</span>`;
+
+  tab.innerHTML = `<div class="text-preview-toolbar">
+    <span style="font-size:12px;font-weight:600;color:var(--text-secondary);">OCR 文本（可编辑 · 自动同步表格）</span>
+    ${pageNav}
+    ${saveTextBtn}
+  </div>
+  <div class="text-preview-box">
+    <div class="text-preview-editor" id="textPreviewEditor" contenteditable="true" spellcheck="false">${escapeHtml(text)}</div>
+  </div>`;
+
+  bindTextPreviewEdit($('textPreviewEditor'), pm);
+
+  const prevBtn = $('btnTextPrev');
+  const nextBtn = $('btnTextNext');
+  if (prevBtn) prevBtn.addEventListener('click', () => changePdfPage(-1));
+  if (nextBtn) nextBtn.addEventListener('click', () => changePdfPage(1));
+
+  // 文本预览保存：先确保编辑内容已 blur 同步，再复用 saveTableChanges 写盘
+  const saveTextBtnEl = $('btnSaveText');
+  if (saveTextBtnEl) saveTextBtnEl.addEventListener('click', () => {
+    const editor = $('textPreviewEditor');
+    if (editor) editor.blur(); // 触发 blur 同步到 data
+    saveTableChanges();
+  });
+}
+
+/** 绑定文本预览编辑事件 — 修改后同步到表格 */
+function bindTextPreviewEdit(editor, pm) {
+  let original = editor.textContent;
+
+  editor.addEventListener('blur', () => {
+    const newText = editor.textContent;
+    if (newText !== original) {
+      const page = pm ? pm.page : state.previewPage;
+      // 通过 rows[] 桥接同步
+      syncTextToTable(page, original, newText, pm);
+
+      state.modified = true;
+      state.corrections.push({
+        doc_id: state.currentDoc.id,
+        page: page,
+        field: 'ocr_text',
+        original_value: original,
+        corrected_value: newText,
+        reason: '',
+        verified_by: 'manual',
+        source: 'text-preview',
+        timestamp: nowIso(),
+      });
+      updateStatusInfo();
+      updateConfirmGate();
+      diagLog(`文本预览修改: 第${page}页`, 'ok');
+      original = newText;
+    }
+  });
+
+  editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editor.blur(); }
+    if (e.key === 'Escape') { editor.textContent = original; editor.blur(); }
+  });
+}
+
+// ========== rows[] 桥接双向同步 ==========
+
+/**
+ * 统一双向同步函数 — 通过 rows[] 桥接 Table ↔ Text
+ * 不管从表格改还是从文本改，rows[]、page_map、structured_rows 三者保持一致
+ */
+function syncValueChange(page, oldVal, newVal, source) {
+  if (!state.currentData || oldVal === newVal) return;
+  const data = state.currentData;
+
+  // 1. 更新 rows[] 中的 raw_text
+  const rows = data.rows;
+  if (rows && isTextRows(rows)) {
+    const pageRows = rows.filter(r => String(r.page) === String(page));
+    for (const r of pageRows) {
+      if (r.raw_text && r.raw_text.includes(oldVal)) {
+        r.raw_text = r.raw_text.split(oldVal).join(newVal);
+      }
+    }
+  }
+
+  // 2. 重建 page_map[page].text
+  const pageMap = getPageMap(data);
+  const pm = pageMap.find(p => String(p.page) === String(page));
+  if (pm && rows && isTextRows(rows)) {
+    pm.text = rows.filter(r => String(r.page) === String(page)).map(r => r.raw_text || '').join('\n');
+  }
+
+  // 3. 更新 structured_rows 中匹配的值
+  const sr = data.structured_rows;
+  if (sr) {
+    for (const row of sr) {
+      const rowPage = getCellValue(row, 'page');
+      if (String(rowPage) === String(page)) {
+        for (const key of Object.keys(row)) {
+          if (['row_index', 'page', 'sheet_name'].includes(key)) continue;
+          const v = getCellValue(row, key);
+          if (formatValue(v).trim() === oldVal.trim()) {
+            setCellValue(row, key, newVal);
+          }
+        }
+      }
+    }
+  }
+
+  // 4. 刷新视图
+  if (source !== 'table') {
+    // 从文本修改 → 刷新表格 DOM
+    refreshTableCells(page);
+  }
+  if (source !== 'text') {
+    // 从表格修改 → 刷新文本预览
+    refreshTextPreview(page);
+  }
+}
+
+/** 表格修改 → 同步到文本预览 */
+function syncTableToText(rowIdx, field, oldVal, newVal) {
+  const rows = getRows(state.currentData);
+  if (!rows || !rows[rowIdx]) return;
+  const page = getCellValue(rows[rowIdx], 'page');
+  if (!page) return;
+
+  // 通过桥接同步
+  syncValueChange(page, oldVal, newVal, 'table');
+}
+
+/** 文本修改 → 同步到表格 */
+function syncTextToTable(page, oldFullText, newFullText, pm) {
+  if (!state.currentData) return;
+
+  const data = state.currentData;
+
+  // 更新 page_map 文本
+  if (pm) pm.text = newFullText;
+  // 同步更新 full_text（结构化数据也生效）
+  data.full_text = newFullText;
+
+  // 逐行对比，找出变更的值
+  const oldLines = oldFullText.split('\n');
+  const newLines = newFullText.split('\n');
+
+  // 更新 rows[] 的 raw_text（仅文本行格式）
+  const rows = data.rows;
+  if (rows && isTextRows(rows)) {
+    const pageRows = rows.filter(r => String(r.page) === String(page));
+    const maxLen = Math.max(oldLines.length, newLines.length, pageRows.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < pageRows.length && i < newLines.length) {
+        const oldRowText = pageRows[i].raw_text || '';
+        const newRowText = newLines[i] || '';
+        if (oldRowText !== newRowText) {
+          // 找出该行中变化的值，同步到 structured_rows
+          syncRowChange(page, i, oldRowText, newRowText);
+          pageRows[i].raw_text = newRowText;
+        }
+      }
+    }
+  }
+}
+
+/** 同步单行变化到 structured_rows */
+function syncRowChange(page, localRowIdx, oldText, newText) {
+  const data = state.currentData;
+  if (!data.structured_rows) return;
+
+  // 找到同 page 的 structured_rows，按顺序匹配 localRowIdx
+  const sr = data.structured_rows;
+  const pageSr = sr.map((r, i) => ({ row: r, idx: i })).filter(x => {
+    return String(getCellValue(x.row, 'page')) === String(page);
+  });
+
+  if (!pageSr[localRowIdx]) return;
+  const target = pageSr[localRowIdx].row;
+  const rowIdx = pageSr[localRowIdx].idx;
+
+  // 在 oldText 中找 newText 不同的部分，尝试匹配 structured_rows 的字段
+  for (const key of Object.keys(target)) {
+    if (['row_index', 'page', 'sheet_name'].includes(key)) continue;
+    const cellVal = formatValue(getCellValue(target, key));
+    if (cellVal && oldText.includes(cellVal) && !newText.includes(cellVal)) {
+      // 尝试从 newText 中找到替换后的值
+      const idx = oldText.indexOf(cellVal);
+      if (idx >= 0) {
+        // 简单策略：找 newText 对应位置的值
+        const before = oldText.substring(0, idx);
+        const after = oldText.substring(idx + cellVal.length);
+        if (newText.startsWith(before) && newText.endsWith(after)) {
+          const newVal = newText.substring(before.length, newText.length - after.length);
+          if (newVal && newVal !== cellVal) {
+            setCellValue(target, key, newVal);
+            // 更新表格 DOM
+            const td = document.querySelector(`#tabTable td.editable[data-row="${rowIdx}"][data-field="${escapeHtml(key)}"]`);
+            if (td) {
+              td.textContent = newVal;
+              td.classList.add('modified', 'pulse');
+              setTimeout(() => td.classList.remove('pulse'), 600);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/** 刷新表格单元格（文本修改后调用） */
+function refreshTableCells(page) {
+  const rows = getRows(state.currentData);
+  if (!rows) return;
+  // 遍历当前页的行，更新表格 DOM
+  document.querySelectorAll('#tabTable tbody tr[data-page]').forEach(tr => {
+    const rowPage = tr.dataset.page;
+    if (String(rowPage) !== String(page)) return;
+    const rowIdx = parseInt(tr.dataset.rowIdx, 10);
+    if (!rows[rowIdx]) return;
+    tr.querySelectorAll('td.editable').forEach(td => {
+      const field = td.dataset.field;
+      const newVal = formatValue(getCellValue(rows[rowIdx], field));
+      if (td.textContent.trim() !== newVal.trim()) {
+        td.textContent = newVal;
+        td.classList.add('modified', 'pulse');
+        setTimeout(() => td.classList.remove('pulse'), 600);
+      }
+    });
+  });
+}
+
+/** 刷新文本预览（表格修改后调用） */
+function refreshTextPreview(page) {
+  const editor = $('textPreviewEditor');
+  if (!editor) return;
+  const pageMap = getPageMap(state.currentData);
+  const pm = pageMap.find(p => String(p.page) === String(page));
+  if (pm && pm.text) {
+    editor.textContent = pm.text;
+  }
+}
+
+// ========== Tab 4: 问题视图 ==========
+
+function renderProblemsTab() {
+  const tab = $('tabProblems');
+  const doc = state.currentDoc;
+  const data = state.currentData;
+
+  if (!doc || !data) {
+    tab.innerHTML = emptyStateHtml('未加载文档', '选择文档后将显示质量告警与 OCR 存疑项。');
+    return;
+  }
+
+  // 收集问题
+  const problems = collectProblems(doc, data);
+  state.currentProblems = problems;
+
+  if (problems.length === 0) {
+    tab.innerHTML = `<div class="empty-state">
+      <div class="empty-graphic"></div>
+      <h3>未发现问题</h3>
+      <p>该文档暂无质量告警或 OCR 存疑项。</p>
+    </div>`;
+    $('badgeProblems').style.display = 'none';
+    return;
+  }
+
+  // 更新 badge
+  $('badgeProblems').style.display = '';
+  $('badgeProblems').textContent = problems.length;
+
+  // 标记已处理的问题索引
+  if (!state.dismissedProblems) state.dismissedProblems = new Set();
+  const activeProblems = problems.map((p, i) => ({ p, i })).filter(x => !state.dismissedProblems.has(x.i));
+
+  // 按类型分组
+  const byType = {};
+  activeProblems.forEach(x => {
+    const t = x.p.type || '其他';
+    if (!byType[t]) byType[t] = [];
+    byType[t].push(x);
+  });
+
+  // 按区域分组
+  const byRegion = {};
+  activeProblems.forEach(x => {
+    const r = x.p.region || '未分区';
+    if (!byRegion[r]) byRegion[r] = [];
+    byRegion[r].push(x);
+  });
+
+  // 按风险分组
+  const byRisk = { 'must-fix': [], 'verify': [], 'suggest': [] };
+  activeProblems.forEach(x => {
+    const r = x.p.risk || 'verify';
+    if (byRisk[r]) byRisk[r].push(x);
+  });
+
+  // 顶部工具栏 — 批量操作
+  const suggestCount = activeProblems.filter(x => x.p.suggested_value !== undefined && x.p.suggested_value !== null).length;
+  const canSave = state.foundationDirHandle !== null;
+
+  let html = '<div class="problem-view">';
+
+  html += `<div class="problem-toolbar">
+    <span class="table-meta">${activeProblems.length} 条问题 · 已忽略 ${problems.length - activeProblems.length} 条</span>
+    ${suggestCount > 0 ? `<button class="btn btn-primary" id="btnApplySuggest" ${canSave ? '' : 'disabled'}>批量应用建议值 (${suggestCount})</button>` : ''}
+    <button class="btn btn-outline" id="btnResetDismiss" ${state.dismissedProblems.size > 0 ? '' : 'disabled'}>恢复已忽略</button>
+  </div>`;
+
+  // 按类型
+  html += renderProblemGroup('按问题类型', `${Object.keys(byType).length} 类 · ${activeProblems.length} 条`, byType, 'type');
+  // 按区域
+  html += renderProblemGroup('按区域', `${Object.keys(byRegion).length} 区 · ${activeProblems.length} 条`, byRegion, 'region');
+  // 按风险
+  const riskGroups = {};
+  [['must-fix', '必须整改'], ['verify', '需人工核实'], ['suggest', '建议完善']].forEach(([key, label]) => {
+    if (byRisk[key].length > 0) riskGroups[label] = byRisk[key];
+  });
+  html += renderProblemGroup('按风险等级', `${activeProblems.length} 条`, riskGroups, 'risk');
+
+  // 全部问题列表（逐条带 [确认][修正]）
+  html += `<div class="problem-group open">
+    <div class="problem-group-header" onclick="this.parentElement.classList.toggle('open')">
+      <span class="arrow">▼</span>
+      <span class="group-label">全部问题</span>
+      <span class="group-count">${activeProblems.length} 条</span>
+    </div>
+    <div class="problem-group-items">`;
+  activeProblems.forEach(x => {
+    const p = x.p;
+    const idx = x.i;
+    const hasSuggest = p.suggested_value !== undefined && p.suggested_value !== null;
+    html += `<div class="problem-item" data-pidx="${idx}">
+      <span class="risk-tag ${p.risk || 'verify'}">${riskLabel(p.risk)}</span>
+      <span style="flex:1;">${escapeHtml(p.message || p.type)}${p.region && p.region !== '未分区' ? ` <span style="color:var(--text-muted);font-size:10px;">[${escapeHtml(p.region)}]</span>` : ''}</span>
+      <span class="problem-source">${escapeHtml(p.source || '')}</span>
+      ${hasSuggest ? `<span class="problem-action suggest" onclick="applySuggest(${idx})" title="应用建议值: ${escapeHtml(String(p.suggested_value))}">修正</span>` : ''}
+      <span class="problem-action" onclick="jumpToProblem(${idx})">跳转</span>
+      <span class="problem-action dismiss" onclick="dismissProblem(${idx})" title="标记为已处理（不写入数据，仅本地忽略）">确认</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  html += '</div>';
+  tab.innerHTML = html;
+
+  // 绑定批量按钮
+  const applyBtn = $('btnApplySuggest');
+  if (applyBtn) applyBtn.addEventListener('click', applyAllSuggestions);
+  const resetBtn = $('btnResetDismiss');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    state.dismissedProblems.clear();
+    renderProblemsTab();
+  });
+}
+
+function renderProblemGroup(label, count, groups, mode) {
+  if (Object.keys(groups).length === 0) return '';
+  let html = `<div class="problem-group open">
+    <div class="problem-group-header" onclick="this.parentElement.classList.toggle('open')">
+      <span class="arrow">▼</span>
+      <span class="group-label">${escapeHtml(label)}</span>
+      <span class="group-count">${escapeHtml(count)}</span>
+    </div>
+    <div class="problem-group-items">`;
+  Object.entries(groups).sort((a, b) => b[1].length - a[1].length).forEach(([key, items]) => {
+    const firstP = items[0].p;
+    html += `<div class="problem-item">
+      <span class="risk-tag ${firstP.risk || 'verify'}">${riskLabel(firstP.risk)}</span>
+      <span>${escapeHtml(key)}</span>
+      <span class="problem-source">${items.length} 条</span>
+    </div>`;
+    items.slice(0, 3).forEach(x => {
+      html += `<div class="problem-item" style="padding-left:36px;">
+        <span style="color:var(--text-secondary);flex:1;">${escapeHtml(x.p.message || x.p.type)}</span>
+        <span class="problem-source">${escapeHtml(x.p.source || '')}</span>
+      </div>`;
+    });
+    if (items.length > 3) {
+      html += `<div class="problem-item" style="padding-left:36px;color:var(--text-muted);">...还有 ${items.length - 3} 条</div>`;
+    }
+  });
+  html += `</div></div>`;
+  return html;
+}
+
+window.applySuggest = function(idx) {
+  const p = state.currentProblems?.[idx];
+  if (!p || p.suggested_value === undefined || p.suggested_value === null) return;
+  const rows = getRows(state.currentData);
+  if (!rows || p.row_index === undefined || p.row_index >= rows.length) {
+    showToast('无法定位行', 'warning');
+    return;
+  }
+  const oldVal = getCellValue(rows[p.row_index], p.field);
+  setCellValue(rows[p.row_index], p.field, p.suggested_value);
+  state.modified = true;
+  state.corrections.push({
+    doc_id: state.currentDoc.id,
+    row_index: p.row_index,
+    page: rows[p.row_index].page || null,
+    field: p.field,
+    original_value: formatValue(oldVal),
+    corrected_value: String(p.suggested_value),
+    reason: `批量应用建议值（${p.type}）`,
+    verified_by: 'manual',
+    timestamp: nowIso(),
+  });
+  state.dismissedProblems = state.dismissedProblems || new Set();
+  state.dismissedProblems.add(idx);
+  renderTableTab();
+  renderProblemsTab();
+  updateStatusInfo();
+  showToast(`已应用建议值: ${p.suggested_value}`, 'success', 1800);
+  diagLog(`应用建议值: 行${p.row_index + 1}「${p.field}」= ${p.suggested_value}`, 'ok');
+};
+
+async function applyAllSuggestions() {
+  const problems = state.currentProblems || [];
+  if (!state.currentData) return;
+  const rows = getRows(state.currentData);
+  if (!rows) { showToast('无表格数据', 'warning'); return; }
+
+  let applied = 0, skipped = 0;
+  problems.forEach((p, idx) => {
+    if (state.dismissedProblems?.has(idx)) return;
+    if (p.suggested_value === undefined || p.suggested_value === null) return;
+    if (p.row_index === undefined || p.row_index >= rows.length) { skipped++; return; }
+    const oldVal = getCellValue(rows[p.row_index], p.field);
+    setCellValue(rows[p.row_index], p.field, p.suggested_value);
+    state.modified = true;
+    state.corrections.push({
+      doc_id: state.currentDoc.id,
+      row_index: p.row_index,
+      page: rows[p.row_index].page || null,
+      field: p.field,
+      original_value: formatValue(oldVal),
+      corrected_value: String(p.suggested_value),
+      reason: `批量应用建议值（${p.type}）`,
+      verified_by: 'manual',
+      timestamp: nowIso(),
+    });
+    state.dismissedProblems = state.dismissedProblems || new Set();
+    state.dismissedProblems.add(idx);
+    applied++;
+  });
+
+  if (applied === 0) {
+    showToast('没有可应用的建议值', 'info');
+    return;
+  }
+
+  renderTableTab();
+  renderProblemsTab();
+  updateStatusInfo();
+  showToast(`已应用 ${applied} 条建议值${skipped > 0 ? `，跳过 ${skipped} 条无法定位` : ''}`, 'success', 3000);
+  diagLog(`批量应用建议值: ${applied} 条, 跳过 ${skipped} 条`, 'ok');
+
+  // 自动保存
+  if (state.foundationDirHandle) {
+    try {
+      await saveTableChanges();
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+}
+
+window.dismissProblem = function(idx) {
+  state.dismissedProblems = state.dismissedProblems || new Set();
+  state.dismissedProblems.add(idx);
+  renderProblemsTab();
+  showToast('已标记为已处理', 'info', 1500);
+};
+
+function collectProblems(doc, data) {
+  const problems = [];
+  const rows = getRows(data);
+  const isText = isTextRows(rows);
+
+  // 区域提取：从 row 中查找常见区域字段，或从文件名推断
+  const REGION_KEYS = ['area', 'region', 'section', 'zone', 'pile_zone', '区域', '施工区域', '分区'];
+  function extractRegion(row, idx) {
+    if (!row || typeof row !== 'object') return '未分区';
+    for (const k of REGION_KEYS) {
+      if (row[k] !== undefined && row[k] !== null && row[k] !== '') return String(row[k]);
+    }
+    // 从 pile_id / pile_no / 桩号 推断（如 Z419 / NB-X1 / MD-X2-03）
+    const pileKeys = ['pile_id', 'pile_no', 'pile_code', '桩号', '编号'];
+    for (const k of pileKeys) {
+      const v = row[k];
+      if (v && typeof v === 'string') {
+        const m = v.match(/^([A-Z]{1,3}[-_]?(?:X?\d+)?)/i);
+        if (m) return m[1].toUpperCase();
+      }
+    }
+    return '未分区';
+  }
+
+  // 质量告警
+  if (doc.quality_alerts > 0) {
+    // 尝试从 quality_result 获取详情
+    const qr = data.quality_result;
+    if (qr && qr.warnings) {
+      qr.warnings.forEach(w => {
+        const rowIdx = w.row !== undefined ? w.row - 1 : undefined;
+        const region = (rowIdx !== undefined && rows && rowIdx < rows.length) ? extractRegion(rows[rowIdx], rowIdx) : '未分区';
+        problems.push({
+          type: w.type || w.category || '质量告警',
+          message: w.message || w.detail || JSON.stringify(w),
+          risk: w.risk || 'verify',
+          source: w.row !== undefined ? `行 ${w.row}` : '全局',
+          region: region,
+          row_index: rowIdx,
+          field: w.field || w.column || null,
+          suggested_value: w.suggested_value ?? w.corrected_value ?? null,
+        });
+      });
+    }
+    if (problems.length === 0) {
+      // 没有详情，只有数量
+      problems.push({
+        type: '质量告警',
+        message: `${doc.quality_alerts} 条质量告警（详情见 quality_file: ${doc.quality_file || '无'}）`,
+        risk: 'verify',
+        source: doc.id,
+        region: '未分区',
+      });
+    }
+  }
+
+  // OCR 存疑
+  if (doc.confusion_suspects > 0) {
+    problems.push({
+      type: 'OCR 混淆',
+      message: `${doc.confusion_suspects} 条 OCR 混淆存疑（如 Z→2、4→0），详情见 confusion_file`,
+      risk: 'verify',
+      source: doc.id,
+      region: '未分区',
+    });
+  }
+
+  // 低置信度
+  if (rows && !isText) {
+    rows.forEach((row, idx) => {
+      Object.entries(row).forEach(([key, val]) => {
+        if (val !== null && typeof val === 'object' && 'confidence' in val) {
+          if (val.confidence < 0.6) {
+            problems.push({
+              type: 'OCR 低置信度',
+              message: `行 ${idx + 1} 「${key}」= "${val.value}" (置信度 ${Math.round(val.confidence * 100)}%)`,
+              risk: 'must-fix',
+              source: `行 ${idx + 1}`,
+              region: extractRegion(row, idx),
+              row_index: idx,
+              field: key,
+              suggested_value: val.value, // 默认建议值=当前识别值（人工确认后可应用）
+            });
+          } else if (val.confidence < 0.85) {
+            problems.push({
+              type: 'OCR 中等置信度',
+              message: `行 ${idx + 1} 「${key}」= "${val.value}" (置信度 ${Math.round(val.confidence * 100)}%)`,
+              risk: 'verify',
+              source: `行 ${idx + 1}`,
+              region: extractRegion(row, idx),
+              row_index: idx,
+              field: key,
+              suggested_value: val.value,
+            });
+          }
+        }
+      });
+    });
+  }
+
+  // OCR 状态问题
+  if (doc.ocr_status === 'needs_review') {
+    const reason = (doc.retry_log || []).slice(-1)[0]?.reason || '识别行数不足';
+    problems.push({
+      type: 'OCR 需复核',
+      message: reason,
+      risk: 'must-fix',
+      source: doc.id,
+      region: '全局',
+    });
+  }
+  if (doc.ocr_status === 'unsupported') {
+    problems.push({
+      type: 'OCR 不支持',
+      message: '文件格式不支持 OCR（如 XLSX）— 数据已通过 openpyxl 直接读取',
+      risk: 'suggest',
+      source: doc.id,
+      region: '全局',
+    });
+  }
+
+  // v8.10: 六类数据验证 issues（行级）→ 问题视图条目
+  if (rows && !isText) {
+    rows.forEach((row, idx) => {
+      const rowIssues = getRowIssues(row);
+      if (rowIssues.length === 0) return;
+      const region = extractRegion(row, idx);
+      rowIssues.forEach(m => {
+        const isError = /类型|格式|越界|缺失|断裂|错位/.test(m) || /error/i.test(m);
+        problems.push({
+          type: '数据验证',
+          message: `行 ${idx + 1}：${m}`,
+          risk: isError ? 'must-fix' : 'verify',
+          source: `行 ${idx + 1}`,
+          region: region,
+          row_index: idx,
+          field: null,
+          suggested_value: null,
+        });
+      });
+    });
+  }
+
+  return problems;
+}
+
+function riskLabel(risk) {
+  return { 'must-fix': '必须整改', 'verify': '需核实', 'suggest': '建议' }[risk] || '需核实';
+}
+
+window.jumpToProblem = function(idx) {
+  switchTab('table');
+  const p = (state.currentProblems || [])[idx];
+  if (!p) { showToast('已跳转至表格视图，请定位对应行', 'info', 2000); return; }
+  // v8.10: 精准滚动到 issues 行并高亮闪烁
+  const rowEl = findRowByProblem(p);
+  if (rowEl) {
+    rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    rowEl.classList.add('row-issue-flash');
+    setTimeout(() => rowEl.classList.remove('row-issue-flash'), 1600);
+    showToast(`已定位：${p.message}`, 'info', 2200);
+  } else {
+    showToast('已跳转至表格视图，请按行号定位', 'info', 2000);
+  }
+};
+
+/** v8.10: 根据问题条目定位表格行（按 row_index 或桩号） */
+function findRowByProblem(p) {
+  const rows = getRows(state.currentData);
+  const trs = document.querySelectorAll('#tabTable tbody tr[data-row-idx]');
+  if (!rows || !trs.length) return null;
+  if (typeof p.row_index === 'number' && p.row_index >= 0 && p.row_index < trs.length) {
+    return trs[p.row_index];
+  }
+  // 兜底：按行号文本匹配
+  if (p.source && /^行 (\d+)$/.test(p.source)) {
+    const lineNo = parseInt(RegExp.$1, 10) - 1;
+    if (lineNo >= 0 && lineNo < trs.length) return trs[lineNo];
+  }
+  return null;
+};
+
+// ========== 非文档说明 ==========
+
+function renderNondocNotice() {
+  const doc = state.currentDoc;
+  const notice = `<div class="nondoc-notice">
+    <div class="notice-graphic"></div>
+    <h3>OCR 中间产物</h3>
+    <p>「${escapeHtml(doc.original_file || doc.id)}」是 OCR 过程文件，无结构化数据可核对。<br>无需人工确认，已自动排除在核对范围外。</p>
+  </div>`;
+  $('tabTable').innerHTML = notice;
+  $('pdfBody').innerHTML = notice;
+  $('tabTextPreview').innerHTML = notice;
+  $('tabProblems').innerHTML = notice;
+}
+
+function renderLoadFailure(msg) {
+  const html = `<div class="empty-state">
+    <div class="empty-graphic" style="border-color:var(--c-red);"></div>
+    <h3 style="color:var(--c-red);">数据文件加载失败</h3>
+    <p>${escapeHtml(msg)}</p>
+    <p style="font-size:11px;">请检查 data_file 路径是否正确：<code>${escapeHtml(state.currentDoc?.data_file || '')}</code></p>
+  </div>`;
+  $('tabTable').innerHTML = html;
+  $('pdfBody').innerHTML = html;
+  $('tabTextPreview').innerHTML = html;
+  $('tabProblems').innerHTML = html;
+}
+
+function emptyStateHtml(title, desc) {
+  return `<div class="empty-state">
+    <div class="empty-graphic"></div>
+    <h3>${escapeHtml(title)}</h3>
+    <p>${desc}</p>
+  </div>`;
+}
+
+// ========== Tab 切换（仅右侧数据面板） ==========
+
+function switchTab(name) {
+  state.activeTab = name;
+  document.querySelectorAll('.data-panel .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === name);
+  });
+  document.querySelectorAll('.data-panel .tab-content').forEach(c => c.classList.remove('active'));
+  const target = $('tab' + name.charAt(0).toUpperCase() + name.slice(1));
+  if (target) target.classList.add('active');
+  // 切换到文本预览时刷新内容
+  if (name === 'textPreview') renderTextPreviewTab();
+}
+
+document.querySelectorAll('.data-panel .tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ========== PDF 面板翻页 + 分隔条拖拽 + Tab 切换 ==========
+
+// PDF 翻页按钮
+$('prevPdfPage').addEventListener('click', () => changePdfPage(-1));
+$('nextPdfPage').addEventListener('click', () => changePdfPage(1));
+$('jumpPdfPage').addEventListener('change', (e) => jumpToPdfPage(e.target.value));
+
+// 分隔条拖拽
+(function initSplitter() {
+  const splitter = $('splitter');
+  const pdfPanel = $('pdfPanel');
+  const content = document.querySelector('.content-panel');
+  let dragging = false;
+
+  splitter.addEventListener('mousedown', (e) => {
+    dragging = true;
+    splitter.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = content.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = (x / rect.width) * 100;
+    const clamped = Math.max(15, Math.min(70, pct));
+    pdfPanel.style.width = clamped + '%';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging = false;
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+
+  splitter.addEventListener('dblclick', () => {
+    pdfPanel.style.width = '40%';
+  });
+})();
+
+// PDF 面板折叠/展开
+$('btnCollapsePdf').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = $('pdfPanel');
+  const splitter = $('splitter');
+  panel.classList.toggle('collapsed');
+  splitter.classList.toggle('hidden');
+  const btn = $('btnCollapsePdf');
+  btn.textContent = panel.classList.contains('collapsed') ? '▶ 展开' : '◀ 折叠';
+});
+// 点击折叠状态的面板展开
+$('pdfPanel').addEventListener('click', (e) => {
+  const panel = $('pdfPanel');
+  if (panel.classList.contains('collapsed')) {
+    panel.classList.remove('collapsed');
+    $('splitter').classList.remove('hidden');
+    $('btnCollapsePdf').textContent = '◀ 折叠';
+  }
+});
+
+// 文档树折叠/展开
+$('btnCollapseTree').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = $('treePanel');
+  panel.classList.toggle('collapsed');
+  const btn = $('btnCollapseTree');
+  btn.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
+});
+$('treePanel').addEventListener('click', (e) => {
+  const panel = $('treePanel');
+  if (panel.classList.contains('collapsed')) {
+    panel.classList.remove('collapsed');
+    $('btnCollapseTree').textContent = '◀';
+  }
+});
+
+// ========== 确认安全闸 ==========
+
+// ========== v7.2 C1: 文档属性面板（人工分类确认闸门） ==========
+
+const PROFESSION_OPTIONS = ['01_场道工程', '02_空管工程', '03_助航设施', '04_弱电系统', '05_供油工程', '通用资料'];
+const CLASS_SOURCE_LABEL = {
+  'keyword': '关键词', 'terms': '术语表', 'rules': '规则库', 'field_alias': '字段别名',
+  'generic_keywords': '通用词', 'reference_keywords': '依据词', 'weak': '弱命中',
+  'weak_multi': '多弱命中', 'multi_hit': '多专业', 'llm': 'LLM语义', 'default': '默认',
+  'human': '人工', 'candidate': '候选词条', 'excluded': '排除',
+};
+
+function renderPropsTab() {
+  const tab = $('tabProps');
+  if (!state.currentDoc || isNonDoc(state.currentDoc)) {
+    tab.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>未加载文档</h3><p>选择文档后在此查看 / 修改专业分类（v7.2 C1 人工闸门）。</p></div>`;
+    return;
+  }
+  const doc = state.currentDoc;
+  const isReference = doc.doc_role === 'reference';
+  const confirmed = doc.human_confirmed === true;
+  const src = CLASS_SOURCE_LABEL[doc.classification_source] || doc.classification_source || '—';
+  const conf = (doc.classification_confidence !== undefined && doc.classification_confidence !== null)
+    ? (doc.classification_confidence * 100).toFixed(0) + '%' : '—';
+  const canSave = state.foundationDirHandle !== null;
+
+  let html = '<div class="props-view">';
+  html += `<div class="props-card">
+    <h3>文档分类属性</h3>
+    <div class="props-meta">
+      <div class="props-row"><span class="props-label">文件</span><span class="props-value">${escapeHtml(doc.original_file || doc.id)}</span></div>
+      <div class="props-row"><span class="props-label">分类来源</span><span class="props-value">${escapeHtml(src)} · 置信度 ${escapeHtml(conf)}</span></div>
+      <div class="props-row"><span class="props-label">文档角色</span><span class="props-value">${isReference ? '<span class="badge badge-info">依据文件</span>（无需分类确认）' : '<span class="badge badge-pending">待审核</span>'}</span></div>
+      <div class="props-row"><span class="props-label">确认状态</span>
+        <span class="props-value">${confirmed
+          ? '<span class="badge badge-verified">已人工确认</span>'
+          : '<span class="badge badge-pending-class" title="AI 自动分类，请人工核对">AI分类 · 待确认</span>'}</span>
+      </div>
+    </div>
+    ${isReference ? '' : `
+    <div class="props-form">
+      <label class="props-field"><span>专业</span>
+        <select id="propProfessional">
+          ${(() => {
+            const opts = PROFESSION_OPTIONS.map(p => `<option value="${p}" ${doc.professional === p ? 'selected' : ''}>${p}</option>`).join('');
+            // 若当前专业不在标准列表中，追加一个选中项防止静默丢失
+            if (doc.professional && !PROFESSION_OPTIONS.includes(doc.professional)) {
+              return `<option value="${escapeHtml(doc.professional)}" selected>${escapeHtml(doc.professional)}</option>` + opts;
+            }
+            return opts;
+          })()}
+        </select>
+      </label>
+      <label class="props-field"><span>子类</span><input id="propSubcategory" value="${escapeHtml(doc.subcategory || '其他')}" placeholder="子分类"></label>
+      <label class="props-field"><span>资料类型</span><input id="propDocType" value="${escapeHtml(doc.doc_type || '其他资料')}" placeholder="doc_type"></label>
+    </div>
+    <div class="props-actions">
+      <button class="btn btn-primary" id="btnConfirmClass" ${canSave ? '' : 'disabled'}>${confirmed ? '已确认 · 可修改后重新确认' : '确认分类'}</button>
+      <span class="table-meta" style="margin-left:8px;">${canSave ? '确认后写回 index.json 并解除 C-01 闸门' : '只读模式（拖拽）无法写回'}</span>
+    </div>`}
+  </div>`;
+  html += '</div>';
+  tab.innerHTML = html;
+
+  const btn = $('btnConfirmClass');
+  if (btn) btn.addEventListener('click', confirmDocClassification);
+}
+
+window.confirmDocClassification = async function() {
+  const doc = state.currentDoc;
+  if (!doc || !state.index || !state.foundationDirHandle) return;
+  const newProf = $('propProfessional').value;
+  const newSub = $('propSubcategory').value.trim() || '其他';
+  const newType = $('propDocType').value.trim() || '其他资料';
+  showModal('确认分类', `将文档「${doc.original_file || doc.id}」分类确定为：\n\n专业: ${newProf}\n子类: ${newSub}\n类型: ${newType}\n\n并将 human_confirmed 置为 true（解除 C-01 闸门），同时写入自成长候选词条（若分类与 AI 原判不同）。`, async () => {
+    const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
+    if (docIdx < 0) return;
+    const oldProf = doc.professional;
+    const oldSource = doc.classification_source;  // 在修改前捕获，否则已被覆盖为 'human'
+    state.index.documents[docIdx].professional = newProf;
+    state.index.documents[docIdx].subcategory = newSub;
+    state.index.documents[docIdx].doc_type = newType;
+    state.index.documents[docIdx].human_confirmed = true;
+    state.index.documents[docIdx].classification_source = 'human';
+    state.index.documents[docIdx].classification_confidence = 1.0;
+    state.index.documents[docIdx].last_updated = nowIso();
+    // 分类与 AI 原判不同 → 自动生成自成长候选词条（写回 index，由 import_corrections 或后端脚本回流）
+    if (oldProf && oldProf !== newProf && oldSource !== 'human') {
+      state.index.documents[docIdx].self_growth_candidate = {
+        keyword_pattern: (doc.original_file || '').replace(/\.[^.]+$/, ''),
+        corrected_professional: newProf,
+        corrected_doc_type: newType,
+        status: 'candidate',
+      };
+    } else {
+      delete state.index.documents[docIdx].self_growth_candidate;
+    }
+    // 更新 C-01 闸门状态
+    const docs = state.index.documents || [];
+    state.index.file_classification_confirmed = docs.every(d => d.doc_role === 'reference' || d.human_confirmed === true);
+    state.index.classification_pending_count = docs.filter(d => d.doc_role !== 'reference' && d.human_confirmed !== true).length;
+    state.index.updated_at = nowIso();
+    try {
+      await writeJson('index.json', state.index);
+      diagLog('index.json 已更新: human_confirmed=true, 分类已确认', 'ok');
+      showToast('分类已确认: ' + (doc.original_file || doc.id), 'success');
+    } catch (e) {
+      showToast('写回失败: ' + e.message, 'error', 5000);
+      diagLog('分类确认写回失败: ' + e.message, 'error');
+    }
+    renderDocTree();
+    renderPropsTab();
+    updateConfirmGate();
+  });
+};
+
+// ========== v9.3: 表格式样定义（前缀区固定值 + 数字区列样式） ==========
+// 前缀区：表格上方固定内容，用于定位表体，不确定样式。
+// 数字区：从数据区起每列定义格式样式，多格式用 / 或 ，分隔，可写「样式一/样式二」，后跟备注供 AI 判断。
+
+function ensureTableStyle(data) {
+  if (!data.table_style) {
+    const rawHeaders = (data && data.raw_headers) || [];
+    data.table_style = {
+      prefix_rows: [{ text: '' }],
+      number_cols: rawHeaders.length
+        ? rawHeaders.map(h => ({ name: h || '', styles: '', remark: '' }))
+        : [{ name: '', styles: '', remark: '' }],
+    };
+  }
+  return data.table_style;
+}
+
+function renderTableStyleTab() {
+  const tab = $('tabTableStyle');
+  if (!state.currentDoc || isNonDoc(state.currentDoc)) {
+    tab.innerHTML = `<div class="empty-state"><div class="empty-graphic"></div><h3>未加载文档</h3><p>选择文档后在此定义前缀区固定值与数字区每列格式样式。</p></div>`;
+    return;
+  }
+  const data = state.currentData;
+  const style = ensureTableStyle(data);
+  const canSave = state.foundationDirHandle !== null;
+
+  let html = '<div class="ts-view">';
+  html += `<input type="file" id="tsImportInput" accept="application/json,.json" style="display:none;">`;
+  html += `<div class="ts-toolbar">
+    <span class="ts-toolbar-title">表格式样</span>
+    <span class="table-meta">先跑 import_template.py 生成 JSON，再点「导入 JSON」加载</span>
+    <span class="ts-toolbar-spacer"></span>
+    <button class="btn btn-outline" id="tsImport">导入 JSON</button>
+    <button class="btn btn-primary" id="tsSave" ${canSave ? '' : 'disabled'}>保存样式定义</button>
+  </div>`;
+
+  // ---- 前缀区 ----
+  html += `<div class="ts-zone ts-zone-prefix">
+    <div class="ts-zone-head">
+      <span class="ts-zone-title">前缀区</span>
+      <span class="ts-zone-desc">表格上方固定内容，用于定位表体，不确定样式</span>
+      <button class="btn" id="tsAddPrefix">＋ 添加前缀行</button>
+    </div>
+    <div class="table-wrap ts-wrap"><table class="data-table ts-table ts-table-prefix"><thead><tr>
+      <th style="width:44px;">行</th><th>固定内容（可直接改字）</th><th style="width:120px;">操作</th>
+    </tr></thead><tbody>`;
+  style.prefix_rows.forEach((row, i) => {
+    html += `<tr>
+      <td class="row-no">${i + 1}</td>
+      <td><span class="ts-prefix-text editable" contenteditable="true" spellcheck="false"
+        data-prefix="${i}">${escapeHtml(row.text || '')}</span></td>
+      <td class="ts-ops">
+        <button class="ts-op" data-prefix-up="${i}" title="上移">↑</button>
+        <button class="ts-op" data-prefix-down="${i}" title="下移">↓</button>
+        <button class="ts-op ts-op-del" data-prefix-del="${i}" title="删除行">×</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table></div></div>';
+
+  // ---- 数字区 ----
+  html += `<div class="ts-zone ts-zone-num">
+    <div class="ts-zone-head">
+      <span class="ts-zone-title">数字区</span>
+      <span class="ts-zone-desc">每列填格式样式，多格式用 / 或 ，分隔，可写「样式一/样式二」</span>
+      <button class="btn" id="tsAddCol">＋ 添加数字列</button>
+    </div>
+    <div class="table-wrap ts-wrap"><table class="data-table ts-table ts-table-num"><thead><tr>
+      <th style="width:44px;">列</th>
+      <th style="width:150px;">列名（可直接改字）</th>
+      <th>格式样式</th>
+      <th style="width:200px;">备注</th>
+      <th style="width:120px;">操作</th>
+    </tr></thead><tbody>`;
+  style.number_cols.forEach((col, i) => {
+    html += `<tr>
+      <td class="row-no">${i + 1}</td>
+      <td><span class="ts-col-name editable" contenteditable="true" spellcheck="false"
+        data-col-name="${i}">${escapeHtml(col.name || '')}</span></td>
+      <td><input class="ts-styles" data-col-styles="${i}" value="${escapeHtml(col.styles || '')}"
+        placeholder="如 Z###/Z#### 或 样式一/样式二"></td>
+      <td><input class="ts-remark" data-col-remark="${i}" value="${escapeHtml(col.remark || '')}"
+        placeholder="AI 判断参考，如：年份须为2026"></td>
+      <td class="ts-ops">
+        <button class="ts-op" data-col-up="${i}" title="上移">↑</button>
+        <button class="ts-op" data-col-down="${i}" title="下移">↓</button>
+        <button class="ts-op ts-op-del" data-col-del="${i}" title="删除列">×</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table></div></div>';
+
+  html += '</div>';
+  tab.innerHTML = html;
+
+  bindTsEdits(style);
+  bindTsListeners(style);
+}
+
+function moveArr(arr, i, d) {
+  const j = i + d;
+  if (j < 0 || j >= arr.length) return;
+  const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+}
+
+function collectTsStyle(style) {
+  document.querySelectorAll('[data-prefix]').forEach(el => {
+    const i = Number(el.getAttribute('data-prefix'));
+    if (style.prefix_rows[i]) style.prefix_rows[i].text = el.innerText;
+  });
+  document.querySelectorAll('[data-col-name]').forEach(el => {
+    const i = Number(el.getAttribute('data-col-name'));
+    if (style.number_cols[i]) style.number_cols[i].name = el.innerText.trim();
+  });
+  document.querySelectorAll('[data-col-styles]').forEach(el => {
+    const i = Number(el.getAttribute('data-col-styles'));
+    if (style.number_cols[i]) style.number_cols[i].styles = el.value;
+  });
+  document.querySelectorAll('[data-col-remark]').forEach(el => {
+    const i = Number(el.getAttribute('data-col-remark'));
+    if (style.number_cols[i]) style.number_cols[i].remark = el.value;
+  });
+}
+
+function bindTsEdits(style) {
+  document.querySelectorAll('.ts-table [contenteditable]').forEach(el => {
+    el.addEventListener('blur', () => collectTsStyle(style));
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    });
+  });
+}
+
+function bindTsListeners(style) {
+  const addPrefix = $('tsAddPrefix');
+  if (addPrefix) addPrefix.addEventListener('click', () => {
+    collectTsStyle(style);
+    style.prefix_rows.push({ text: '' });
+    renderTableStyleTab();
+  });
+  const addCol = $('tsAddCol');
+  if (addCol) addCol.addEventListener('click', () => {
+    collectTsStyle(style);
+    style.number_cols.push({ name: '新列', styles: '', remark: '' });
+    renderTableStyleTab();
+  });
+  document.querySelectorAll('[data-prefix-up]').forEach(b => b.addEventListener('click', () => {
+    collectTsStyle(style); const i = Number(b.getAttribute('data-prefix-up')); moveArr(style.prefix_rows, i, -1); renderTableStyleTab(); }));
+  document.querySelectorAll('[data-prefix-down]').forEach(b => b.addEventListener('click', () => {
+    collectTsStyle(style); const i = Number(b.getAttribute('data-prefix-down')); moveArr(style.prefix_rows, i, 1); renderTableStyleTab(); }));
+  document.querySelectorAll('[data-prefix-del]').forEach(b => b.addEventListener('click', () => {
+    collectTsStyle(style); const i = Number(b.getAttribute('data-prefix-del')); style.prefix_rows.splice(i, 1); renderTableStyleTab(); }));
+  document.querySelectorAll('[data-col-up]').forEach(b => b.addEventListener('click', () => {
+    collectTsStyle(style); const i = Number(b.getAttribute('data-col-up')); moveArr(style.number_cols, i, -1); renderTableStyleTab(); }));
+  document.querySelectorAll('[data-col-down]').forEach(b => b.addEventListener('click', () => {
+    collectTsStyle(style); const i = Number(b.getAttribute('data-col-down')); moveArr(style.number_cols, i, 1); renderTableStyleTab(); }));
+  document.querySelectorAll('[data-col-del]').forEach(b => b.addEventListener('click', () => {
+    collectTsStyle(style); const i = Number(b.getAttribute('data-col-del')); style.number_cols.splice(i, 1); renderTableStyleTab(); }));
+  const save = $('tsSave');
+  if (save) save.addEventListener('click', () => saveTableStyle(style));
+  const imp = $('tsImport');
+  if (imp) imp.addEventListener('click', () => openTsImport(style));
+}
+
+window.openTsImport = function(style) {
+  const inp = $('tsImportInput');
+  if (!inp) return;
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const obj = JSON.parse(reader.result);
+        const st = obj.table_style || obj;
+        if (!st || !Array.isArray(st.prefix_rows) || !Array.isArray(st.number_cols)) {
+          throw new Error('不是有效的表格式样 JSON（缺 prefix_rows / number_cols）');
+        }
+        collectTsStyle(style);
+        state.currentData.table_style = st;
+        renderTableStyleTab();
+        showToast(`已导入表格式样：前缀 ${st.prefix_rows.length} 行 / 数字 ${st.number_cols.length} 列`, 'success', 3200);
+      } catch (e) {
+        showToast('导入失败: ' + e.message, 'error', 5000);
+        diagLog('表格式样导入失败: ' + e.message, 'error');
+      }
+    };
+    reader.readAsText(f);
+    inp.value = '';
+  };
+  inp.click();
+};
+
+window.saveTableStyle = async function(style) {
+  const doc = state.currentDoc;
+  const data = state.currentData;
+  if (!doc || !data || !state.foundationDirHandle) return;
+  collectTsStyle(style);
+  data.table_style = style;
+  try {
+    await writeJson(doc.data_file, data);
+    const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
+    if (docIdx >= 0) {
+      state.index.documents[docIdx].table_style = style;
+      state.index.documents[docIdx].last_updated = nowIso();
+    }
+    state.index.updated_at = nowIso();
+    await writeJson('index.json', state.index);
+    diagLog(`表格式样已保存: 前缀${style.prefix_rows.length}行 / 数字${style.number_cols.length}列`, 'ok');
+    showToast('表格式样已保存', 'success');
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error', 5000);
+    diagLog('表格式样保存失败: ' + e.message, 'error');
+  }
+};
+
+function updateConfirmGate() {
+  const doc = state.currentDoc;
+  const btn = $('btnConfirmDoc');
+  const btnAll = $('btnConfirmAll');
+
+  if (!doc) {
+    btn.disabled = true;
+    btn.textContent = '确认此文档数据无误';
+    btnAll.disabled = true;
+    return;
+  }
+
+  // 非文档
+  if (isNonDoc(doc)) {
+    btn.disabled = true;
+    btn.textContent = '非文档，无需确认';
+    return;
+  }
+
+  // 无结构化数据
+  const rows = getRows(state.currentData);
+  if (!rows || rows.length === 0) {
+    btn.disabled = true;
+    btn.textContent = '无结构化数据，无法确认';
+    return;
+  }
+
+  // 已核对
+  if (doc.human_verified === true) {
+    if (state.modified) {
+      // 已确认文档有未保存修改 → 按钮可用，提示重新确认
+      btn.disabled = false;
+      btn.textContent = '已修改·需重新确认';
+    } else {
+      btn.disabled = true;
+      btn.textContent = '已确认';
+    }
+    const hasUnverified = (state.index?.documents || []).some(d => !isNonDoc(d) && d.human_verified !== true);
+    btnAll.disabled = !hasUnverified;
+    return;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '确认此文档数据无误';
+
+  // v8.10: 存在未处理的数据验证 issues → 阻止整篇确认通过（除非已修正/已忽略）
+  const unresolvedIssues = countUnverifiedIssues();
+  if (unresolvedIssues > 0) {
+    btn.disabled = true;
+    btn.title = `仍有 ${unresolvedIssues} 条数据验证问题未处理，请先修正或到问题视图确认`;
+    btn.textContent = `请先处理 ${unresolvedIssues} 条数据验证问题`;
+  }
+
+  // 全选确认：有未核对文档时可用
+  const hasUnverified = (state.index?.documents || []).some(d => !isNonDoc(d) && d.human_verified !== true);
+  btnAll.disabled = !hasUnverified;
+}
+
+/** v8.10: 统计当前文档未处理的数据验证 issues 行数（已忽略的不计） */
+function countUnverifiedIssues() {
+  const rows = getRows(state.currentData);
+  if (!rows) return 0;
+  let count = 0;
+  rows.forEach((row, idx) => {
+    const issues = getRowIssues(row);
+    if (issues.length === 0) return;
+    // 已忽略的问题跳过
+    if (state.dismissedProblems) {
+      const dismissed = (state.currentProblems || []).some((p, i) =>
+        state.dismissedProblems.has(i) && p.row_index === idx && p.type === '数据验证');
+      if (dismissed) return;
+    }
+    count += 1;
+  });
+  return count;
+}
+
+// ========== 确认文档 ==========
+
+async function confirmCurrentDoc() {
+  const doc = state.currentDoc;
+  if (!doc || !state.index) return;
+  if (isNonDoc(doc) || !getRows(state.currentData)) return;
+
+  showModal('确认文档', `确认文档「${doc.original_file || doc.id}」数据核对无误？\n\n将执行：\n1. 标记 human_verified = true\n2. 写回 index.json\n3. 自动跳转下一个未核对文档`, async () => {
+    // 如有未保存修改，先保存
+    if (state.modified) {
+      try { await saveTableChanges(); } catch (e) { console.warn(e); }
+    }
+
+    // 导出修正文件
+    if (state.corrections.length > 0) {
+      try {
+        const correctedData = JSON.parse(JSON.stringify(state.currentData));
+        correctedData.corrections_applied = state.corrections;
+        const correctedPath = state.currentDoc.data_file.replace(/\.json$/, '_corrected.json');
+        await writeJson(correctedPath, correctedData);
+        diagLog(`修正数据已导出: ${correctedPath}`, 'ok');
+      } catch (e) {
+        diagLog('导出修正数据失败: ' + e.message, 'warn');
+      }
+    }
+
+    // 更新 index
+    const docIdx = state.index.documents.findIndex(d => d.id === doc.id);
+    if (docIdx >= 0) {
+      state.index.documents[docIdx].human_verified = true;
+      state.index.documents[docIdx].last_updated = nowIso();
+      if (state.corrections.length > 0) {
+        state.index.documents[docIdx].corrected_file = state.currentDoc.data_file.replace(/\.json$/, '_corrected.json');
+      }
+    }
+    state.index.updated_at = nowIso();
+    if (state.index.stage === 'foundation_built') state.index.stage = 'human_review';
+
+    // 写回 index.json
+    try {
+      await writeJson('index.json', state.index);
+      diagLog('index.json 已更新: human_verified=true', 'ok');
+      showToast('已确认: ' + (doc.original_file || doc.id), 'success');
+    } catch (e) {
+      if (e.message.includes('拖拽模式')) {
+        showToast('拖拽模式无法写回，仅更新内存', 'warning', 4000);
+        diagLog('拖拽模式: index.json 仅内存更新，未写回磁盘', 'warn');
+      } else {
+        showToast('写回失败: ' + e.message, 'error', 5000);
+        diagLog('index.json 写回失败: ' + e.message, 'error');
+      }
+    }
+
+    renderDocTree();
+    updateStatusInfo();
+    updateConfirmGate();
+
+    // 跳转下一个
+    const next = state.index.documents.find(d => !isNonDoc(d) && d.human_verified !== true);
+    if (next) {
+      setTimeout(() => selectDocument(next.id), 300);
+    } else {
+      showToast('全部文档已核对完成，可进入正式审核阶段', 'success', 4000);
+    }
+  });
+}
+
+async function confirmAllDocs() {
+  if (!state.index || !state.index.documents) return;
+  const unverified = state.index.documents.filter(d => !isNonDoc(d) && d.human_verified !== true);
+  if (unverified.length === 0) { showToast('所有文档已核对完成', 'info'); return; }
+
+  const nondocCount = state.index.documents.filter(d => isNonDoc(d)).length;
+
+  showModal('全部确认',
+    `确认将 ${unverified.length} 份未核对文档标记为已核对？\n\n` +
+    `将确认: ${unverified.length} 份文档\n` +
+    `将跳过: ${nondocCount} 份非文档/调试产物\n\n` +
+    `此操作仅适用于已全部人工核对完毕的情况。`,
+    async () => {
+      const now = nowIso();
+      state.index.documents.forEach(d => {
+        if (!isNonDoc(d) && d.human_verified !== true) {
+          d.human_verified = true;
+          d.last_updated = now;
+        }
+      });
+      state.index.updated_at = now;
+      if (state.index.stage === 'foundation_built') state.index.stage = 'human_review';
+
+      try {
+        await writeJson('index.json', state.index);
+        diagLog(`全选确认: ${unverified.length} 份文档已标记, index.json 已写回`, 'ok');
+        showToast(`已确认全部 ${unverified.length} 份文档`, 'success');
+      } catch (e) {
+        showToast('写回失败: ' + e.message, 'error', 5000);
+        diagLog('全选确认写回失败: ' + e.message, 'error');
+      }
+      renderDocTree();
+      updateStatusInfo();
+      updateConfirmGate();
+    });
+}
+
+// ========== Modal ==========
+
+function showModal(title, body, onConfirm) {
+  $('modalTitle').textContent = title;
+  $('modalBody').textContent = body;
+  $('modalOverlay').classList.add('active');
+  const confirmBtn = $('modalConfirm');
+  const cancelBtn = $('modalCancel');
+  const newConfirm = confirmBtn.cloneNode(true);
+  confirmBtn.replaceWith(newConfirm);
+  newConfirm.addEventListener('click', async () => {
+    $('modalOverlay').classList.remove('active');
+    await onConfirm();
+  });
+  cancelBtn.onclick = () => $('modalOverlay').classList.remove('active');
+}
+
+// ========== 状态栏 ==========
+
+function updateStatusInfo() {
+  const doc = state.currentDoc;
+  if (!doc || !state.index) {
+    $('statusInfo').innerHTML = '未加载数据';
+    $('statusProgress').style.display = 'none';
+    return;
+  }
+
+  const allDocs = state.index.documents || [];
+  const validDocs = allDocs.filter(d => !isNonDoc(d));
+  const verified = validDocs.filter(d => d.human_verified === true).length;
+  const total = validDocs.length;
+
+  $('statusInfo').innerHTML = `${escapeHtml(doc.id)} · ${escapeHtml(doc.original_file || doc.doc_type)}` +
+    (state.modified ? ' <span class="mod-flag">· 有未保存修改</span>' : '');
+
+  $('statusProgress').style.display = total > 0 ? '' : 'none';
+  $('verifiedCount').textContent = verified;
+  $('totalCount').textContent = total;
+  $('progressFill').style.width = total > 0 ? (verified / total * 100) + '%' : '0%';
+
+  // 更新 table badge
+  const rows = getRows(state.currentData);
+  if (rows && rows.length > 0) {
+    $('badgeTable').style.display = '';
+    $('badgeTable').textContent = rows.length;
+  } else {
+    $('badgeTable').style.display = 'none';
+  }
+}
+
+// ========== 搜索/过滤 ==========
+
+$('treeSearch').addEventListener('input', renderDocTree);
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filterMode = btn.dataset.filter;
+    renderDocTree();
+  });
+});
+
+// ========== 事件绑定 ==========
+
+$('btnLoadFolder').addEventListener('click', pickProjectFolder);
+$('btnConfirmDoc').addEventListener('click', confirmCurrentDoc);
+$('btnConfirmAll').addEventListener('click', confirmAllDocs);
+
+// Ctrl+Enter 确认
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    if (!$('btnConfirmDoc').disabled) confirmCurrentDoc();
+  }
+});
+
+// 初始化诊断
+diagLog('数据核对编辑器已启动', 'info');
+
+// ========== 自动加载 index.json ==========
+// 页面位于 数据底座/ 目录下时，自动尝试加载同级 index.json
+(async function autoLoad() {
+  // 1. 尝试 fetch 自动加载（本地 HTTP 服务器模式下有效）
+  try {
+    const resp = await fetch('./index.json', { cache: 'no-store' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.project_name) {
+        diagLog('自动加载 index.json 成功（HTTP 模式）', 'ok');
+        state.index = data;
+        state.loadMode = 'fetch';
+        $('projectBadge').textContent = data.project_name || '项目';
+        renderDocTree();
+        updateStatusInfo();
+        showToast('已自动加载: ' + (data.project_name || '项目'), 'success');
+        return;
+      }
+    }
+  } catch (e) {
+    // file:// 协议下 fetch 被 CORS 拦截属于正常现象
+    if (location.protocol !== 'file:') {
+      diagLog('fetch 加载失败: ' + e.message, 'warning');
+    }
+  }
+
+  // 2. file:// 卺议下，提示用户点击按钮加载
+  if (location.protocol === 'file:') {
+    diagLog('当前为本地文件模式，请点击顶部「加载数据底座」按钮', 'info');
+    // 检查是否有上次加载记录
+    const lastName = localStorage.getItem('last_loaded_project');
+    if (lastName) {
+      diagLog('上次加载的项目: ' + lastName + '，点击按钮重新加载', 'info');
+    }
+    showToast('请点击顶部「加载数据底座」按钮选择数据底座目录', 'info', 5000);
+  } else {
+    diagLog('未找到 index.json，请点击顶部按钮选择文件夹', 'info');
+  }
+})();
+
+</script>
+</body>
+</html>
