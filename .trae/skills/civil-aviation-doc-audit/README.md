@@ -1,9 +1,13 @@
 # 民航建设施工资料合规审核大师 (civil-aviation-doc-audit)
 
-> 民航工程施工资料合规性审核 Skill v9.7.1
+> 民航工程施工资料合规性审核 Skill v10.5
 > 适用：MH/T 5078.1~5078.6-2024 系列 + CCAR-165-R1 + MH 5031-2025 等民航规范
 > 五大专业全覆盖：场道 / 空管 / 助航 / 弱电 / 供油
 
+> v10.5 核心特性：**无规则覆盖运行时闸门——声明式触发的静默盲区显形**。规则引擎只对 `trigger_when.doc_type` 声明过的类型干活，从未声明的类型（如施工日志）会静默跳过、无人知晓。v10.5 新增 `build_unguarded_doc_types`：审核运行时自动识别本批受审文档中无任何 active 规则覆盖的 doc_type 写入 `summary.unguarded_doc_types`（SINGLE_DOC/CROSS_DOC/CROSS_UNIT 三类 scope 综合判定任一命中即视为有覆盖；仅统计 `doc_role='audited'` 受审文档，reference 审核参照不进提醒防噪音）；报告新增「八、无规则覆盖提醒」节（非空才渲染，警示框+明细表）；SKILL.md 编码 AI 强制提醒协议（出报告前必检查该字段，非空须向用户显式说明）。修复 IR-010/IR-011/LG-905 三条零交集规则（触发词「施工记录」与生产「场道施工记录」失配导致静默失效），补触发词后扫描零交集 3→0。新增回归套件 test_unguarded_doc_types.py（8 条）注册进 run_all_tests.py，全量 18/18 全绿。
+> v10.4 核心特性：**规则→审核→报告全链路贯通 + 报告三层结构重构**。修复 LG-110 触发词与生产 doc_type 失配导致的规则静默失效；审核期基于 corrected 数据重算 S-04（消除陈旧结果复报）；规则执行统计（matched_docs/hits）进报告，0 匹配规则标 ⚠ 显形；报告生成拆分 `report_builder.py`（build_model/render_html 建模渲染分离），三层结构（结论层/问题层/行动层）+ 问题清单新增「整改建议」列；页脚版本号从 SKILL.md frontmatter 单一真相源动态读取；verify_report 新增合格证台账对账闸门；新增规则覆盖扫描工具 `scan_rule_coverage.py`；验证脚本版本识别去硬编码行号。新增回归套件 test_rule_to_report_chain.py（10 条）+ test_report_builder.py（6 条）注册进 run_all_tests.py。
+> v10.3 核心特性：**材料/合格证数据链沉淀（验收 S-01~S-04 专项）**。材料类文档（合格证/质量证明书/进场检验）信号路由强制排除桩基解析，杜绝"材料文档含碎石桩字样被桩内容感知劫持"；OCR 仅含空框结果判 `needs_review` 而非 `completed`（E1）；材料类 `schema_status="material"` 跳过桩基领域检查（E3）；新增 `extract_certificates.py` 从检验记录/合格证行提取结构化记录并落库 `ledgers.certificates`（A2/A4）；新增 LG-110（S-04 追溯链检查）+ 底座构建期 `certificates_linkage` 落盘（A5）；规则注册表与校验器对齐（仅收 L1/L2/L3 子目录）。新增回归套件 test_material_certificate_chain.py（13 条），run_all_tests 15/15 全绿。
+> v10.0 核心特性：**资料员工作台（Web Workbench）——九页合一，一次加载、模块共享**。合并原来 9 个零散的审核 HTML 入口为单一工作台外壳，hash 路由 + 动态 import 按需加载；一次性加载 index.json，_index 内存共享避免跨页重复读取；IndexedDB 存 FileSystemDirectoryHandle 实现"一键恢复上次项目"；规则管理内嵌进工作台「规则与反馈」模块，替代旧 rule-manager 单独入口；一键启动脚本同时拉起规则 API + 前端服务 + 浏览器。
 > v9.7.1 核心特性：**视觉复核任务行级/表级分流（独立复核 R-1/R-2 高危处置）**。带桩号的行级数值存疑项（实长/电流/充盈系数等各行本不相同）生成 `scope=row` 任务、merge 只写该桩号所在行，不再表级化整表覆写污染同行正确值；施工部位/施工日期等整表同值字段走 `scope=table`；「整行」核对项（表头不可靠）不进视觉复核、留给 Chat-Verify；任务 field_label 统一中文显示。
 > v9.7 核心特性：**AI 视觉复核链贯通（H-8 隐患销号）+ 视觉复核协议平台无关化**。扫描转化电子文档（WPS 扫描件转 docx）建底座时自动产出视觉复核任务（verify_output/：任务清单+裁图），宿主 AI 读图回写高/中置信度修正值，OCR 乱码项（如 `2026、4.22`、`砰石松三飞`）重新有 AI 自证通道；任务清单（JSON）+ 裁图（PNG）+ 结果（JSON）三文件协议不绑定任何平台，TRAE / WorkBuddy / CodeBuddy 等任何具备读图能力的智能体均可执行，无视觉能力平台自动降级 Chat-Verify 人工核对；merge 落库按 task_id 回查定位、中文字段自动映射英文行键、双份 rows 同步写；vision_providers 新增腾讯混元。
 > v9.5 核心特性：**审核流水线步骤 1~7 线性编号 + 前置信息表迁移共享基础设施 + 推断值生成规则 + 闸门用户动作说明 + 规则管理步骤化工作流**。审核流水线统一为步骤 1~7 线性编号，每次 AI 回复顶部展示进度条，用户一眼可知当前走到哪一步；前置信息确认（6 项）表移至共享基础设施，审核流水线与规则管理场景共用；新增推断值生成规则，明确定义数值型/文本型/签名类的推断逻辑、置信度标定和审核使用规则；强制闸门表新增「用户动作」和「AI 恢复条件」两列，人工确认节点清晰可见；规则管理场景改为步骤化工作流（第一步规则浏览→第二步规则操作→第三步反馈闭环🚧→第四步反思触发🚧），步进步度条直观展示。
@@ -15,9 +19,9 @@
 
 ```
 civil-aviation-doc-audit/
-├── SKILL.md                          # 主 Skill 文件（必读，v9.7.1，按场景路由组织，步骤 1~7 线性编号）
-├── README.md                         # 本文件（v9.7.1）
-├── PROJECT_SPEC.md                   # 项目规格说明（v9.7.1）
+├── SKILL.md                          # 主 Skill 文件（必读，v10.5，按场景路由组织，步骤 1~7 线性编号）
+├── README.md                         # 本文件（v10.5）
+├── PROJECT_SPEC.md                   # 项目规格说明（v10.5）
 ├── requirements.txt                  # Python 依赖
 ├── install.ps1                       # 一键安装脚本（Python 依赖 + Vision API 配置 + RapidOCR 强烈推荐）
 ├── rule-manager.bat                  # 【v8.7】规则管理面板启动器（自动定位 skill 目录）
@@ -58,7 +62,10 @@ civil-aviation-doc-audit/
 │   ├── ocr_confusion_check.py        # 【核心】OCR 混淆检测（Z→2、4→0 等）
 │   ├── verify_fields.py              # 【核心】存疑字段自动复核（裁剪+AI 视觉验证）
 │   ├── vision_providers.py           # 【核心】Vision API 统一配置层（7 家 Provider）
-│   ├── rule_engine.py                # 【核心】规则引擎核心（v6.0，加载/匹配/求值/检查/报告）
+│   ├── rule_engine.py                # 【核心】规则引擎核心（v10.5，加载/匹配/求值/检查/报告 + 执行统计 matched_docs/hits + unguarded_doc_types 侦测）
+│   ├── report_builder.py             # 【核心】审核报告生成器（v10.5，build_model/render_html 建模渲染分离 + 三层报告结构 + 无规则覆盖提醒节）
+│   ├── extract_certificates.py       # 【核心】合格证提取与 S-04 追溯链（v10.3，审核期 collect_certificate_findings 基于修正数据重算）
+│   ├── scan_rule_coverage.py         # 【工具】规则覆盖扫描（v10.5，复用 build_unguarded_doc_types 判定口径，仅统计受审文档，揪静默失效）
 │   ├── rule_admin.py                 # 【工具】规则管理 API 服务（v6.0，20+ 端点）
 │   ├── rule_lifecycle.py             # 【工具】规则生命周期管理（v6.0，draft→active）
 │   ├── rule_monitor.py               # 【工具】规则效力自监控（v6.0，命中率/误报率/自动降级）
@@ -75,6 +82,7 @@ civil-aviation-doc-audit/
 │   ├── test_cross_unit_perf.py       # 【测试】跨单位性能测试（v6.0，4/4 通过）
 │   ├── test_ocr_routing.py           # 【测试】OCR 手写体/印刷体路由测试（v9.0，21/21 通过）
 │   ├── test_rule_subsystem_integration.py  # 【测试】子系统全链路集成测试（v6.0，7/7 通过）
+│   ├── test_unguarded_doc_types.py   # 【测试】无规则覆盖侦测回归（v10.5，8/8 通过：字段存在/点名/不误报/CROSS兜底/空列表/渲染/取数/reference过滤）
 │   └── verify_skill_structure.py     # 【测试】SKILL.md 结构验证（v9.4，路由重构校验）
 │
 ├── templates/                        # HTML 模板层（v8.7 模板清单统一管理）
@@ -91,9 +99,9 @@ civil-aviation-doc-audit/
 │   ├── pdf.min.js                    # 【v6.0】PDF.js 离线预下载
 │   └── pdf.worker.min.js             # 【v6.0】PDF.js worker
 │
-├── rules/                            # 【v6.0】规则文件库（93 条）
-│   ├── L1-iron/                      # L1 铁律（17 条）
-│   ├── L2-logic/                     # L2 逻辑一致性（72 个文件，71 条 active + 1 条 deprecated，含 IR-012/013/014、CU-001~018、LG-006/007）
+├── rules/                            # 【v6.0】规则文件库（94 条）
+│   ├── L1-iron/                      # L1 铁律（16 条）
+│   ├── L2-logic/                     # L2 逻辑一致性（73 条，72 条 active + 1 条 deprecated，含 IR-012/013/014、CU-001~018、LG-006/007/110）
 │   ├── L3-business/                  # L3 业务合理性（5 条）
 │   ├── custom/draft/                 # 用户草稿
 │   ├── custom/incubator/             # 孵化区候选规则
@@ -673,6 +681,8 @@ git clone https://github.com/iliulee/civil-aviation-doc-audit.git
 | **v9.4** | **2026-08-10** | **表格式样导入导出 + 苹果浅色界面优化 + SKILL.md 内部路由重构** | **用户要求：实现从电子表格导入表格式样；去掉大片蓝色背景，改用苹果浅色风格；SKILL.md 按场景路由重构** |
 | **v9.5** | **2026-08-19** | **Chat-Verify 聊天式人工核对 + 推荐值规则独立化 + docx 表格解析下沉 + 数据底座修复 + 文本建议值（施工部位/日期补齐，只建议不入库）+ 跨表防污染安全锁 + 存疑项页码定位 + 仅刷新建议值命令** | **用户要求：AI 对话框即可核对（手机可用）；乱码文本域出建议值；推荐值只建议不自动入库；同表≠跨表防污染；刷新不动核对进度** |
 | **v9.7** | **2026-08-20** | **AI 视觉复核链贯通（H-8 隐患销号）：confusion+pending 存疑自动合流生成复核任务 + docx 内嵌图提取裁图 + merge 按 task_id 回查定位/中文字段映射英文行键/双份 rows 同步写 + build_foundation 自动接线 verify_output + 视觉复核协议平台无关化（JSON+PNG 三文件协议，WorkBuddy 等任意智能体可执行）+ vision_providers 新增腾讯混元** | **用户要求：第二类资料（扫描转化电子文档）识别要发挥 AI 视觉优势；skill 要能在 WorkBuddy 等其他平台跑** |
+| **v10.0** | **2026-08-25** | **资料员工作台（Web Workbench）九页合一：一次加载 index.json + Seven 模块（总览/核对/看板/台账/概览导出/销号/规则反馈）+ Vite+SortableJS+SheetJS+xlsx+ECharts+IndexedDB + 一键启动 bat + 部署管线接入（dist→workbench）** | **用户要求：资料管理从零散 HTML 页升级为一体化工作台；跨端可用** |
+| **v10.2** | **2026-08-25** | **Excel/docx 建数据底座链路修复（专项审查销号）：xlsx 解析不再整表截断（break→单行跳过）+ row_index 行级定位键（三链路统一）+ 列语义对齐（中文字段投影英文标准槽位）+ 表头扫描窗口 20→100 + 日期序列号转日期串 + 质检 _is_num 误报修复（全字符串数据百分百误报→精准报告）** | **审查结论：Excel 链路"丢数据不报警"；Word/PDF 链路弱化点修复** |
 
 ### v7.2 核心变更
 

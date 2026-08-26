@@ -8,7 +8,8 @@
   "trigger_when": {
     "doc_type": [
       "碎石桩施工记录",
-      "PHC管桩施工记录"
+      "PHC管桩施工记录",
+      "CFG桩施工记录"
     ],
     "field_required": [
       "实长",
@@ -28,7 +29,7 @@
   "source": "system",
   "version": "1.0.0",
   "created_at": "2026-07-30T10:00:00",
-  "updated_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-08-26T00:00:00",
   "owner": "system",
   "applies_to": {
     "professional": [
@@ -52,6 +53,12 @@
       "date": "2026-07-30",
       "author": "system",
       "change": "从 SKILL.md 铁律 R-14 迁移并修正层级（从 L1-IRON 修正为 L2-LOGIC 数学自洽）"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-08-26",
+      "author": "system",
+      "change": "A1 规则覆盖扫描：补 CFG桩施工记录 触发词（历史生产 3 份文档零规则覆盖，静默失效）"
     }
   ],
   "is_placeholder": true

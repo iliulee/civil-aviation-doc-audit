@@ -418,6 +418,128 @@ def doc_domain_status(doc_data: dict) -> str:
     return "known_domain" if has_structured else "unknown_domain"
 
 
+def build_execution_stats(
+    rules: List["Rule"],
+    docs: List[Dict[str, Any]],
+    violations: List[Any],
+) -> List[Dict[str, Any]]:
+    """每条规则的执行统计（v10.4 A4：规则执行可视化，消灭"静默失效"）。
+
+    Why: 用户加了规则后无从知道规则到底跑没跑。统计两个口径：
+      matched_docs —— 该规则按 doc_type 作用域匹配到几份文档（0 = 静默失效，
+                      报告端必须标 ⚠️，这是 doc_type 口径漂移的第一现场）；
+      hits         —— 该规则命中（违规）几条。
+
+    matched_docs 口径按 scope：
+      SINGLE_DOC   doc_type 命中的文档数（真正的静默失效检测点）
+      CROSS_DOC    参与执行的文档总数（该 scope 对整个文档集执行）
+      CROSS_UNIT   doc_type_a + doc_type_b 两类文档数（缺任一类则 0）
+
+    纯函数：不读文件、无副作用，测试可直接构造 fixtures 验证。
+    """
+    stats: List[Dict[str, Any]] = []
+    hit_counts: Dict[str, int] = {}
+    for v in violations:
+        rid = getattr(v, "rule_id", None) or (v.get("rule_id") if isinstance(v, dict) else None)
+        if rid:
+            hit_counts[rid] = hit_counts.get(rid, 0) + 1
+
+    for rule in rules:
+        matched_docs = 0
+        if rule.scope == SCOPE_SINGLE_DOC:
+            doc_types = rule.trigger_when.get("doc_type", [])
+            if isinstance(doc_types, list):
+                matched_docs = sum(
+                    1 for d in docs if d.get("doc_type") in doc_types)
+        elif rule.scope == SCOPE_CROSS_DOC:
+            matched_docs = len(docs)
+        elif rule.scope == SCOPE_CROSS_UNIT:
+            tw = rule.trigger_when
+            a_docs = sum(1 for d in docs if d.get("doc_type") == tw.get("doc_type_a"))
+            b_docs = sum(1 for d in docs if d.get("doc_type") == tw.get("doc_type_b"))
+            matched_docs = a_docs + b_docs if (a_docs and b_docs) else 0
+        stats.append({
+            "rule_id": rule.rule_id,
+            "name": rule.name,
+            "level": rule.level,
+            "scope": rule.scope,
+            "status": rule.status,
+            "matched_docs": matched_docs,
+            "hits": hit_counts.get(rule.rule_id, 0),
+        })
+    return stats
+
+
+def build_unguarded_doc_types(
+    rules: List["Rule"],
+    docs: List[Dict[str, Any]],
+    matcher: Optional["RuleMatcher"] = None,
+) -> List[Dict[str, Any]]:
+    """「无规则覆盖文档类型」侦测（v10.5：消灭声明式触发的静默盲区）。
+
+    Why: SINGLE_DOC 规则靠 trigger_when.doc_type 声明适用类型，规则库从未
+    声明的类型（如施工日志、设计变更）在规则引擎里静默裸检——不报错、
+    不告警、直接跳过，AI 审核员也无从得知。本函数在每次审核运行时
+    自动点名这些类型，写进 summary 供报告端渲染提醒。
+
+    判定口径（防误报）：
+      - 仅统计「本批资料里实际出现的」doc_type（规则管不到空气）
+      - 仅统计受审文档：doc_role == 'audited'（缺省 None 的旧数据视为受审）；
+        reference 角色是审核参照（如设计变更文件供比对），不进规则引擎
+        审核流，混进提醒会制造噪音淹没真警报
+      - SINGLE_DOC / CROSS_DOC 均按各自 trigger_when.doc_type 名单匹配
+        （'*' 通配同样生效）；CROSS_UNIT 按 doc_type_a/b 判定。
+        三类 scope 任一命中即视为"有覆盖"（如材料检验记录无 SINGLE_DOC
+        规则但被 CROSS_DOC 的 LG-110 名单覆盖，不得误报）
+      - 全部有覆盖时返回空列表（不硬造提醒）
+
+    纯函数：不读文件、无副作用，测试可直接构造 fixtures 验证。
+    """
+    unguarded: List[Dict[str, Any]] = []
+    if matcher is None:
+        matcher = RuleMatcher()
+
+    # 本批资料实际出现的 doc_type → 份数（仅受审文档）
+    type_counts: Dict[str, int] = {}
+    for d in docs:
+        if not isinstance(d, dict):
+            continue
+        role = d.get("doc_role") or "audited"  # 旧数据无 doc_role 视为受审
+        if role != "audited":
+            continue
+        dt = (d.get("doc_type") or "").strip()
+        if dt:
+            type_counts[dt] = type_counts.get(dt, 0) + 1
+    if not type_counts:
+        return unguarded
+
+    single_rules = [r for r in rules if r.scope == SCOPE_SINGLE_DOC]
+    cross_doc_rules = [r for r in rules if r.scope == SCOPE_CROSS_DOC]
+    cross_unit_rules = [r for r in rules if r.scope == SCOPE_CROSS_UNIT]
+
+    for dt, count in type_counts.items():
+        # 1) SINGLE_DOC / CROSS_DOC 均按 doc_type 名单匹配（RuleMatcher 语义）
+        if matcher.match_by_doc_type(single_rules, dt):
+            continue
+        if matcher.match_by_doc_type(cross_doc_rules, dt):
+            continue
+        # 2) CROSS_UNIT：doc_type_a/b 命中任一侧即视为该类型有规则联动
+        covered_by_unit = any(
+            dt == r.trigger_when.get("doc_type_a")
+            or dt == r.trigger_when.get("doc_type_b")
+            for r in cross_unit_rules
+        )
+        if covered_by_unit:
+            continue
+        unguarded.append({
+            "doc_type": dt,
+            "doc_count": count,
+            "note": "无任何 active 规则覆盖此类型，规则引擎静默跳过——建议补规则或确认接受裸检",
+        })
+    unguarded.sort(key=lambda u: -u["doc_count"])
+    return unguarded
+
+
 # ========== 4. SingleDocChecker ==========
 class SingleDocChecker:
     """对单份资料数据执行规则（逐行求值）。"""

@@ -31,6 +31,7 @@ review_audit.py — 正式审核流水线（Phase 3）
 import argparse
 import collections
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +63,8 @@ from rule_engine import (  # noqa: E402
     CrossDocChecker,
     CrossUnitChecker,
     ViolationReporter,
+    build_execution_stats,
+    build_unguarded_doc_types,
     SCOPE_SINGLE_DOC,
     SCOPE_CROSS_DOC,
     SCOPE_CROSS_UNIT,
@@ -1145,6 +1148,12 @@ def run_rule_engine(
         "testing_rules_tracked": testing_rules_tracked,
         # v7.2 C4：OCR 置信度降级统计
         "ocr_downgraded": ocr_downgraded_in_rule_engine,
+        # v10.4 A4：规则执行统计（matched_docs/hits；0 匹配 = doc_type 口径
+        # 漂移导致规则静默失效的第一现场，报告端必须标 ⚠️）
+        "rule_execution_stats": build_execution_stats(rules, docs, all_violations),
+        # v10.5：无规则覆盖文档类型侦测（本批资料里规则引擎静默跳过的类型，
+        # AI 与报告端必须显式提醒，禁止在不知情下放行）
+        "unguarded_doc_types": build_unguarded_doc_types(rules, docs, matcher),
     }
 
     return findings, summary
@@ -1609,6 +1618,11 @@ def run_review(
     # ===== 步骤 1：审核前置检查 =====
     all_verified, unverified = check_human_verified(index)
     force_info: Optional[Dict[str, Any]] = None
+    # --force 默认禁用（生产安全铁律）：需环境变量 AUDIT_ALLOW_FORCE=1 显式开启
+    if force and os.environ.get("AUDIT_ALLOW_FORCE") != "1":
+        print("⛔ --force 已被禁用：生产环境禁止跳过人工核对闸门。", file=sys.stderr)
+        print("   如确需在测试环境使用，请设置环境变量 AUDIT_ALLOW_FORCE=1 后重试。", file=sys.stderr)
+        return 1
     if not force:
         if not all_verified:
             print("⛔ 审核前置检查未通过 — 以下文件尚未完成人工核对：", file=sys.stderr)
@@ -1814,6 +1828,48 @@ def run_review(
     print(f"  规则引擎发现: {rule_engine_summary['total']} 项", file=sys.stderr)
     if rule_engine_summary.get("testing_rules_tracked", 0) > 0:
         print(f"  跟踪 testing 规则: {rule_engine_summary['testing_rules_tracked']} 条", file=sys.stderr)
+    print("", file=sys.stderr)
+
+    # ===== 步骤 5.6：合格证追溯链（LG-110 / S-04）审核期重算 =====
+    # Why 必须审核期重算而非读建底座时的 certificates_linkage：审核读取的是
+    # corrected_file（阶段2 人工修正产物）。用户补填合格证号后重审，必须以
+    # 修正后数据为准（陈旧结果 bug）；重算同时刷新台账，保证对账闸门口径一致。
+    # 失败安全：证书链检查异常不阻塞主审核流程（沿用台账提取的同款容错策略）。
+    try:
+        from extract_certificates import (
+            collect_certificate_findings,
+            attach_certificates_ledger,
+            build_certificate_linkage,
+        )
+        cert_findings, certs_by_doc = collect_certificate_findings(docs, all_data)
+        if cert_findings:
+            rule_engine_findings.extend(cert_findings)
+            rule_engine_summary["total"] = (
+                rule_engine_summary.get("total", 0) + len(cert_findings))
+            _by_sev = rule_engine_summary.setdefault("by_severity", {})
+            _by_sev["Best Practice"] = _by_sev.get("Best Practice", 0) + len(cert_findings)
+            _by_lvl = rule_engine_summary.setdefault("by_level", {})
+            _by_lvl["L2-LOGIC"] = _by_lvl.get("L2-LOGIC", 0) + len(cert_findings)
+            rule_engine_summary["cross_doc_hits"] = (
+                rule_engine_summary.get("cross_doc_hits", 0) + len(cert_findings))
+        if certs_by_doc:
+            # 原子刷新台账（attach 内部 tmp+replace），对账闸门读到的即修正后口径
+            attach_certificates_ledger(
+                index, certs_by_doc,
+                ledger_file=out_base / "ledgers" / "certificates.json",
+            )
+            _issues = build_certificate_linkage(index)
+            index.setdefault("ledgers", {})["certificates_linkage"] = {
+                "rule_id": "LG-110",
+                "issue_code": "S-04",
+                "count": len(_issues),
+                "issues": _issues,
+                "checked_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        print(f"  [LG-110] 合格证追溯链: 处理 {len(certs_by_doc)} 份材料文档，"
+              f"命中 {len(cert_findings)} 条 S-04", file=sys.stderr)
+    except Exception as _cert_err:
+        print(f"  [!] 合格证追溯链检查失败（不阻塞审核）: {_cert_err}", file=sys.stderr)
     print("", file=sys.stderr)
 
     # ===== 步骤 6：生成审核日志 =====

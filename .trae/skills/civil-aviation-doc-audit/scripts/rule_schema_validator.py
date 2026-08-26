@@ -355,8 +355,13 @@ def validate_registry_file(file_path):
 
 
 def collect_rule_files(rules_dir):
-    """收集 rules/ 目录下所有规则 JSON 文件（排除 registry.json、schema/ 与 lifecycle/）。"""
+    """收集规则子目录下的规则 JSON 文件（排除 registry.json、schema/ 与 lifecycle/）。
+
+    只收 L1-iron/L2-logic/L3-business 下的规则文件；rules/ 根目录的
+    inference_rules.json、table-schemas.json 属推断/表schema辅助配置，非规则，一律跳过。
+    """
     rules_dir = Path(rules_dir)
+    RULE_LAYERS = ("L1-iron", "L2-logic", "L3-business")
     files = []
     for p in sorted(rules_dir.rglob("*.json")):
         rel = p.relative_to(rules_dir).as_posix()
@@ -365,6 +370,9 @@ def collect_rule_files(rules_dir):
         if rel.startswith("schema/"):
             continue
         if rel.startswith("lifecycle/"):
+            continue
+        layer = rel.split("/", 1)[0]
+        if layer not in RULE_LAYERS:
             continue
         files.append(p)
     return files

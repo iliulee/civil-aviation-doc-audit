@@ -54,6 +54,14 @@ from table_struct import validate_rows as _ts_validate_rows  # noqa: E402
 from run_audit import sniff_document  # noqa: E402
 from audit_config import assign_subdivision_to_document, get_subdivision_info  # noqa: E402
 
+# v10.3 A1/E3：材料类文档判定词（与 extract_certificates.py 契约一致）。
+# Why: 材料类 doc_type 不得被桩基内容感知路由劫持（A1），
+# 且 schema_status 需标 "material" 供质检跳过桩基领域规则（E3）。
+try:
+    from extract_certificates import MATERIAL_DOC_TERMS  # noqa: E402
+except ImportError:  # 单文件拷贝等极端场景兜底，退化到本地词表
+    MATERIAL_DOC_TERMS = ("合格证", "质量证明书", "进场检验记录", "材料进场", "检验记录", "质证书")
+
 try:
     import fitz  # PyMuPDF
     HAS_PYMUPDF = True
@@ -1013,6 +1021,192 @@ def _docx_try_float(s: str) -> Optional[float]:
     return float(m.group(1)) if m else None
 
 
+def _excel_fill_merged(ws) -> Dict[Tuple[int, int], Any]:
+    """把合并单元格的左上角值填充到整个合并范围，返回 {(row, col): value} 覆盖表。"""
+    fill = {}
+    for rng in ws.merged_cells.ranges:
+        tl = ws.cell(rng.min_row, rng.min_col).value
+        if tl is None:
+            continue
+        for r in range(rng.min_row, rng.max_row + 1):
+            for c in range(rng.min_col, rng.max_col + 1):
+                fill[(r, c)] = tl
+    return fill
+
+
+def _excel_cell_text(v) -> str:
+    if v is None:
+        return ""
+    return re.sub(r"\s+", " ", str(v)).strip()
+
+
+# ========== Excel 表头/行过滤/字段投影常量（v10.2 审查修复） ==========
+_EXCEL_HEADER_SCAN = 100           # 表头扫描行上限（原 20，表头靠后时整表归零）
+_UNIT_TOKEN_RE = re.compile(r"^[\s]*(m|m3|cm|mm|%|A|V|min|分钟|时分|h|s|根|次)[\s]*$")
+# 表尾落款：无数字 + 以落款词开头 → 停止本 sheet（不再放大 break 误伤面）
+_ROW_TAIL_RE = re.compile(r"^(施工员|质检员|技术负责人|监理单位|填表|编制|制表|审定|记录)人?[：:\s]")
+# 单行跳过：含签字/合计/审核等词的行，跳过但绝不截断后续数据
+_ROW_SKIP_RE = re.compile(r"施工员|质检员|技术负责人|监理|填表|合计|审核|交底|班组长|签字|签名|总计|小计")
+# Excel 专有列 → 英文标准槽位（FIELD_ALIAS_MAP 之外的补充，供规则引擎/质检消费）
+_EXCEL_FIELD_ALIASES: Dict[str, str] = {
+    "桩位编号": "pile_no",
+    "有效桩长": "actual_length",
+    "实际桩长": "actual_length",
+    "孔底标高": "bottom_elev",
+}
+
+
+def _excel_field_projection(header: str) -> Optional[str]:
+    """把 Excel 表头列文本投影为英文标准槽位。
+
+    先拆分「主·子」（"混凝土实际灌入量（m3）·实际量"→取主部）、去括号单位，
+    再查 FIELD_ALIAS_MAP/OCR 别名/_EXCEL_FIELD_ALIASES。返回英文槽位或 None。
+    """
+    norm = re.split(r"·", header)[0]
+    norm = re.sub(r"[（(].*?[)）]", "", norm).strip()
+    if not norm:
+        return None
+    f = _header_text_to_field(norm)
+    if f:
+        return f
+    for alias, slot in _EXCEL_FIELD_ALIASES.items():
+        if alias in norm:
+            return slot
+    return None
+
+
+def _excel_maybe_date_text(raw: Any, header: str) -> str:
+    """把日期单元格转成 'YYYY-MM-DD' 文本。
+
+    - datetime/date 对象：strftime（openpyxl 日期格式单元格）
+    - 纯数字 Excel 序列号（如 46000）且列名含「日期」：按 1900 纪元换算
+    - 其余原样 str（_excel_cell_text 语义）
+    """
+    if raw is None:
+        return ""
+    import datetime as _dt
+    if isinstance(raw, (_dt.datetime, _dt.date)):
+        return raw.strftime("%Y-%m-%d")
+    if re.search(r"日期", header):
+        s = str(raw).strip()
+        if re.fullmatch(r"\d{4,6}(\.0)?", s):
+            n = int(float(s))
+            if 5000 <= n <= 63000:
+                try:
+                    return (_dt.date(1899, 12, 30) + _dt.timedelta(days=n)).strftime("%Y-%m-%d")
+                except (OverflowError, ValueError):
+                    pass
+    return str(raw)
+
+
+def parse_excel_workbook_rows(file_path: Path) -> List[Dict[str, Any]]:
+    """
+    v10.0：xlsx 工作簿行解析（多 sheet、双行表头、合并单元格）。
+    直接从工作簿网格结构解析（此前 xlsx 仅提取文本，复杂表头下 rows=0，
+    导致 AI 绕开底座手写脚本——本函数即该根因的销号实现）。
+
+    返回结构化 rows：[{table(sheet名), row_index, 施工日期, 序号, 桩位编号, ...}]，
+    每行附 "_sheet"（英文键）+ "row_index"（sheet 内行号）供行级定位，
+    并对可识别表头列追加英文标准槽位键（pile_no/actual_length 等，列语义对齐）。
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        return []
+    try:
+        wb = openpyxl.load_workbook(str(file_path), data_only=True)
+    except Exception as e:
+        print(f"  [!] Excel 工作簿读取失败: {e}", file=sys.stderr)
+        return []
+
+    all_rows: List[Dict[str, Any]] = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        merged_fill = _excel_fill_merged(ws)
+        grid: List[List[str]] = []
+        for r_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            vals = [merged_fill.get((r_idx, c_idx), v)
+                    for c_idx, v in enumerate(row, start=1)]
+            if any(str(v).strip() for v in vals if v is not None):
+                grid.append([_excel_cell_text(v) for v in vals])
+            else:
+                grid.append([])
+
+        # 定位主表头行：含「桩位编号/桩号」且含「序号」或「施工日期」。
+        # v10.2：扫描窗口由前20行放宽到前100行，表头靠后不再整表归零。
+        header_i = None
+        for i, cells in enumerate(grid[:_EXCEL_HEADER_SCAN]):
+            joined = "".join(cells)
+            if re.search(r"桩\s*位\s*编\s*号|桩\s*号", joined) and \
+               re.search(r"序\s*号|施工日期|施工日期", joined):
+                header_i = i
+                break
+        if header_i is None:
+            # 未命中告警（仅对疑似表格的 sheet 提示，避免无谓刷屏）
+            if re.search(r"桩|设计|灌入|充盈", "".join("".join(c) for c in grid[: min(40, len(grid))])):
+                print(f"  [!] sheet[{sheet_name}] 前{_EXCEL_HEADER_SCAN}行未定位表头"
+                      f"（需含 桩号/桩位编号 + 序号/施工日期），跳过该 sheet", file=sys.stderr)
+            continue
+
+        # 子表头行（主表头下一行，含 时分/实际量/充盈 等细化列名）
+        sub_i = header_i + 1
+        main_cells = grid[header_i]
+        sub_cells = grid[sub_i] if sub_i < len(grid) else []
+        sub_is_header = bool(re.search(r"时分|实际量|充盈|系数|耗时", "".join(sub_cells)))
+
+        # 合成列名：主+子（子非空且不与主重复），主空则取子；
+        # v10.2：子为纯单位（m/mm/%/时分等）时不拼「·单位」，列名保持主名（P2）
+        headers: List[str] = []
+        for c in range(max(len(main_cells), len(sub_cells) if sub_is_header else 0)):
+            main_v = main_cells[c] if c < len(main_cells) else ""
+            sub_v = sub_cells[c] if (sub_is_header and c < len(sub_cells)) else ""
+            if main_v and sub_v and main_v != sub_v and not _UNIT_TOKEN_RE.match(sub_v):
+                headers.append(f"{main_v}·{sub_v}")
+            else:
+                headers.append(main_v or sub_v)
+        # 列名去重（同名加序号后缀）
+        seen: Dict[str, int] = {}
+        for c, h in enumerate(headers):
+            if not h:
+                headers[c] = f"列{c + 1}"
+                h = headers[c]
+            seen[h] = seen.get(h, 0) + 1
+            if seen[h] > 1:
+                headers[c] = f"{h}({seen[h]})"
+
+        # 数据行：表头（含子表头）之后。
+        # v10.2：过滤语义修正——关键词行仅单行跳过（continue），
+        # 只有「无数字 + 落款词开头」的表尾才 break，杜绝整表截断（P1）。
+        data_start = sub_i + 1 if sub_is_header else header_i + 1
+        for r_idx, cells in enumerate(grid[data_start:], start=data_start + 1):
+            joined = "".join(cells)
+            if not joined:
+                continue
+            if not re.search(r"\d", joined) and _ROW_TAIL_RE.search(joined):
+                break
+            if _ROW_SKIP_RE.search(joined):
+                continue
+            if not re.search(r"\d", joined):
+                continue
+            row_dict: Dict[str, Any] = {"table": sheet_name, "_sheet": sheet_name,
+                                        "row_index": r_idx}
+            for c, h in enumerate(headers):
+                text_v = _excel_maybe_date_text(cells[c] if c < len(cells) else "", h)
+                row_dict[h] = text_v
+                fld = _excel_field_projection(h)
+                if not fld or fld in ("table", "_sheet", "row_index"):
+                    continue
+                if fld == "pile_no" and re.search(r"桩", h):
+                    # 强别名：桩位编号/桩号 优先于「序号」列的弱别名（后者后写不覆盖）
+                    row_dict["pile_no"] = text_v
+                elif fld not in row_dict:
+                    row_dict[fld] = text_v
+            all_rows.append(row_dict)
+
+    wb.close()
+    return all_rows
+
+
 def parse_docx_table_sheets(file_path: Path) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], str]:
     """
     v9.5：docx 表格结构解析下沉（替代项目根外部脚本 enrich_docx.py）。
@@ -1142,8 +1336,10 @@ def parse_docx_table_sheets(file_path: Path) -> Tuple[List[Dict[str, Any]], List
                 suspects.append({"table": t["idx"], "field": "施工日期", "raw": t["date_raw"], "reason": "日期格式异常/残缺，无法确认"})
         else:
             suspects.append({"table": t["idx"], "field": "施工日期", "raw": "", "reason": "日期为空"})
-        for r in t["rows"]:
-            row: Dict[str, Any] = {"table": t["idx"], "loc": t["loc"], "date_raw": t["date_raw"],
+        for k, r in enumerate(t["rows"], start=1):
+            # v10.2：row_index = 表内数据行序号（1-based，行级定位键，对齐 Excel 解析）
+            row: Dict[str, Any] = {"table": t["idx"], "row_index": k, "loc": t["loc"],
+                                   "date_raw": t["date_raw"],
                                    "pile_no": r.get("pile_no", "")}
             for fld in _DOCX_ALL_FIELDS:
                 row[fld] = r.get(fld, "")
@@ -2240,12 +2436,18 @@ def assess_ocr_result(result: Dict[str, Any]) -> Tuple[str, str]:
 
     在 OCR 返回后立即检查：text 为空 且 items 为空 → 判定 needs_review，
     禁止空数据进入结构化流程（避免空结果被标 completed 污染审核）。
-    返回 (状态, 说明)。
+    v10.3 E1：items 只有 bbox 无文字（框了位置但没认出字）也视为零产出，
+    杜绝「有 items 但全无文字」被放行 completed。返回 (状态, 说明)。
     """
     text = (result.get("text") or "").strip()
     items = result.get("items") or []
-    if not text and not items:
-        return "needs_review", "OCR 未识别到任何文字/字段（空结果），禁止进入结构化流程"
+    has_any_text = bool(text) or any(
+        isinstance(it, dict) and str(it.get("text") or "").strip()
+        for it in items
+        if isinstance(it, dict) and it.get("text")
+    )
+    if not has_any_text:
+        return "needs_review", "OCR 未识别到任何文字/字段（空结果或仅空框），禁止进入结构化流程"
     return "completed", ""
 
 
@@ -2340,9 +2542,18 @@ def build_rows(text: str, doc_type: str) -> List[Dict[str, Any]]:
     lower = doc_type.lower()
     is_pile = any(kw in lower for kw in ["碎石桩", "cfg", "桩"])
 
+    # v10.3 A1：材料类文档强制排除桩基解析。
+    #   Why: 检验记录/合格证文本常含「碎石桩」「充盈系数」等词（材料用于桩区），
+    #   内容感知路由据此误切桩基 → 产出空行/乱键。材料类从 doc_type 与文本双路
+    #   识别，命中即锁死非桩基（此前把材料 e2e 全链误判的根因）。
+    _MATERIAL_EXCLUDE_TERMS = ("合格证", "质量证明书", "进场检验", "检验记录", "质证书编号", "出厂合格证")
+    _doc_is_material = any(kw in doc_type for kw in _MATERIAL_EXCLUDE_TERMS)
+    _text_is_material = any(kw in text for kw in ("合格证号", "质证书编号", "质量证明书编号", "出厂合格证"))
+    if _doc_is_material or _text_is_material:
+        is_pile = False
     # 内容感知：OCR 文本含桩基表头关键词时自动切换到桩基解析
     # 解决文件名通用（如"扫描件.pdf"）但实际是桩基施工记录的分类遗漏
-    if not is_pile:
+    elif not is_pile:
         _PILE_CONTENT_INDICATORS = [
             "碎石桩", "沉管时间", "拔管时间", "充盈系数", "密实电流",
             "反插", "桩底高程", "桩顶高程", "沉管开始", "拔管结束",
@@ -2844,7 +3055,7 @@ def copy_web_templates(base_dir: Path) -> None:
         print(
             f"  ⚠️ 缺失 {len(missing_required)} 个必需模板: {', '.join(missing_required)}",
             file=sys.stderr)
-        print("  → 数据编辑器和项目总览可能无法正常使用", file=sys.stderr)
+        print("  → 请检查 skill 的 templates/ 目录是否完整", file=sys.stderr)
 
 
 def _get_fallback_template_list() -> list:
@@ -3566,6 +3777,13 @@ def main() -> int:
                 ocr_engine = "openpyxl"
                 ocr_confidence = 1.0
                 pages = len(wb.sheetnames)
+                wb.close()
+                # v10.0：xlsx 行解析（多 sheet、双行表头、合并单元格）——
+                # 修复此前复杂表头 xlsx rows=0、AI 被迫绕开底座手写脚本的根因
+                _excel_rows = parse_excel_workbook_rows(abs_path)
+                if _excel_rows:
+                    rows = _excel_rows
+                    print(f"  [excel] 已解析 {len(_excel_rows)} 行结构化数据", file=sys.stderr)
                 save_json(ocr_raw_file, {
                     "text": ocr_text,
                     "engine": ocr_engine,
@@ -3700,6 +3918,9 @@ def main() -> int:
         _contract_cols = [k for k in rows[0].keys() if k not in _META_KEYS] if rows else []
         _lower = (doc_type or "").lower()
         _is_pile = any(kw in _lower for kw in ["碎石桩", "cfg", "桩"])
+        # v10.3 E3：材料类 schema 契约——schema_status 明确为 "material"，
+        # 消费方（data_quality_check）据此跳过桩基领域规则，也不再误报"schema 未确认"
+        _is_material = any(kw in doc_type for kw in MATERIAL_DOC_TERMS)
         _total = len(rows)
         # 归一化 parsed：显式 parsed=False 或 raw_text-only 行均视为未解析（兼容多个解析器）
         def _row_parsed(r: Any) -> bool:
@@ -3714,7 +3935,10 @@ def main() -> int:
         _unparsed = _total - _parsed
         data_contract = {
             "columns": _contract_cols,
-            "schema_status": "known_domain" if _is_pile else "unknown_domain",
+            "schema_status": (
+                "material" if _is_material
+                else ("known_domain" if _is_pile else "unknown_domain")
+            ),
             "row_parsed_stats": {
                 "total": _total,
                 "parsed": _parsed,
@@ -3920,6 +4144,59 @@ def main() -> int:
 
     # 同步 documents 与当前 file_classification，清理 stale 条目
     sync_documents_with_classification(index)
+
+    # ===== v10.3 A2/A4：合格证数据沉淀（ledgers.certificates） =====
+    # 材料类文档（检验记录/质量证明书/合格证）的表格行提取为证书记录，
+    # 落 ledgers/certificates.json 并在 index 建立 ledgers.certificates 视图。
+    # Why: 台账是报告/追溯/工作台的一等公民，此前只有散落在各 data_file 的
+    # 行数据，S-01/S-04 无法感知。提取失败绝不阻塞底座构建（静默降级）。
+    try:
+        import extract_certificates as _ec
+        certs_by_doc: Dict[str, List[Dict[str, Any]]] = {}
+        for _d in index.get("documents", []):
+            if _d.get("doc_role", "audited") != "audited":
+                continue
+            _dt = str(_d.get("doc_type") or "")
+            if not any(kw in _dt for kw in _ec.MATERIAL_DOC_TERMS):
+                continue
+            _df = out_base / str(_d.get("data_file") or "")
+            if not _df.exists():
+                continue
+            _struct = load_json(_df)
+            _recs = _ec.extract_records(
+                _struct.get("structured_rows") or _struct.get("rows") or [],
+                {"doc_id": _d.get("id"), "doc_name": _dt,
+                 "original_file": _d.get("original_file", "")},
+            )
+            if _recs:
+                certs_by_doc[_d.get("id")] = _recs
+        if certs_by_doc:
+            _ledger_path = out_base / "ledgers" / "certificates.json"
+            _ec.attach_certificates_ledger(index, certs_by_doc, ledger_file=_ledger_path)
+            print(
+                f"  [证书台账] 沉淀 {sum(len(v) for v in certs_by_doc.values())} 条证书记录"
+                f" → ledgers/certificates.json",
+                file=sys.stderr,
+            )
+            # v10.4 A5：S-04 追溯链检查结果落 index（报告/审核阶段直接读取，无需审核时重算）。
+            # Why: 追溯链（LG-110）依赖 ledgers.certificates 台账，构建底座时算出结果，
+            # 审核报告读取 index["ledgers"]["certificates_linkage"] 即可，保证口径一致。
+            _issues = _ec.build_certificate_linkage(index)
+            index.setdefault("ledgers", {})["certificates_linkage"] = {
+                "rule_id": "LG-110",
+                "issue_code": "S-04",
+                "count": len(_issues),
+                "issues": _issues,
+                "checked_at": now_iso(),
+            }
+            if _issues:
+                print(
+                    f"  [S-04 追溯链] 检出 {len(_issues)} 条缺链记录（合格证号为空），"
+                    f"已写入 index.ledgers.certificates_linkage",
+                    file=sys.stderr,
+                )
+    except Exception as _e:
+        print(f"  [!] 合格证台账提取失败（不阻塞底座构建）: {_e}", file=sys.stderr)
 
     # 断档检测（N-09）：桩号/日期/编号连续性
     print(f"\n🔍 开始断档检测...", file=sys.stderr)

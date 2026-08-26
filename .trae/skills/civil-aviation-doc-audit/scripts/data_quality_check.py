@@ -136,6 +136,25 @@ JUMP_THRESHOLDS = {
     "竖直度": 0.20,
 }
 
+# ========== 三重一致性常量（v10.1：表头设计值 vs 分区名 vs 实际数据）==========
+# full_text 表头里的设计桩长，如"设计桩长                5m"
+_DESIGN_LEN_RE = re.compile(r"设计桩长\s*[:：]?\s*(\d+(?:\.\d+)?)\s*m\b")
+# sheet 分区名里的分区桩长，如"MD-X1(8米)" / "MD-X7（8米）"（全半角括号混用）
+# 注意必须带"米"字，避免误吞"NB(X1-X3)"这类分区编号
+_ZONE_TAG_RE = re.compile(r"[（(]\s*(\d+(?:\.\d+)?)\s*米\s*[)）]")
+_DESIGN_DEV_ABS = 0.5   # 设计值 vs 实际 绝对容差（m）
+_DESIGN_DEV_REL = 0.2   # 设计值 vs 实际 相对容差（20%）
+
+
+def _to_float(v):
+    """宽松转 float：None/空串/含文字垃圾（如"筑业软件 485…"）一律返回 None。"""
+    if v is None:
+        return None
+    try:
+        return float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
 
 class DataQualityChecker:
     """数据质量检测器"""
@@ -327,7 +346,12 @@ class DataQualityChecker:
             return w
 
         def _is_num(v) -> bool:
-            return isinstance(v, (int, float)) and not isinstance(v, bool)
+            # v10.2（P10）：底座行值为字符串（Excel 序列化/OCR 文本），
+            # 原 isinstance(int/float) 对全字符串数据百分百误报非数值。
+            # 改为宽松 float 判定（None/空串/乱码 → False）。
+            if isinstance(v, bool):
+                return False
+            return _to_float(v) is not None
 
         def _is_time_str(v) -> bool:
             return (
@@ -337,27 +361,31 @@ class DataQualityChecker:
 
         def _col_val(col: str, i: int):
             vals = self.columns.get(col, [])
+            # v10.2：缺失列统一 None（_col_val 直接取值，None 即跳过判定）
             return vals[i] if i < len(vals) else None
 
         suspect_rows: list[int] = []
         for i in range(len(self.rows)):
             row_issues: list[str] = []
-            # 数值列
+            # 数值列（缺失=空串/None 一律跳过，缺失不算错位）
             for col in numeric_columns:
                 v = _col_val(col, i)
-                if v is None:
+                if v is None or str(v).strip() == "":
                     continue
                 if not _is_num(v):
                     row_issues.append(f"{col}={v!r} 非数值")
-            # 时间列
+            # 时间列（缺失跳过）
             for col in time_columns:
                 v = _col_val(col, i)
-                if v is not None and not _is_time_str(v):
+                if v is None or str(v).strip() == "":
+                    continue
+                if not _is_time_str(v):
                     row_issues.append(f"{col}={v!r} 非时间格式")
-            # 数学链：实长 = 顶高程 - 底高程
-            actual, top, bottom = (_col_val("实长", i), _col_val("桩顶高程", i),
-                                   _col_val("桩底高程", i))
-            if all(_is_num(x) for x in (actual, top, bottom)):
+            # 数学链：实长 = 顶高程 - 底高程（转 float 计算，字符串直接相减会 TypeError）
+            actual, top, bottom = (_to_float(_col_val("实长", i)),
+                                   _to_float(_col_val("桩顶高程", i)),
+                                   _to_float(_col_val("桩底高程", i)))
+            if all(x is not None for x in (actual, top, bottom)):
                 if abs(actual - (top - bottom)) > tolerance:
                     row_issues.append(f"实长={actual} 与 顶高程-底高程={top - bottom:.2f} 偏差>0.1")
 
@@ -634,6 +662,90 @@ class DataQualityChecker:
                         })
             except (TypeError, ValueError):
                 pass
+        return w
+
+    # ========== 7.5 三重一致性：表头设计值 vs 分区名 vs 实际数据（v10.1） ==========
+    def check_design_zone_consistency(self) -> list[dict]:
+        """表头设计桩长 / sheet分区名 / 实际施工桩长 三方对账。
+
+        背景（2026-08-25 实测）：CFG 桩工作簿表头统一写"设计桩长 5m"，
+        但 sheet 名自带"(8米)"分区、实际施工大量 7~8m——同一份资料
+        两种互斥设计值，结构性矛盾，旧引擎零报警。
+
+        判定用"偏离占比"而非中位数（实测 MD-X1 双峰：5m 群体与 8m 群体
+        混存，中位数 5.5 正好卡在两峰之间把矛盾糊平）：
+          - error  DQ-DESIGN-ZONE-01：分区名(如8米)对应施工群体占比≥20%
+                    且与表头设计值矛盾 → 同表两种互斥设计值，结构性矛盾
+          - warning DQ-DESIGN-ZONE-02：无分区名佐证，但≥20%桩长偏离设计值
+                    （成片超长/欠长，待现场核实）
+          - warning DQ-DESIGN-ZONE-03：仅分区名与表头不符、数据与设计自洽
+                    （疑似 sheet 命名笔误）
+
+        数据源：full_text（表头设计值）/ 行数据 table 列（分区名）/ 有效桩长。
+        任一来源缺失即跳过，宁缺勿误报。
+        """
+        w: list[dict] = []
+        ft = str(self.data.get("full_text") or "")
+        designs = set(_DESIGN_LEN_RE.findall(ft))
+        if len(designs) != 1:
+            # 无设计值或表内出现多个不同设计值 → 无法对账，跳过
+            return w
+        design = float(next(iter(designs)))
+
+        tables: dict[str, list] = {}
+        for r in self.rows:
+            if not isinstance(r, dict):
+                continue
+            t = str(r.get("table") or r.get("_sheet") or "").strip()
+            if t:
+                tables.setdefault(t, []).append(r)
+
+        tol = max(_DESIGN_DEV_ABS, _DESIGN_DEV_REL * design)
+        for t, rows in tables.items():
+            vals = []
+            for r in rows:
+                for f in ("有效桩长（m）", "有效桩长(m)", "桩深度 （m）", "桩深度(m)"):
+                    v = _to_float(r.get(f))
+                    if v is not None and v > 0:
+                        vals.append(v)
+                        break
+            if len(vals) < 5:
+                continue  # 样本太少，占比不稳
+            n = len(vals)
+            zm = _ZONE_TAG_RE.search(t)
+            zone = float(zm.group(1)) if zm else None
+
+            share_dev = sum(1 for v in vals if abs(v - design) > tol) / n
+            share_zone = 0.0
+            if zone is not None:
+                ztol = max(_DESIGN_DEV_ABS, _DESIGN_DEV_REL * zone)
+                share_zone = sum(1 for v in vals if abs(v - zone) <= ztol) / n
+
+            if zone is not None and share_zone >= 0.2 and abs(zone - design) > tol:
+                w.append({
+                    "code": "DQ-DESIGN-ZONE-01",
+                    "severity": "error",
+                    "message": (f"表[{t}]表头设计桩长{design:g}m与分区名({zone:g}米)"
+                                f"矛盾：{share_zone:.0%}的桩实际按{zone:g}m级施工"),
+                    "detail": ("同一记录表存在两种互斥设计值（表头统一值 vs 分区施工群体），"
+                               "结构性矛盾，需对照设计文件核实真实设计桩长"),
+                })
+            elif share_dev >= 0.2:
+                w.append({
+                    "code": "DQ-DESIGN-ZONE-02",
+                    "severity": "warning",
+                    "message": (f"表[{t}]{share_dev:.0%}的桩长偏离表头设计值"
+                                f"{design:g}m超容差（±{tol:g}m）"),
+                    "detail": "存在成片超长/欠长桩，建议核实是模板设计值过期还是施工偏差",
+                })
+            elif zone is not None and abs(zone - design) > tol:
+                w.append({
+                    "code": "DQ-DESIGN-ZONE-03",
+                    "severity": "warning",
+                    "message": (f"表[{t}]分区名({zone:g}米)与表头设计桩长{design:g}m"
+                                f"不一致，但实际数据与设计值自洽"),
+                    "detail": "疑似 sheet 命名笔误，人工核实分区名即可",
+                })
         return w
 
     # ========== 8. 行级推断规则加载 ==========
@@ -1189,7 +1301,11 @@ class DataQualityChecker:
             return self._build_result()
 
         # 数据契约感知：unknown_domain / 未解析行 → 仅执行通用检查，并显式提示
-        if self.schema_status == "unknown_domain" or self._unparsed_count == self.n_rows:
+        # v10.3 E3：material schema 同样跳过桩基领域规则（桩号/桩长/充盈系数不适用），
+        # 但不提示"schema 未确认"——材料 schema 是可确认的领域，只是领域不同。
+        if self.schema_status == "material":
+            pass
+        elif self.schema_status == "unknown_domain" or self._unparsed_count == self.n_rows:
             self.warnings.append({
                 "code": "DQ-SCHEMA-UNKNOWN",
                 "severity": "warning",
@@ -1207,6 +1323,10 @@ class DataQualityChecker:
 
         # 3.5 列错位兜底校验（v8.9）
         self.warnings.extend(self.check_column_shift())
+
+        # 3.7 三重一致性（v10.1）：表头设计桩长 vs 分区名 vs 实际数据
+        # 仅依赖 full_text/行数据，与 schema 确认无关，unknown_domain 也可对账
+        self.warnings.extend(self.check_design_zone_consistency())
 
         # 3.6 双份 rows 一致性守卫（H-6 接线）：structured_rows 与 rows 分叉
         # 会导致不同消费方各看各的数据，静默失效 —— 升为 error 级告警

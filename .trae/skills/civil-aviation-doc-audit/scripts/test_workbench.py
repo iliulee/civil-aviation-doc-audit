@@ -7,7 +7,7 @@ workbench 结构断言（scripts/test_workbench.py）
 覆盖点：
   H1  package.json 已声明 workbench 开源依赖（sortablejs / xlsx）
   H2  vite.config.mjs 存在（Vite 构建配置）
-  H3  template-manifest.json 已登记 workbench 产物
+  H3  template-manifest.json 无 dist/ 断链条目（产物不走模板复制管线）
   H4  src/data.js 存在且含数据层关键能力（双模加载 / 句柄持久化 / 原子写 / 备份）
   H5  src/main.js 存在且含七模块注册表 + 动态 import 路由
 """
@@ -30,12 +30,13 @@ def test_vite_config_exists():
     assert (SKILL / "vite.config.mjs").exists(), "vite.config.mjs 缺失"
 
 
-def test_manifest_has_workbench():
+def test_manifest_no_dist_entries():
     m = json.loads((SKILL / "templates" / "template-manifest.json").read_text(encoding="utf-8"))
     srcs = [t["src"] for t in m["templates"]]
-    # build_foundation 依据 src 复制 dist/ 产物到数据底座（产品名 dist/index.html、dist/assets，不带 workbench 字样）
-    assert "dist/index.html" in srcs, "manifest 未登记 dist/index.html（资料员工作台总入口）"
-    assert "dist/assets" in srcs, "manifest 未登记 dist/assets（工作台静态资源）"
+    # v10.1：manifest 不登记 dist/ 产物（dist/assets 为目录无法逐文件复制、
+    # file:// 下 dist/index.html 受非安全上下文限制），工作台产物由部署管线直达
+    # （产物存在性由 test_skill_assets 校验），此处防 dist 断链条目回归
+    assert not any(s.startswith("dist/") for s in srcs), "manifest 不应登记 dist/ 条目（模板复制断链）"
 
 
 # --- Task 1 数据层断言（追加） ---

@@ -2,6 +2,80 @@
 
 > 本文件记录 civil-aviation-doc-audit Skill 各版本的核心变更。SKILL.md 正文仅保留最新版本概要。
 
+## v10.5（2026-08-26）
+
+**无规则覆盖运行时闸门——声明式触发的静默盲区显形**
+
+- **运行时侦测（核心）**：`rule_engine.py` 新增 `build_unguarded_doc_types`——审核运行时自动识别本批受审文档中无任何 active 规则覆盖的 doc_type，写入 `summary.unguarded_doc_types`（含 doc_type/份数/说明）。此前这类类型被规则引擎静默跳过，AI 与用户均不知情
+- **判定口径（防误报）**：SINGLE_DOC/CROSS_DOC 按 `trigger_when.doc_type` 名单（`'*'` 通配生效）、CROSS_UNIT 按 `doc_type_a/b` 双侧匹配，三类 scope 任一命中即视为有覆盖；仅统计 `doc_role == 'audited'` 的受审文档（缺省 None 视为受审），reference 角色（审核参照）不进提醒防噪音
+- **报告端渲染**：`report_builder.py` 行动层新增「八、无规则覆盖提醒」节——非空时输出醒目警示框（类型数/份数/说明表），全部有覆盖时整节不出现（不硬造提醒）；取数兼容 `rule_engine_summary` 子 dict 与顶层两种结构
+- **SKILL.md 强制协议**：AI 生成报告前必须检查 `unguarded_doc_types`，非空时须向用户显式说明"以下类型无规则引擎兜底"，禁止静默跳过
+- **扫描工具口径校准**：`scan_rule_coverage.py` 复用 `build_unguarded_doc_types` 同一套判定逻辑（工具与运行时不打架），仅统计受审文档，修复"设计变更文件 30 份伪缺口"误报
+- **零交集规则修复**：IR-010/IR-011/LG-905 的 `trigger_when.doc_type` 补「场道施工记录」触发词——修复因触发词与生产 doc_type 失配导致的三条规则静默失效；扫描确认零交集规则 3 → 0
+- **回归锁定**：新增 `scripts/test_unguarded_doc_types.py`（8 条：字段存在/无覆盖点名/有覆盖不误报/CROSS 兜底不算裸检/全覆盖为空/报告渲染/真实链路取数/reference 过滤）注册进 `run_all_tests.py`；run_all_tests 18/18 全绿
+
+## v10.4（2026-08-26）
+
+**规则→审核→报告全链路贯通 + 报告三层结构重构（A/B 两组专项）**
+
+- **LG-110 静默失效修复（A 组根因）**：LG-110 `trigger_when.doc_type` 与生产环境真实材料类文档类型「材料、构配件进场检验记录」失配 → 规则写了但从未执行。补触发词后规则真正进审核链路
+- **审核期 S-04 重算（陈旧结果销号）**：`review_audit.py` 新增步骤 5.6 调用 `extract_certificates.collect_certificate_findings`，基于人工修正后的 corrected 数据重算 S-04 并原子刷新台账——修复"用户改完数据重审仍报旧问题"
+- **规则执行统计（静默失效显形）**：`rule_engine.py` 新增 `build_execution_stats`（每条规则的 matched_docs/hits），`review_audit` summary 注入 `rule_execution_stats`；报告端渲染统计表，0 匹配规则标 ⚠
+- **规则覆盖扫描工具**：新增 `scripts/scan_rule_coverage.py`，扫历史数据底座真实 doc_type 与规则触发词对账，一次性揪出 18 条零交集规则与 6 个覆盖缺口；CFG 桩施工记录（历史生产 3 份文档）补齐 9 条通用桩类规则覆盖，测试锁定防复发
+- **报告生成建模渲染分离（B 组结构）**：run_audit 内嵌 ~450 行巨型报告函数拆出 `report_builder.py`（`build_model` 纯数据建模 + `render_html` 纯渲染），run_audit 改薄包装调用；任何 agent 装此 skill 出的报告结构由测试锁定一致
+- **三层报告结构**：结论层（审核概要+总体结论）→ 问题层（规范对账发现，新增「整改建议」列渲染 remediation）→ 行动层（规则执行统计+整改建议）；依据缺失/未标注警示渲染不回退
+- **页脚版本号单一真相源**：报告页脚版本从 SKILL.md frontmatter `version:` 动态读取，不硬编码（修复页脚 v7.0 与实际版本漂移）；SKILL.md 补 `version: "10.4"` 元数据
+- **verify_report 合格证台账对账闸门**：新增 `check_certificates_alignment`——报告声称的合格证台账记录数 vs 底座 `ledgers.certificates` 实际数对账，不一致即红
+- **验证脚本健壮性**：`verify_plan_v2.py` 版本号识别由硬编码行号（frontmatter 加字段即错位）改为 H1 标题正则全文搜索
+- **回归锁定**：新增 `test_rule_to_report_chain.py`（10 条：LG-110 触发/审核期重算/台账刷新/接线/执行统计/0 匹配标记/registry 计数/不重复执行/CFG 覆盖）+ `test_report_builder.py`（6 条：模块消费/整改建议列/统计渲染/版本号一致/golden 三层锚点/证书对账）注册进 `run_all_tests.py`
+
+## v10.3（2026-08-25）
+
+**材料/合格证数据链沉淀（验收 S-01~S-04 专项）**
+
+- **A1 材料类文档信号路由**：`build_foundation` 识别 doc_type / 文本含「合格证/质量证明书/进场检验/检验记录/质证书编号/出厂合格证」时强制排除桩基解析，杜绝"材料文档含碎石桩字样被桩内容感知劫持 → 产出空行或混入桩槽位"
+- **E1 OCR 零产出判定**：`assess_ocr_result` 识别"仅有 bbox 无文字"的空框结果为零产出，`ocr_status` 判 `needs_review` 而非 `completed`，禁止空结果进入结构化流程
+- **E3 材料 schema 契约**：材料类文档 `schema_status="material"`，DQ 质检跳过桩基领域规则、不再误报"表格 schema 未确认"
+- **A2/A4 合格证提取与台账落库**：新增 `extract_certificates.py`，从检验记录/合格证行提取结构化证书记录（合格证号/质证书编号/厂家/材料/规格/单位/数量/部位/进场日期），按合格证号去重，落库 `index["ledgers"]["certificates"]` 并回写 `documents[].certificates` 关联元信息；原子写避免半截 JSON
+- **A5 S-04 追溯链检查**：`build_certificate_linkage` 从台账检出 `verified_status=missing_hg_no`（合格证号为空）记录，落为 S-04 问题写入 `index["ledgers"]["certificates_linkage"]`，报告/审核直接读取，口径一致
+- **LG-110 新规则**：新增 L2 规则「材料进场检验记录合格证追溯链」，描述/触发/校验/S-04 对齐，注册进 `registry.json`
+- **规则注册表与校验器对齐**：`rule_registry_builder.py` 与 `rule_schema_validator.py` 的 `collect_rule_files` 仅收集 L1-iron/L2-logic/L3-business 子目录，排除根目录 `inference_rules.json`、`table-schemas.json`，registry 计数与实际文件一致
+- **回归锁定**：新增 `scripts/test_material_certificate_chain.py`（13 条：材料路由/OCR 零产出/schema 跳过桩检查/提取/去重/台账落库/JSON 往返/S-04 检出/同步双端部署/列错位保留）注册进 `run_all_tests.py`；run_all_tests 15/15 全绿
+
+## v10.2（2026-08-25）
+
+**Excel/docx 建数据底座链路修复（专项审查销号）**
+
+- **P1 数据行过滤不再整表截断**：`parse_excel_workbook_rows` 命中「施工员/监理/合计/审核」等关键词由 `break`（其后全部丢弃）改为**单行跳过**；仅"无数字+落款词开头"的表尾才 break。实测数据行含「监理/审核」时后续数据完整保留
+- **P5 行级定位键**：Excel 行补 `row_index`（sheet 内物理行号）、docx 行补 `row_index`（表内序号），对齐单文件 schema `row_index` 契约，写回/核对可定位到具体单元格行
+- **P4 列语义对齐**：可识别表头列追加英文标准槽位键（桩位编号→`pile_no`、有效桩长→`actual_length`、孔底标高→`bottom_elev`…），桩列强别名优先于「序号」弱别名；规则引擎 `is_row_consumable` 与 DQ 质检不再对 Excel 行盲读
+- **P7 表头扫描窗口**：20 行 → 100 行，表头靠后不再整表归零；未命中输出 stderr 告警（仅对疑似桩表 sheet）
+- **P2 单位子行不拼「·m」**：双行表头子行为纯单位（m/mm/%/时分…）时列名保持主名，`实长·m` → `实长`
+- **P6 数字日期转换**：Excel 日期序列号（如 46000）与 date/datetime 单元格统一转 `YYYY-MM-DD`
+- **P10 质检误报修复**：`DataQualityChecker.check_column_shift._is_num` 由 `isinstance(int/float)` 改为宽松 float 判定（底座行值为字符串，原逻辑对 Excel/docx/OCR 全链路百分百误报"非数值"）；缺失值（None/空串）跳过；数学链改 `_to_float` 防 str-str 异常。修后 CFG 真实文件误报 3711→2 条，且 2 条为真题（「筑业软件」水印乱码入数据列）
+- **回归锁定**：新增 `scripts/test_xlsx_docx_chain.py`（10 条：截断/行定位/列对齐/单位列/日期序列号/表头窗口/误报与捕获/docx row_index）注册进 `run_all_tests.py`；run_all_tests 项目版+安装版 14/14 全绿，H-7 干净数据零误报无倒退；四文件哈希三端一致
+
+## v10.0（2026-08-25）
+
+**资料员工作台（Web Workbench）——九页合一，一次加载、模块共享**
+
+- **九页合一**：合并原来 9 个零散的审核 HTML 入口为单一工作台外壳，hash 路由 + 动态 import 按需加载；一次性加载 `index.json`，`_index` 内存共享，避免跨页重复读取
+- **七个模块**：
+  1. 项目总览（文档统计 + 进度总况）
+  2. 数据核对（内嵌 data-editor，逐条核对 OCR 结果）
+  3. 资料进度看板（8 节点轴「开检隐分竣交档」+ SortableJS 拖拽流转，localStorage 覆盖层落盘）
+  4. 台账三本（检验批/隐蔽/混凝土等台账管理 + 计数）
+  5. 数据概览导出（SheetJS/xlsx）
+  6. 整改销号（问题登记→销号闭环循环）
+  7. 规则与反馈（内嵌 iframe 加载 8765 规则面板 + 存活探测降级提示）
+- **技术栈**：Vite + SortableJS + SheetJS/xlsx + ECharts + IndexedDB
+- **数据层**：IndexedDB 存 FileSystemDirectoryHandle 实现「一键恢复上次项目」；写入用原子写 + 自动备份（备份到 `backups/`），不迁 SQLite
+- **双模加载**：HTTP fetch（部署）/ FileSystem Access API（本地文件系统）
+- **一键启动** `启动工作台.bat`：同时拉起规则 API(:8765) + 前端静态服务(:8909) + 浏览器；纯 ASCII 编码落盘，避免 cmd 代码页乱码
+- **规则合并**：规则管理内嵌进工作台「规则与反馈」模块，替代旧 `rule-manager.bat` 单独入口；探测到 8765 未启动时降级提示「重新检测」
+- **测试接入**：新增 `scripts/test_workbench.py`（工作台结构断言：依赖/构建/manifest/数据层/外壳/路由）并注册进 `run_all_tests.py`；`verify_plan_v2.py` 新增「工作台 v10：部署管线接入」11 项；templates 清单登记 dist 构建产物
+- **移植性修复**：`verify_plan_v2.py` 安装副本判定由 `.trae-cn` 硬编码改为按路径是否含 `\.trae\skills\` 判定，修复 WorkBuddy 平台误报失败
+
 ## v9.10（2026-08-24）
 
 **规范知识库总目录 + 按书名/专业快速检索（D）**

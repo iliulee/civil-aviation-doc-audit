@@ -18,7 +18,8 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parent.parent
 ROOT_DIR = SKILL_DIR.parent.parent.parent  # 项目根目录
 # 安装副本判定：安装在 .trae-cn 下时，项目工作区级检查（同步 bat 等）不适用
-IN_INSTALLED_COPY = ".trae-cn" in str(SKILL_DIR).lower()
+_ws_copy = "\\\\.trae\\\\skills\\\\" in str(SKILL_DIR).lower()
+IN_INSTALLED_COPY = not _ws_copy
 
 
 def read_file(path: Path) -> str:
@@ -109,9 +110,10 @@ def check_task6():
 
     # 6.1 从 SKILL.md 标题提取当前版本号，其余三处与之比对
     #     （一致性检查：升版本后无需改本脚本，任一处漏升即红）
-    skill = read_file(SKILL_DIR / "SKILL.md")
-    title_line = skill.split("\n")[5] if skill else ""
-    m = re.search(r"合规审核大师 (v\d+\.\d+(?:\.\d+)?)", title_line)
+    #     v10.4 修正：不再硬编码行号取标题行（frontmatter 加字段即错位），
+    #     改为全文搜 H1 标题里的版本号
+    skill = read_file(SKILL_DIR / "SKILL.md") or ""
+    m = re.search(r"^#.*?合规审核大师 (v\d+\.\d+(?:\.\d+)?)", skill, re.M)
     version = m.group(1) if m else ""
     c.check(bool(version), f"SKILL.md 标题含版本号（识别为 {version or '未识别'}）")
 
@@ -261,32 +263,44 @@ def check_task5():
 def check_workbench():
     c = Checker("工作台 v10：部署管线接入")
 
-    # w1 package.json 声明构建脚本 + 前端依赖
-    pkg = read_json(SKILL_DIR / "package.json")
-    c.check(pkg.get("scripts", {}).get("build", "") == "vite build", "package.json build 脚本 = vite build")
-    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-    for dep in ["vite", "sortablejs", "xlsx", "echarts"]:
-        c.check(dep in deps, f"依赖齐全: {dep}")
+    # 开发源守卫（与 test_workbench.py 口径一致）：
+    # 安装副本为已构建部署、不含 src/ 与 package.json，开发源断言跳过，
+    # 改由 test_skill_assets 校验构建产物（workbench/）。
+    has_dev_source = (SKILL_DIR / "src").is_dir() and (SKILL_DIR / "package.json").exists()
+    if not has_dev_source:
+        print("  [i] 安装副本运行，跳过开发源码断言（w1/w2/w4），产物由 test_skill_assets 校验")
 
-    # w2 vite.config.mjs 存在
-    c.check((SKILL_DIR / "vite.config.mjs").exists(), "vite.config.mjs 存在")
+    if has_dev_source:
+        # w1 package.json 声明构建脚本 + 前端依赖
+        pkg = read_json(SKILL_DIR / "package.json")
+        c.check(pkg.get("scripts", {}).get("build", "") == "vite build", "package.json build 脚本 = vite build")
+        deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+        for dep in ["vite", "sortablejs", "xlsx", "echarts"]:
+            c.check(dep in deps, f"依赖齐全: {dep}")
 
-    # w3 manifest 登记工作台产物
+        # w2 vite.config.mjs 存在
+        c.check((SKILL_DIR / "vite.config.mjs").exists(), "vite.config.mjs 存在")
+
+    # w3 manifest 不引用 dist/ 产物（v10.1 断链修复回归防护，开发副本与安装副本均适用：
+    # dist/assets 为目录无法逐文件复制、file:// 下 dist/index.html 受非安全上下文限制，
+    # manifest 只登记 templates/ 内可复制的模板源；产物存在性由 w5 校验）
     manifest = read_json(SKILL_DIR / "templates" / "template-manifest.json")
     srcs = [t.get("src", "") for t in manifest.get("templates", [])]
-    c.check(any("dist/index.html" in s for s in srcs), "manifest 登记 dist/index.html → 资料员工作台.html")
-    c.check(any("dist/assets" in s for s in srcs), "manifest 登记 dist/assets → assets")
+    c.check(not any(s.startswith("dist/") for s in srcs), "manifest 无 dist/ 断链条目（产物不走模板复制管线）")
 
-    # w4 数据层/外壳/路由就位（test_workbench 已另行校验细节）
-    c.check((SKILL_DIR / "src" / "data.js").exists(), "src/data.js 存在")
-    c.check((SKILL_DIR / "src" / "main.js").exists(), "src/main.js 存在")
+    if has_dev_source:
+        # w4 数据层/外壳/路由就位（test_workbench 已另行校验细节）
+        c.check((SKILL_DIR / "src" / "data.js").exists(), "src/data.js 存在")
+        c.check((SKILL_DIR / "src" / "main.js").exists(), "src/main.js 存在")
 
     # w5 构建产物存在（可再生成；未 build 时记账不阻断，运行 npm run build 后复验）
-    dist_index = SKILL_DIR / "dist" / "index.html"
-    if dist_index.exists():
-        c.check(dist_index.exists(), "dist/index.html 已构建")
+    # 安装副本部署形态为 workbench/（dist/ 重命名），按形态取正确产物路径
+    bundle_index = (SKILL_DIR / "workbench" / "index.html") if not has_dev_source else (SKILL_DIR / "dist" / "index.html")
+    bundle_label = "workbench/index.html 已部署" if not has_dev_source else "dist/index.html 已构建"
+    if bundle_index.exists():
+        c.check(bundle_index.exists(), bundle_label)
     else:
-        print("  [i] dist/ 未构建（运行 npm run build 后再次验收）——记账，不阻断")
+        print(f"  [i] 构建产物缺失（{'运行 npm run build' if has_dev_source else '重新同步部署'}）——记账，不阻断")
 
     return c.summary()
 

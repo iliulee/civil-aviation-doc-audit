@@ -35,7 +35,7 @@ echo 正在启动规则管理服务...
 echo.
 
 :: 启动 Python 服务
-start /B "" python "%SKILL_DIR%scripts\rule_admin.py" --port 8765 --rules "%SKILL_DIR%rules"
+start /B "" python "%SKILL_DIR%scripts\rule_admin.py" --port 8765 --rules-dir "%SKILL_DIR%rules"
 
 :: 等待服务启动
 echo 等待服务就绪...

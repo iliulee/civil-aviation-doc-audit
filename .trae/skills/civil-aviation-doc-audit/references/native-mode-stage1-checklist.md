@@ -11,6 +11,11 @@
 > 5. **data-editor 自动加载**：数据核对编辑器.html 必须包含打开后 `fetch('./index.json')` 自动加载同级 index.json 的逻辑，失败才提示手动选择；localStorage 仅存 project_name（项目名记忆，不存实际审核数据）
 > 6. **rule-manager 三级路径定位**：规则管理工具.bat 必须使用三级路径自动定位版（当前目录→上级目录→全局 Skill 安装路径），双击即可启动 rule-manager.html 完整版，无需用户手动找 skill 安装目录
 > 7. **OCR 引擎四选一前置**：前置信息必须显式提供 `auto（推荐）/ vision（云端API）/ paddle（本地批量）/ agent（AGENT Vision复核）` 四选一，禁止隐藏选项
+>
+> **🔴 v10 更新（双模并存，勿混淆）**：
+> - **引擎模式（默认，有 Python/HTTP）**：走 v10 资料员工作台（`启动工作台.bat` 拉起 :8765+:8909，`打开项目` 连数据底座），**无需**再把 data-editor/project-dashboard 等模板复制到「数据底座/」。人工核对入口 = 工作台「数据核对」模块；SDK 产物 = `数据底座/`(JSON+index.json) 即可。
+> - **原生模式（Python 不可用，`file://` 后备）**：本文档的「复制模板→数据底座/」流程**仍适用**——data-editor.html → `数据核对编辑器.html`、project-dashboard.html → `项目总览.html` 的中文命名复制是原生模式的人工核对入口，源文件均在 skill `templates/` 下。
+> - 上面的 G-1.5 闸门（SKILL.md）已改为「工作台已部署 或 templates/data-editor.html 存在」，不再强制要求「数据底座/ 下必须存在 数据核对编辑器.html 等」。
 
 ---
 

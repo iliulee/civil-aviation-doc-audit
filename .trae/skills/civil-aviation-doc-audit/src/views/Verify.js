@@ -1,7 +1,25 @@
 // src/views/Verify.js —— 数据核对入口（Task 8, D1）
 // v1：列出待核对文档 + 跳转独立核对编辑器；v2：注册 message 监听，为 iframe 并入铺路
+
+// v2 并入埋点监听：模块级只注册一次，避免每次 render 累加（意见#5）
+let _msgBound = false;
+
 export default function renderVerify(container, ctx) {
   const { WB } = ctx;
+  if (!_msgBound) {
+    window.addEventListener('message', (e) => {
+      const m = e.data;
+      if (m && m.wbVersion) {
+        console.log('[Verify] 收到编辑器握手:', m.wbVersion);
+        // v2 阶段：用 e.source.postMessage 回传 WB.foundationDirHandle
+        if (e.source && WB.foundationDirHandle) {
+          try { e.source.postMessage({ type: 'wb:dirhandle-ready' }, '*'); } catch (err) { console.warn(err); }
+        }
+      }
+    });
+    _msgBound = true;
+  }
+
   const data = WB.index;
   const docs = (data && data.documents) || [];
   const pending = docs.filter(d => !d.human_verified);
@@ -28,16 +46,4 @@ export default function renderVerify(container, ctx) {
     `</div>` +
     (suspects.length ? `<div class="wb-card" style="margin-top:14px"><div class="wb-section-hdr"><h3>建议优先核对（存疑 ${suspects.length}）</h3></div>` +
       `<ul class="wb-list">${suspects.map(d => `<li>${d.id || ''} · ${d.original_file || '—'}</li>`).join('')}</ul></div>` : '');
-
-  // v2 并入埋点：确认编辑器可并入时回传目录句柄
-  window.addEventListener('message', (e) => {
-    const m = e.data;
-    if (m && m.wbVersion) {
-      console.log('[Verify] 收到编辑器握手:', m.wbVersion);
-      // v2 阶段：用 e.source.postMessage 回传 WB.foundationDirHandle
-      if (e.source && WB.foundationDirHandle) {
-        try { e.source.postMessage({ type: 'wb:dirhandle-ready' }, '*'); } catch (err) { console.warn(err); }
-      }
-    }
-  });
 }

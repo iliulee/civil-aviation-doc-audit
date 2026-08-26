@@ -9,7 +9,8 @@
     "doc_type": [
       "碎石桩施工记录",
       "PHC管桩施工记录",
-      "DDC桩施工记录"
+      "DDC桩施工记录",
+      "CFG桩施工记录"
     ],
     "field_required": [
       "实长",
@@ -29,7 +30,7 @@
   "source": "system",
   "version": "1.1.0",
   "created_at": "2026-07-30T10:00:00",
-  "updated_at": "2026-07-31T09:30:00+08:00",
+  "updated_at": "2026-08-26T00:00:00",
   "owner": "system",
   "applies_to": {
     "professional": [
@@ -61,6 +62,12 @@
       "date": "2026-07-31",
       "author": "admin",
       "change": "废弃（deprecated）：本规则与 LG-001（高程自洽校验）功能完全重复——二者 check_expr 均为 abs(实长 - (桩顶高程 - 桩底高程)) <= 0.1，severity 均为 Sanity Check，scope 均为 SINGLE_DOC，applies_to 均为 01_场道工程/01-03。LG-001 已在 v1.2.0 扩展适用至 PHC管桩施工记录，覆盖范围更广，故保留 LG-001、废弃本规则。IR-012 作为 Fatal 级别铁律配套规则保留。同时修复 error_template 占位符渲染问题：{桩号}→{pile_no}、{计算值}→{computed}、{差异值}→{diff}，与 LG-001 保持一致。"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-08-26",
+      "author": "system",
+      "change": "A1 规则覆盖扫描：补 CFG桩施工记录 触发词（历史生产 3 份文档零规则覆盖，静默失效）"
     }
   ],
   "is_placeholder": false

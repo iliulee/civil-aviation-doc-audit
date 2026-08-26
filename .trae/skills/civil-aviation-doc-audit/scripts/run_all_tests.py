@@ -64,9 +64,35 @@ def main():
         # v9.6 隐患销号套件：每个已查实根因一条测试，红=复发，改完必须全绿
         results.append(("单元测试: 隐患销号", run_pytest(
             ["scripts/test_regression_hazards.py"], "隐患销号回归（H-1~H-7）")))
-        # v10.0 资料员工作台结构断言（依赖/构建/manifest/数据层/外壳）
-        results.append(("单元测试: 工作台结构", run_pytest(
-            ["scripts/test_workbench.py"], "工作台结构断言（依赖/构建/manifest）")))
+        # v10.0 出口闸门+纯电子表场景：G-0/对账/force禁用/电子表行数/验钞机
+        results.append(("单元测试: 闸门与电子表", run_pytest(
+            ["scripts/test_gate_and_ledger.py"], "G-0/对账闸门/force禁用/电子表行数/报告质检")))
+        # v10.0 skill 前端资源一致性断言（模板源齐全 + 工作台产物存在 + 文档 G-1.5 一致性）
+        # 仅开发源副本(src/ + package.json)运行；安装副本为已构建部署、不含 src/，改由 test_skill_assets 校验构建产物
+        if (SKILL_DIR / "src").is_dir() and (SKILL_DIR / "package.json").exists():
+            results.append(("单元测试: 工作台结构", run_pytest(
+                ["scripts/test_workbench.py"], "工作台结构断言（依赖/构建/manifest）")))
+        # v10.0 skill 前端资源一致性断言（模板源齐全 + 工作台产物存在 + 文档 G-1.5 一致性）
+        results.append(("单元测试: 前端资源一致性", run_pytest(
+            ["scripts/test_skill_assets.py"], "skill 前端资源一致性（templates/工作台/SKILL.md闸门）")))
+        # v10.1 三重一致性/依据渲染/registry 对齐（B+C+E2）
+        results.append(("单元测试: 三重一致性", run_pytest(
+            ["scripts/test_design_zone.py"], "设计值三重一致性/依据缺失渲染/registry对齐")))
+        # v10.2 Excel/docx 建底座链路回归（break截断/row_index/列对齐/P10 误报）
+        results.append(("单元测试: Excel/docx 链路", run_pytest(
+            ["scripts/test_xlsx_docx_chain.py"], "Excel/docx 建底座链路（截断/定位/对齐/误报）")))
+        # v10.3 材料/合格证数据链回归（A1路由/E1零产出/E3 schema契约/A2提取/A4台账/A5关联/G3双端部署）
+        results.append(("单元测试: 材料合格证链", run_pytest(
+            ["scripts/test_material_certificate_chain.py"], "材料/合格证数据链（路由/提取/台账/关联/契约）")))
+        # v10.4 规则→审核→报告链路回归（LG-110触发/S-04审核期重算/执行统计/CFG覆盖/registry计数）
+        results.append(("单元测试: 规则报告链", run_pytest(
+            ["scripts/test_rule_to_report_chain.py"], "规则→审核→报告链路（触发/重算/统计/覆盖/计数）")))
+        # v10.4 报告生成器回归（建模渲染分离/整改建议列/规则执行统计/版本号/golden锚点/证书对账）
+        results.append(("单元测试: 报告生成器", run_pytest(
+            ["scripts/test_report_builder.py"], "报告生成器（三层结构/整改建议/统计/版本/对账）")))
+        # v10.5 无规则覆盖运行时闸门（unguarded_doc_types 侦测/渲染/reference过滤）
+        results.append(("单元测试: 无规则覆盖闸门", run_pytest(
+            ["scripts/test_unguarded_doc_types.py"], "无规则覆盖侦测（点名/不误报/渲染/角色过滤）")))
 
     # 2. 集成测试（数据底座）
     if only is None or only == "integration":

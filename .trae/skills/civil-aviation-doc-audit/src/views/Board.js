@@ -6,6 +6,10 @@ import * as echarts from 'echarts';
 
 const OVERLAY_KEY = 'wb_board_overlay'; // { cardId: columnId }
 
+// 模块级状态：跨多次 render 复用，避免监听累加 / ECharts 实例泄漏（意见#5）
+let _chart = null;
+let _resizeBound = false;
+
 // 8 节点进度轴（行业习惯：开检隐分竣验交档）
 const STEPS = ['开工', '检查', '隐蔽', '分部', '竣工', '验收', '移交', '归档'];
 const STAGE_INDEX = { noted: 0, ongoing: 1, hidden: 2, subdivision: 3, completed: 4, inspected: 5, handover: 6, archived: 7 };
@@ -94,10 +98,11 @@ export default function renderBoard(container, ctx) {
   }
 
   // ===== ECharts 核对环 =====
+  if (_chart) _chart.dispose();              // 复用前释放旧实例，防多次导航泄漏（意见#5）
   const verified = docs.filter(d => d.human_verified).length;
   const pending = docs.length - verified;
-  const chart = echarts.init(document.getElementById('wb-ring'));
-  chart.setOption({
+  _chart = echarts.init(document.getElementById('wb-ring'));
+  _chart.setOption({
     tooltip: { trigger: 'item', formatter: '{b}: {c} 份 ({d}%)' },
     series: [{
       type: 'pie', radius: ['54%', '78%'], avoidLabelOverlap: false,
@@ -109,7 +114,11 @@ export default function renderBoard(container, ctx) {
     }],
   });
 
-  window.addEventListener('resize', () => chart.resize());
+  // resize 监听在模块级只绑一次，回调始终指向最新实例（意见#5）
+  if (!_resizeBound) {
+    window.addEventListener('resize', () => { if (_chart) _chart.resize(); });
+    _resizeBound = true;
+  }
 }
 
 function renderProgressAxis(data) {

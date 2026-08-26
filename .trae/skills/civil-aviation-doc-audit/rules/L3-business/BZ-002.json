@@ -12,7 +12,8 @@
       "DDC桩施工记录",
       "混凝土浇筑记录",
       "施工记录",
-      "检验批"
+      "检验批",
+      "CFG桩施工记录"
     ],
     "field_required": []
   },
@@ -29,7 +30,7 @@
   "source": "system",
   "version": "1.0.0",
   "created_at": "2026-07-30T10:00:00",
-  "updated_at": "2026-07-30T10:00:00",
+  "updated_at": "2026-08-26T00:00:00",
   "owner": "system",
   "applies_to": {
     "professional": [
@@ -52,6 +53,12 @@
       "date": "2026-07-30",
       "author": "system",
       "change": "从 data-quality-patterns.md 规则2（DQ-JUMP）迁移"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-08-26",
+      "author": "system",
+      "change": "A1 规则覆盖扫描：补 CFG桩施工记录 触发词（历史生产 3 份文档零规则覆盖，静默失效）"
     }
   ],
   "is_placeholder": false

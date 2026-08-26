@@ -1,0 +1,62 @@
+{
+  "rule_id": "LG-110",
+  "name": "材料进场检验记录合格证追溯链（检验记录行 ↔ 质证书编号 ↔ 合格证号）",
+  "level": "L2-LOGIC",
+  "scope": "CROSS_DOC",
+  "category": "材料追溯链",
+  "description": "[v10.4 A5] 质量证明书（材质单）有质证书编号、每张出厂合格证有独立编号，但检验记录行若未引用任一编号，则无法建立「检验记录行 → 质量证明书 → 合格证」的可追溯链路。本规则由 extract_certificates.build_certificate_linkage 在数据底座构建时执行：从 ledgers.certificates 台账中检出 verified_status=missing_hg_no 的记录（合格证号为空），落为 S-04 问题，供报告/追溯读取。三单合一数据的可用性前提是编号可关联，缺链即降级为准最佳实践（不阻塞实质合规）。",
+  "trigger_when": {
+    "doc_type": [
+      "材料、构配件进场检验记录",
+      "材料进场检验记录",
+      "质量证明书",
+      "出厂合格证"
+    ],
+    "field_required": [
+      "合格证号",
+      "质证书编号"
+    ]
+  },
+  "check_expr": {
+    "type": "expression",
+    "expr": "True",
+    "language": "python_eval"
+  },
+  "error_template": "检验记录行未引用合格证编号，无法建立「检验记录→质量证明书→合格证」追溯链",
+  "severity_on_violation": "Best Practice",
+  "remediation": "在检验记录对应行补填合格证编号，或按其已填的质证书编号/生产厂家在台账中补充关联，确保可回溯",
+  "status": "active",
+  "source": "system",
+  "version": "1.0.0",
+  "created_at": "2026-08-25T00:00:00",
+  "updated_at": "2026-08-25T00:00:00",
+  "owner": "system",
+  "applies_to": {
+    "professional": [
+      "*"
+    ],
+    "subdivision_codes": []
+  },
+  "stats": {
+    "total_hits": 0,
+    "total_reviews": 0,
+    "hit_rate": 0.0,
+    "false_positive_count": 0,
+    "false_positive_rate": 0.0,
+    "last_hit_at": null,
+    "last_review_at": null
+  },
+  "alignment": {
+    "spec": "MH/T 5078",
+    "issue_code": "S-04"
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-08-25",
+      "author": "system",
+      "change": "新增：材料进场合格证追溯链检查（对应 issue S-04），由 extract_certificates.build_certificate_linkage 执行"
+    }
+  ],
+  "is_placeholder": false
+}

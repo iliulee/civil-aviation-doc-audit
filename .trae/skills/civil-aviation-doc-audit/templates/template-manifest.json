@@ -86,20 +86,6 @@
       "desc": "碎石桩施工记录数据模板",
       "required": true,
       "category": "data"
-    },
-    {
-      "src": "dist/index.html",
-      "dst": "资料员工作台.html",
-      "desc": "资料员工作台（总入口，六大模块）",
-      "required": true,
-      "category": "core"
-    },
-    {
-      "src": "dist/assets",
-      "dst": "assets",
-      "desc": "工作台静态资源（排序/SheetJS/图表）",
-      "required": true,
-      "category": "lib"
     }
   ]
 }
