@@ -19,6 +19,10 @@ audit_output/
 verify_output/
 crops/
 
+# 开发过程文档（保留磁盘用于复盘/标注，不入 GitHub 主页）
+docs/
+review_records/
+
 # Trae 插件目录（默认忽略；放行 civil-aviation-doc-audit skill 源码纳入版本管理）
 .trae/*
 !.trae/skills/
