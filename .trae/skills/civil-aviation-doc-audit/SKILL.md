@@ -1,10 +1,10 @@
 ---
 name: "civil-aviation-doc-audit"
-version: "10.5"
-description: "v10.5 民航施工资料合规审核大师：按 MH/T 5078 规范逐条对账、OCR 识别扫描件、跨资料逻辑一致性检查、三级输出（Fatal/Sanity Check/Best Practice）、自动生成审核报告与整改通知，覆盖场道/空管/助航/弱电/供油五大专业。当用户要求审核民航施工资料、检查合规性、验证运算、识别扫描件、生成报告或整改通知时触发。"
+version: "10.6"
+description: "v10.6 民航施工资料合规审核大师：按 MH/T 5078 规范逐条对账、OCR 识别扫描件（双闸门裁图复核+视觉能力探测降级+文本层体检路由）、跨资料逻辑一致性检查、三级输出（Fatal/Sanity Check/Best Practice）、自动生成审核报告与整改通知，覆盖场道/空管/助航/弱电/供油五大专业。当用户要求审核民航施工资料、检查合规性、验证运算、识别扫描件、生成报告或整改通知时触发。"
 ---
 
-# 民航建设施工资料合规审核大师 v10.5
+# 民航建设施工资料合规审核大师 v10.6
 
 > 面向民航运输机场专业工程，基于 MH/T 5078.1~5078.6-2024 资料管理规程体系。提供"建数据底座→人工核对→正式审核→生成报告"四阶段审核流水线，以及独立的规则管理子系统。本 Skill 按**场景路由**组织，AI 根据用户输入仅加载对应场景。
 
@@ -73,9 +73,10 @@ AI 按以下模板逐项询问。详细选项表见 `references/skill-config-ref
 | 6 | `check_signatures` | 是否查签字：是/否 | 否 |
 
 **第 4 项引擎选择流程（强制）**：
-1. 先执行 `python -c "import rapidocr; print('ok')"` 检测 RapidOCR 可用性
-2. 将 4 引擎以卡片格式展示（含可用性+代价说明），用户选一个
-3. 回显确认后落盘 preconditions（`ocr_engine_source` 记录 user_chosen/default）
+1. **能力探测（v10.6）**：先执行 `python scripts/vision_reviewer.py probe` 探测视觉复核能力（宿主视觉 / Vision API / 降级档位），把结果与引擎卡片一并展示——宿主无视觉时明确提示用户**主动选用带视觉的模型**（或设 `AGENT_VISION=1` 声明）；显式无视觉（`AGENT_VISION=0`）时扫描件存疑项直接走 Chat-Verify 人工核对，不生成空等读图任务
+2. 再执行 `python -c "import rapidocr; print('ok')"` 检测 RapidOCR 可用性
+3. 将 4 引擎以卡片格式展示（含可用性+代价说明），用户选一个
+4. 回显确认后落盘 preconditions（`ocr_engine_source` 记录 user_chosen/default）
 > **`nature=扫描转化电子文档`**：用户已用 WPS 等工具把扫描件转成 Word(.docx)。这类文件走**电子表解析**（真实表格结构，无需 OCR），第 4 项 OCR 引擎选择自动置灰/跳过，不设 OCR 优先级路由。
 > **`nature=电子版`（纯 xlsx/电子表）**：第 4 项同样置灰（注明"原生电子表格无需 OCR"），但第 5/6 项照常询问；底座必建、数据默认可信录入、异常项才人工核对。完整裁剪表见 `references/electronic-ledger.md`。
 

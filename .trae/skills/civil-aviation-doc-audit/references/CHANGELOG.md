@@ -2,6 +2,18 @@
 
 > 本文件记录 civil-aviation-doc-audit Skill 各版本的核心变更。SKILL.md 正文仅保留最新版本概要。
 
+## v10.6（2026-08-29）
+
+**OCR 复核升级 + 跨平台视觉调度 + 文本层体检路由（三线改造）**
+
+起因：RapidOCR 置信度造假（`0:8` 报 0.99997、"m²"读成 m2），旧 `crop_and_verify` 是空壳（直接返回原值、假抬置信度 ≥0.70、标记未修改）；且宿主视觉硬编码 `has_agent=True`，WorkBuddy 等无视觉宿主上读图任务永远空等。核心决策「不引入 pdfium / 不搬 pdf-inspector」（实测 pdfium 表格串位，引入 6 个新错识）。
+
+- **线1 裁图复核做真**（`ocr_image.py`）：`crop_and_verify` 重写——裁图真实落盘 + 任务清单（`CV-` 任务 ID）+ 读回合并；未读回时置信压 0.55 待读（不假通过）。双闸门 `_needs_review`：置信 < 0.985 或语义可疑（`数字:数字`、`m2/m3`）即使 1.0 置信也强制复核。批级锚点：任务 ID 基于 PDF 内容哈希（跨进程可匹配）。主流程接线 + 缓存补复核（H-12 盲区修复）。PDF 裁图坐标系对齐（H-13：渲染 DPI 与 bbox 一致，原固定 2x/144dpi 渲染把 200dpi bbox 当 PDF 点 → 区域塌缩 → 裁图静默全空）
+- **线2 视觉调度降级**（`vision_reviewer.py` 新增 + `verify_fields.py`）：`confirm_vision_capability` 能力探测（AGENT_VISION 显式声明制）+ `resolve_review_level` 四档纯函数（host_agent → api → rule → noop）；`select_verify_path` 默认参数 `has_agent=True → None`（走探测），显式传参兼容不变；`ocr_image._cropverify_level` 档位闸门——显式无视觉时跳过任务生成、压置信待人工下核对
+- **线3 文本层体检路由**（`extract_pdf.py`）：`probe_text_layer` 全页密度双阈值（非空页占比 ≥0.6 且非空页均字 ≥10）判定 text/scanned；`detect_scanned` 改薄包装（旧签名兼容）；`--probe` CLI 输出路由决策 JSON。吸收 pdf-inspector 思想但不吸收其 pdfium 引擎
+- **回归锁定**：新增 `scripts/test_ocr_verify_upgrade.py`（H-9~H-13 共 15 条：双闸门/读回合并/接线守卫/文本层路由/视觉降级/缓存补复核/坐标系对齐）注册进 `run_all_tests.py`；run_all_tests 19/19 全绿
+- **验收**：样例回归（碎石桩记录样例 p0）9 错全修口径 PASS——`0:8→0.8`×3、`8:03→8.03`×3、`1:15→1.15`×2、`灌入量(m²)→(m³)`×1，全部 `ai_reviewed=True`、零待读残留，与 4way 基线一致；双端同步 7 文件哈希一致 + pycache 清理
+
 ## v10.5（2026-08-26）
 
 **无规则覆盖运行时闸门——声明式触发的静默盲区显形**

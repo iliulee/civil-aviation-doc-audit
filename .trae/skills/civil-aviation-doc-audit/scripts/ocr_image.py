@@ -904,8 +904,18 @@ def _ocr_image_api(image_path: str, is_handwritten: bool = False) -> str:
 # ═══════════════════════════════════════════════════
 # 单张图片 OCR
 # ═══════════════════════════════════════════════════
-def _ocr_single_image_rapidocr(img, engine, page: Optional[int] = None) -> List[Dict[str, Any]]:
-    """对单张图片用 RapidOCR 识别，并应用领域后处理。"""
+def _ocr_single_image_rapidocr(
+    img,
+    engine,
+    page: Optional[int] = None,
+    source_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """对单张图片用 RapidOCR 识别，并应用领域后处理。
+
+    v10.6 接线：领域后处理之后，对双闸门（置信度 < 0.985 或语义可疑，
+    如 0:8 / m2）命中的格子调用 crop_and_verify 做真实裁图+宿主读图复核。
+    source_path 为原始 PDF/图片路径（批键锚点）；缺省时退回页面副本。
+    """
     if engine is None or img is None:
         return []
 
@@ -916,8 +926,20 @@ def _ocr_single_image_rapidocr(img, engine, page: Optional[int] = None) -> List[
     tmp_dir = Path(tempfile.gettempdir()) / "trae_rapidocr"
     tmp_dir.mkdir(exist_ok=True)
     tmp_path = tmp_dir / f"rapid_page_{page or 0}_{os.getpid()}.png"
+    # v10.6：页面原图另存副本（finally 会删 tmp_path，但副本不删）——
+    # 否则接线复核在 finally 之后裁图，源图已删，所有复核都空转。
+    page_orig = Path(tempfile.gettempdir()) / "trae_cropverify" / "pages" / (
+        hashlib.sha1(str(tmp_path.resolve()).encode("utf-8")).hexdigest()[:12]
+        + f"_p{page or 0}.png"
+    )
+    page_orig.parent.mkdir(parents=True, exist_ok=True)
     try:
         proc.save(tmp_path, "PNG")
+        try:
+            import shutil as _shutil
+            _shutil.copy2(tmp_path, page_orig)
+        except Exception:
+            pass  # 拷贝失败则复核退回 tmp_path（已删则裁不了，留痕不阻断）
         try:
             result = engine(str(tmp_path))
         except MemoryError as e:
@@ -932,6 +954,58 @@ def _ocr_single_image_rapidocr(img, engine, page: Optional[int] = None) -> List[
 
     items = _merge_overlapping_items(items)
     items = _apply_domain_postprocess(items, img_width)
+
+    # ===== v10.6 接线：双闸门 + crop_and_verify 真实复核 =====
+    # 原始源路径优先（PDF 批键锚点：跨进程可匹配宿主读图结果），
+    # 没有则退回页面副本 PNG（图片模式，单进程闭环）。
+    _src = str(Path(source_path).resolve()) if source_path else (
+        str(page_orig.resolve()) if page_orig.is_file() else str(tmp_path.resolve())
+    )
+    # v10.6 线2：调度器档位（默认 host_agent 不降级；显式 AGENT_VISION=0
+    # 的无视觉宿主跳过读图任务生成，杜绝任务空等，见 _cropverify_level 注释）
+    _cv_gate = _cropverify_level()
+    reviewed_count = 0
+    for it in items:
+        try:
+            if not _needs_review(it):
+                continue
+            it["cv_level"] = _cv_gate["level"]
+            if _cv_gate["skip_tasks"]:
+                # 显式无视觉平台：读图任务写了也没人读——不裁图不出任务，
+                # 直接压置信 0.55 待复核，交 Chat-Verify 人工核对（G-1.9 照常）
+                it["confidence"] = 0.55
+                it["ai_reviewed"] = False
+                it["cv_needs_host_review"] = True
+                continue
+            bbox = it.get("bbox")
+            if not bbox or len(bbox) < 4:
+                continue
+            c = float(it.get("confidence", 0.0) or 0.0)
+            v = crop_and_verify(
+                _src,
+                list(bbox),
+                str(it.get("text", "") or ""),
+                c,
+                page=page,
+                bbox_dpi=int(it.get("dpi", 200) or 200),
+            )
+            # 回写：读回真值覆盖原 text；未读回保持原文但置信压 0.55 待复核
+            it["text"] = v["verified_text"]
+            it["confidence"] = v["verified_confidence"]
+            it["ai_reviewed"] = not v["needs_host_review"]
+            it["cv_changed"] = v["changed"]
+            it["cv_task_id"] = v["task_id"]
+            it["cv_crop_image"] = v["crop_image"]
+            it["cv_needs_host_review"] = v["needs_host_review"]
+            it["cv_original_text"] = v["original_text"]
+            it["cv_original_confidence"] = v["original_confidence"]
+            if v["changed"]:
+                reviewed_count += 1
+        except Exception as e:
+            # 任何复核异常都不得阻断 RapidOCR 主流程，仅留痕
+            it["cv_error"] = str(e)[:120]
+    if reviewed_count:
+        print(f"  [crop_and_verify] 本页复核修正 {reviewed_count} 个可疑格子", file=sys.stderr)
     return items
 
 
@@ -964,6 +1038,58 @@ def _page_cache_path(pdf_hash: str, page_num: int, dpi: int) -> Path:
     d = Path(tempfile.gettempdir()) / "trae_ocr_pagecache" / pdf_hash
     d.mkdir(parents=True, exist_ok=True)
     return d / f"p{page_num}_{dpi}.json"
+
+
+def _cropverify_cached_page(citems: List[Dict[str, Any]], pdf_path: str, page_num: int) -> List[Dict[str, Any]]:
+    """缓存命中页的补复核（v10.6：修复缓存路径绕过 crop_and_verify 的接线漏洞）。
+
+    为什么需要：断点缓存命中分支直接读缓存 items 返回，曾把双闸门复核
+    整个绕过——两种受害形态：
+      a) 旧版缓存（v10.6 接线前写入）：items 无任何 cv 标记，复核从未跑过；
+      b) 新版缓存（items 带 cv_needs_host_review=True）：宿主 AI 读图回写
+         verify_results.json 后重跑，缓存命中直接返回，读回真值永远合不上。
+
+    补复核策略（与 _ocr_single_image_rapidocr 接线同规则）：
+      - 双闸门 _needs_review 命中 且 未被宿主确认过的 item → 调
+        crop_and_verify（裁图已存在直接跳过；读回结果有则合并真值）
+      - 显式无视觉平台（AGENT_VISION=0 rule/noop 档）→ 压置信 0.55 待人工
+    """
+    gate = _cropverify_level()
+    for it in citems:
+        try:
+            if not _needs_review(it):
+                continue
+            it["cv_level"] = gate["level"]
+            if gate["skip_tasks"]:
+                it["confidence"] = 0.55
+                it["ai_reviewed"] = False
+                it["cv_needs_host_review"] = True
+                continue
+            # 已被宿主读回确认的（cv_needs_host_review=False 且置信 ≥0.85）不再重查
+            if it.get("cv_needs_host_review") is False and float(it.get("confidence", 0.0) or 0.0) >= 0.85:
+                continue
+            bbox = it.get("bbox")
+            if not bbox or len(bbox) < 4:
+                continue
+            v = crop_and_verify(
+                pdf_path,
+                list(bbox),
+                str(it.get("text", "") or ""),
+                float(it.get("confidence", 0.0) or 0.0),
+                page=page_num,
+                bbox_dpi=int(it.get("dpi", 200) or 200),
+            )
+            it["text"] = v["verified_text"]
+            it["confidence"] = v["verified_confidence"]
+            it["ai_reviewed"] = not v["needs_host_review"]
+            it["cv_task_id"] = v["task_id"]
+            it["cv_crop_image"] = v["crop_image"]
+            it["cv_needs_host_review"] = v["needs_host_review"]
+            it["cv_original_text"] = v["original_text"]
+            it["cv_original_confidence"] = v["original_confidence"]
+        except Exception as e:
+            it["cv_error"] = str(e)[:120]
+    return citems
 
 
 def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200, page: Optional[int] = None) -> Tuple[List[Dict[str, Any]], float]:
@@ -1010,9 +1136,13 @@ def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200, page: Optional[int] = None) 
                     cached = json.loads(cpath.read_text(encoding="utf-8"))
                     citems = cached.get("items", [])
                     if citems:
+                        # v10.6：缓存命中也必须过双闸门复核——旧缓存无 cv 标记、
+                        # 新缓存待宿主读回，两条路都得补跑 crop_and_verify，
+                        # 否则缓存路径成为复核盲区（接线完整性漏洞）
+                        citems = _cropverify_cached_page(citems, pdf_path, page_num)
                         all_items.extend(citems)
                         all_scores.extend([it["confidence"] for it in citems])
-                        print(f"  [缓存] 第 {page_num} 页 命中缓存（{len(citems)} 项）", file=sys.stderr)
+                        print(f"  [缓存] 第 {page_num} 页 命中缓存（{len(citems)} 项，已补复核）", file=sys.stderr)
                         continue
                 except Exception:
                     pass  # 缓存损坏则忽略，重新识别
@@ -1025,14 +1155,14 @@ def ocr_pdf_rapidocr(pdf_path: str, dpi: int = 200, page: Optional[int] = None) 
                 print(f"  [!] 第 {page_num} 页 PDF 转图失败", file=sys.stderr)
                 continue
             density = _detect_text_density(img)
-            items = _ocr_single_image_rapidocr(img, engine, page=page_num)
+            items = _ocr_single_image_rapidocr(img, engine, page=page_num, source_path=pdf_path)
 
             # 空页但文本密度高：尝试 300 DPI 重跑
             if not items and density > 0.02:
                 print(f"  [!] 第 {page_num} 页未检出文本且密度较高，300 DPI 重跑...", file=sys.stderr)
                 retry_img = _pdf_to_images_pymupdf_single(pdf_path, page_num, dpi=300)
                 if retry_img is not None:
-                    items = _ocr_single_image_rapidocr(retry_img, engine, page=page_num)
+                    items = _ocr_single_image_rapidocr(retry_img, engine, page=page_num, source_path=pdf_path)
                     for it in items:
                         it["dpi"] = 300
                     del retry_img
@@ -1420,8 +1550,139 @@ def main():
 
 
 # ═══════════════════════════════════════════════════
-# 低置信字段裁剪+AI复核（v9.5）
+# 低置信/可疑字段裁剪 + 宿主 AI 读图复核（v10.6 真实现）
 # ═══════════════════════════════════════════════════
+#
+# 为什么做真：v9.5 的空壳实现直接返回原值并假抬置信度到 max(conf, 0.70)，
+# RapidOCR 的高置信错识（桩径 0.8 读成 0:8、单位 m³ 读成 m2，置信度还 1.0）
+# 从这条通道"被复核通过"，下游毫无感知。A/B 实测（碎石桩记录 39 格）：
+# 真实现修正 9/9 个高置信错识、零新增错误。
+#
+# 协议：与 verify_fields.py 的宿主读图协议对齐——裁小图 + 写 verify_tasks.json
+#（任务清单）+ 宿主 AI 读图回写 verify_results.json + 重调合并。若宿主尚未
+# 读回，把格子标记 needs_host_review 并把置信度压到 0.55（明确"待读"，
+# 不做假通过）。下游（build_foundation / AI 智能体）可拿任务清单请求读图。
+
+CROP_VERIFY_THRESH = 0.985
+
+# ---- 批级裁图根键（v10.6：按 PDF 内容哈希，不用页面临时 PNG 路径） ----
+# 为什么：_ocr_single_image_rapidocr 里传给 crop_and_verify 的源图是"页面渲染
+# 临时 PNG"（每次运行路径都变），若按它建目录，本批裁图/tasks/results 会散落
+# 在互相找不到的目录里，宿主读图永远拿不到任务。批级根键保证同一 PDF 的所有
+# 复核文件落同一目录，跨进程重跑可匹配。
+_BATCH_ROOT_KEY: Optional[str] = None
+_BATCH_ROOT_LOCK = False
+_PDF_HASH_CACHE: Dict[str, str] = {}
+
+
+def set_batch_root_for_cropverify(key: str) -> None:
+    """对外暴露：由顶层调用方显式传入批键（如 PDF 内容哈希），锁定本批锚点。"""
+    global _BATCH_ROOT_KEY, _BATCH_ROOT_LOCK
+    if not _BATCH_ROOT_LOCK:
+        _BATCH_ROOT_KEY = key
+        _BATCH_ROOT_LOCK = True
+
+
+def _resolve_batch_key(image_path: str) -> str:
+    """推导批级锚点：显式 set 的 key 优先；PDF 用内容哈希（复用
+    _pdf_content_hash）；其它文件退回路径哈希。多 PDF 批量场景不写回
+    全局（避免第二个 PDF 被锚到第一个的目录）。"""
+    if _BATCH_ROOT_KEY:
+        return _BATCH_ROOT_KEY
+    p = Path(image_path).resolve()
+    if p.suffix.lower() == ".pdf":
+        cached = _PDF_HASH_CACHE.get(str(p))
+        if cached:
+            return cached
+        h = _pdf_content_hash(str(p))
+        if h:
+            _PDF_HASH_CACHE[str(p)] = h
+            return h
+    return hashlib.md5(str(p).encode("utf-8")).hexdigest()[:12]
+
+
+def _ensure_crop_dir(image_path: str, page: Optional[int]) -> Path:
+    """本批的裁图/读图任务文件统一目录（按批键）。"""
+    key = _resolve_batch_key(image_path)
+    d = Path(tempfile.gettempdir()) / "trae_cropverify" / key
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _needs_review(it: Dict[str, Any]) -> bool:
+    """双闸门：判定一个 OCR item 是否需要裁图复核。
+
+    闸门一（置信度）：confidence < CROP_VERIFY_THRESH（0.985）。
+    闸门二（语义）：即使 RapidOCR 报 1.0 置信，形态可疑也强制复核——
+      - "数字:数字"（如 0:8 / 8:03）：表格数值字段里 99% 是小数点误读
+      - m2/m3：单位上标 ²/³ 经常被读成普通数字
+    """
+    c = float(it.get("confidence", 0.0) or 0.0)
+    text = (str(it.get("text", "") or "")).strip()
+    if c < CROP_VERIFY_THRESH:
+        return True
+    if re.match(r"^\d+:\d+$", text):
+        return True
+    if re.search(r"\bm[23]\b", text):
+        return True
+    return False
+
+
+def _crop_cell_image(
+    image_path: str,
+    bbox: List[float],
+    page: Optional[int],
+    out_path: Path,
+    bbox_dpi: int = 200,
+) -> bool:
+    """从 image_path（图片或 PDF）裁 bbox 区域并放大 2x 落到 out_path（PNG）。
+
+    bbox_dpi：bbox 坐标所在的渲染 DPI（OCR 管道默认 200，300dpi 重跑页为 300）。
+    为什么必须对齐（v10.6 修复）：PDF 分支曾固定 2x（144dpi）渲染，把 200dpi
+    的 bbox 像素当 PDF 点用 → 坐标越界被 clamp 到页边后区域塌缩 → 静默
+    返回 False → 裁图全空。A/B 实验传 PNG 源（scale=1）没暴露此坑，
+    真实管道传 PDF 源才炸——实验与生产坐标系不一致的教训。
+    修复：渲染 zoom = bbox_dpi/72，bbox 与渲染图同坐标系（scale=1），
+    清晰度增强由末尾 LANCZOS 2x 放大承担。
+    """
+    try:
+        import fitz  # PyMuPDF
+        from PIL import Image as _Image
+
+        ext = Path(image_path).suffix.lower()
+        if ext == ".pdf":
+            doc = fitz.open(image_path)
+            try:
+                pno = max(0, min(page or 0, len(doc) - 1))
+                pg = doc.load_page(pno)
+                zoom = max(1.0, float(bbox_dpi or 200) / 72.0)
+                mat = fitz.Matrix(zoom, zoom)
+                pix = pg.get_pixmap(matrix=mat, alpha=False)
+                img = _Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                # bbox 与渲染图同 DPI 坐标系 → 无需换算
+                scale_x = scale_y = 1.0
+            finally:
+                doc.close()
+        else:
+            img = _Image.open(image_path).convert("RGB")
+            scale_x = scale_y = 1.0
+
+        x1, y1, x2, y2 = [float(v) for v in (list(bbox) + [0, 0, 0, 0])[:4]]
+        x1 *= scale_x; y1 *= scale_y; x2 *= scale_x; y2 *= scale_y
+        pad = 10
+        x1 = max(0, int(x1) - pad); y1 = max(0, int(y1) - pad)
+        x2 = min(img.width, int(x2) + pad); y2 = min(img.height, int(y2) + pad)
+        if x2 <= x1 + 4 or y2 <= y1 + 4:
+            return False
+        cell = img.crop((x1, y1, x2, y2))
+        w, h = cell.size
+        cell = cell.resize((w * 2, h * 2), _Image.LANCZOS)
+        cell.save(out_path, "PNG")
+        return True
+    except Exception as e:
+        print(f"  [crop_and_verify] 裁图失败: {e}", file=sys.stderr)
+        return False
+
 
 def crop_and_verify(
     image_path: str,
@@ -1429,40 +1690,223 @@ def crop_and_verify(
     original_text: str,
     confidence: float,
     page: Optional[int] = None,
+    bbox_dpi: int = 200,
 ) -> Dict[str, Any]:
-    """对低置信度 OCR 字段进行裁剪并调用 AI 读图复核。
+    """对低置信/语义可疑的 OCR 字段执行真实裁图 + 宿主 AI 读图复核。
 
-    用于混合型文档（印刷表头+手写数据）的两阶段识别策略：
-    阶段1: RapidOCR 提取表格结构，识别印刷体表头
-    阶段2: 对置信度 < 0.5 的字段调用此函数，裁剪对应单元格区域后由 AI 读图复核
+    协议对齐 verify_fields.agent_verify()：输出读图任务清单（task_id /
+    image_path / ocr_value / question），由宿主 AI 逐个读裁图回写
+    verify_results.json。本函数返回时若宿主还未回写，则把格子标记为
+    needs_host_review（置信度压到 0.55，明确"待读"，不做假通过）。
+
+    同一格 (批键, page, bbox, 原文) 只裁一次图，重复调用命中文件直接跳过。
 
     Args:
-        image_path: 原始图片/PDF路径
-        bbox: [x1, y1, x2, y2] 裁剪区域（相对坐标 0~1）
-        original_text: OCR 原始识别文本
-        confidence: OCR 原始置信度
-        page: 页码（PDF 时有效）
+        image_path: 原始图片/PDF 路径（文件系统绝对路径）
+        bbox: [x1, y1, x2, y2] 像素坐标（RapidOCR item 的 bbox）
+        original_text: RapidOCR 的原识别结果
+        confidence: RapidOCR 的原置信度
+        page: 页码（从 0 开始，PDF 时有效）
+        bbox_dpi: bbox 坐标所在渲染 DPI（PDF 直裁时按它对齐渲染，见
+                  _crop_cell_image 的坐标系修复说明）
 
     Returns:
         {
-            "verified_text": str,       # 复核后文本
-            "verified_confidence": float, # 复核后置信度（agent 复核固定 0.70）
-            "method": str,              # "crop_and_verify"
-            "original_text": str,       # 原始 OCR 文本
-            "original_confidence": float, # 原始置信度
-            "changed": bool,            # 是否发生变化
+            "verified_text": str,           # 宿主读回=真值；否则=original_text
+            "verified_confidence": float,   # 1.0(AI high回写)/0.85(medium)/0.55(待读)
+            "method": "crop_and_verify",
+            "original_text": str,
+            "original_confidence": float,
+            "changed": bool,                # 回写且与原值不同为 True
+            "crop_image": str,              # 裁出的 PNG 绝对路径（供宿主读图）
+            "needs_host_review": bool,      # True 表示需要宿主 AI 读这张图
+            "task_id": str,                 # 读图任务 ID
         }
     """
-    # 基本实现：返回当前 OCR 结果，标记为已复核
-    # 完整实现需要 AI Vision 能力，此处先做基础框架
+    if not bbox or len(bbox) < 4:
+        # 没有 bbox 裁不了，返回原值并保留原置信（不做假抬分）
+        return {
+            "verified_text": original_text,
+            "verified_confidence": confidence,
+            "method": "crop_and_verify",
+            "original_text": original_text,
+            "original_confidence": confidence,
+            "changed": False,
+            "crop_image": "",
+            "needs_host_review": bool(original_text and confidence < CROP_VERIFY_THRESH),
+            "task_id": "",
+        }
+
+    crop_dir = _ensure_crop_dir(image_path, page)
+    # 任务 ID：批键 + page + bbox + 原文 → 同一格两次跑恒定（跨进程可匹配）
+    bk = _resolve_batch_key(image_path)
+    sig_src = f"{bk}#{page}#{tuple(round(v, 1) for v in bbox)}#{original_text}"
+    task_id = "CV-" + hashlib.sha1(sig_src.encode("utf-8")).hexdigest()[:10].upper()
+    crop_path = crop_dir / f"{task_id}.png"
+
+    # ---- 裁图（只裁一次，命中文件跳过） ----
+    if not crop_path.is_file():
+        ok = _crop_cell_image(image_path, bbox, page, crop_path, bbox_dpi=bbox_dpi)
+        if not ok or not crop_path.is_file():
+            return {
+                "verified_text": original_text,
+                "verified_confidence": confidence,
+                "method": "crop_and_verify",
+                "original_text": original_text,
+                "original_confidence": confidence,
+                "changed": False,
+                "crop_image": "",
+                "needs_host_review": True,
+                "task_id": task_id,
+            }
+
+    # ---- 读图任务清单（对齐 verify_fields agent 协议） ----
+    tasks_file = crop_dir / "verify_tasks.json"
+    known: Dict[str, Any] = {}
+    if tasks_file.is_file():
+        try:
+            bag = json.loads(tasks_file.read_text(encoding="utf-8"))
+            for t in bag.get("tasks", []):
+                known[t.get("task_id", "")] = t
+        except Exception:
+            known = {}
+
+    if task_id not in known:
+        reason = (
+            f"置信度 {confidence:.3f} < {CROP_VERIFY_THRESH}（0.985 闸门），疑似误识"
+            if confidence < CROP_VERIFY_THRESH
+            else f"语义可疑（冒号数字/单位形态，置信 {confidence:.3f}），疑似误识"
+        )
+        known[task_id] = {
+            "task_id": task_id,
+            "image_path": str(crop_path.resolve()),
+            "field": "cell_value",
+            "field_label": "单元格文字",
+            "row": None,
+            "table": None,
+            "scope": "cell",
+            "page": page,
+            "ocr_value": original_text,
+            "suspected_value": "",
+            "reason": reason,
+            "question": (
+                "请仔细读取这张表格单元格图片里手写或印刷的文字。"
+                "如果是数字（桩号/高程/桩长/充盈系数/电流等）注意冒号和小数点的区别，"
+                "0.6 不要写成 0:6；如果是桩号，注意 Z 和 2、O 和 0 的区别。"
+                "只返回识别出的真实文字（不要解释，不要加引号，不要加前后缀）。"
+            ),
+        }
+        tasks_payload = {
+            "status": "prepared",
+            "next_action": "agent_verify",
+            "total_tasks": len(known),
+            "tasks": sorted(known.values(), key=lambda t: t["task_id"]),
+            "output_format": {
+                "file": "verify_results.json",
+                "structure": {
+                    "results": [
+                        {"task_id": task_id, "verified_value": "Z370", "confidence": "high", "note": ""}
+                    ]
+                },
+                "note": "只需 task_id + verified_value，其它可选。",
+            },
+        }
+        try:
+            tasks_file.write_text(
+                json.dumps(tasks_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            print(f"  [crop_and_verify] 写任务清单失败: {e}", file=sys.stderr)
+
+    # ---- 宿主 AI 是否已读回 ----
+    results_file = crop_dir / "verify_results.json"
+    verified_text = original_text
+    verified_confidence = 0.55  # 明确标记"待读"：故意低于原置信，不做假通过
+    changed = False
+    needs_host_review = True
+    if results_file.is_file():
+        try:
+            bag = json.loads(results_file.read_text(encoding="utf-8"))
+            for r in bag.get("results", []):
+                if r.get("task_id") == task_id:
+                    v = str(r.get("verified_value", "")).strip()
+                    if v:
+                        verified_text = v
+                        verified_confidence = 1.0 if str(r.get("confidence", "")).lower() == "high" else 0.85
+                        changed = (v != original_text)
+                        needs_host_review = False
+                    break
+        except Exception:
+            pass  # 读结果失败仍按"待读"处理
+
     return {
-        "verified_text": original_text,
-        "verified_confidence": max(confidence, 0.70),
+        "verified_text": verified_text,
+        "verified_confidence": verified_confidence,
         "method": "crop_and_verify",
         "original_text": original_text,
         "original_confidence": confidence,
-        "changed": False,
+        "changed": changed,
+        "crop_image": str(crop_path.resolve()),
+        "needs_host_review": needs_host_review,
+        "task_id": task_id,
     }
+
+
+def get_all_cropverify_tasks(image_path: str) -> Dict[str, Any]:
+    """返回本批已生成的 verify_tasks.json 内容（下游请求宿主读图用）。"""
+    crop_dir = _ensure_crop_dir(image_path, None)
+    p = crop_dir / "verify_tasks.json"
+    if not p.is_file():
+        return {"status": "no_tasks", "total_tasks": 0, "tasks": []}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"status": "no_tasks", "total_tasks": 0, "tasks": []}
+
+
+def write_cropverify_results(image_path: str, results: List[Dict[str, Any]]) -> Path:
+    """把宿主 AI 读图回写的结果写入 verify_results.json。"""
+    crop_dir = _ensure_crop_dir(image_path, None)
+    out = crop_dir / "verify_results.json"
+    out.write_text(json.dumps({"results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out
+
+
+# ---- v10.6 线2：裁图复核档位闸门（vision_reviewer 薄调度） ----
+# 为什么默认不降级：探测采用"显式声明制"（AGENT_VISION 环境变量）。
+# 未声明时（TRAE 等宿主实际带视觉的场景），任务清单照常生成、宿主 AI
+# 按 SKILL.md 流程读图 —— A/B 实测 9/9 高置信错识全修的能力不许擅动。
+# 只有操作者显式声明 AGENT_VISION=0（WorkBuddy 等无视觉宿主）才跳过
+# 任务生成，格子直接压置信 0.55 待人工核对，杜绝"任务空等"。
+_CV_LEVEL_CACHE: Optional[Dict[str, Any]] = None
+
+
+def _cropverify_level() -> Dict[str, Any]:
+    """档位闸门（模块级缓存，环境变量进程内不变）。
+
+    Returns:
+        {"skip_tasks": bool, "level": str}
+        skip_tasks=True 仅当：显式声明宿主无视觉（AGENT_VISION=0）
+        且无 API（rule/noop 档）—— 此时读图任务写了也没人读，跳过。
+    """
+    global _CV_LEVEL_CACHE
+    if _CV_LEVEL_CACHE is not None:
+        return _CV_LEVEL_CACHE
+    verdict: Dict[str, Any] = {"skip_tasks": False, "level": "host_agent"}
+    try:
+        from vision_reviewer import confirm_vision_capability
+        cap = confirm_vision_capability()
+        verdict["level"] = cap["level"]
+        declared_no_vision = (
+            cap.get("host_vision_declared") and not cap.get("host_agent_vision")
+        )
+        if declared_no_vision and cap.get("level") in ("rule", "noop"):
+            verdict["skip_tasks"] = True
+    except Exception:
+        pass  # 调度器异常不阻断 OCR 主流程：默认保持宿主读图行为
+    _CV_LEVEL_CACHE = verdict
+    return verdict
 
 
 if __name__ == "__main__":

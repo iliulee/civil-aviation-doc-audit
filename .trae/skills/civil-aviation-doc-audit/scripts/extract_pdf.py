@@ -29,6 +29,14 @@ try:
 except ImportError:
     HAS_PYMUPDF = False
 
+# ---- 体检路由密度阈值（v10.6）----
+# page_ratio：非空页占比下限。"前 3 页有字、后面全是扫描页"的长文档靠它拦下。
+# avg_chars：非空页平均字符数下限。拦"整本只有页码字"的空壳 PDF——页码字
+# 每页约 3~6 字，真实内容页至少 10 字。实测教训：不能用"全文字符总量"做阈值
+# （sample_5078_1.pdf 单页 74 字的真实文字版会被总量≥100 误杀成扫描件）。
+TEXT_PAGE_RATIO = 0.6
+MIN_AVG_CHARS_PER_PAGE = 10
+
 
 def extract_with_pymupdf(pdf_path: str, page_range=None) -> str:
     """用 PyMuPDF 提取 PDF 文字，按页分隔。
@@ -51,19 +59,61 @@ def extract_with_pymupdf(pdf_path: str, page_range=None) -> str:
     return "\n".join(parts)
 
 
-def detect_scanned(pdf_path: str, sample_pages: int = 3) -> bool:
-    """检测 PDF 是否为扫描件（无可搜索文字）。
+def probe_text_layer(pdf_path: str) -> dict:
+    """体检路由（v10.6）：全页探测 PDF 文本层，判定走直接提取还是 OCR。
 
-    抽样前 N 页，平均每页字符数 < 10 视为扫描件。
-    阈值调到 10 是为了避免把"含中文 CID 字体但编码特殊"的 PDF 误判。
+    为什么升级：旧 detect_scanned 只抽样前 3 页，长文档后面全是扫描页会漏判；
+    且无密度阈值，"整本只有几页码字"的空壳 PDF 会误判文字版白跑一遍空提取。
+
+    判定规则（密度双阈值，防两个方向的误判）：
+      nonempty_pages / pages >= TEXT_PAGE_RATIO
+      且 total_chars / nonempty_pages >= MIN_AVG_CHARS_PER_PAGE
+      → kind=text（直接 get_text()，零 OCR）
+      否则 → kind=scanned（走 ocr_image.py 渲染+OCR）
+      （不能用"字符总量"做阈值：会误杀单页短小的真实文字版，见常量注释）
+
+    Returns:
+        {
+            "pages": int, "nonempty_pages": int, "total_chars": int,
+            "kind": "text" | "scanned",
+            "action": "direct_extract" | "ocr",
+            "thresholds": {"page_ratio": 0.6, "avg_chars_per_page": 10},
+        }
     """
     doc = fitz.open(pdf_path)
-    pages_to_check = min(sample_pages, len(doc))
-    total_chars = 0
-    for i in range(pages_to_check):
-        total_chars += len(doc[i].get_text("text").strip())
-    doc.close()
-    return (total_chars / pages_to_check) < 10
+    try:
+        n_pages = len(doc)
+        nonempty = 0
+        total_chars = 0
+        for pg in doc:
+            c = len(pg.get_text("text").strip())
+            total_chars += c
+            if c > 0:
+                nonempty += 1
+    finally:
+        doc.close()
+
+    ratio = (nonempty / n_pages) if n_pages else 0.0
+    avg_chars = (total_chars / nonempty) if nonempty else 0.0
+    is_text = ratio >= TEXT_PAGE_RATIO and avg_chars >= MIN_AVG_CHARS_PER_PAGE
+    kind = "text" if is_text else "scanned"
+    return {
+        "pages": n_pages,
+        "nonempty_pages": nonempty,
+        "total_chars": total_chars,
+        "kind": kind,
+        "action": "direct_extract" if is_text else "ocr",
+        "thresholds": {"page_ratio": TEXT_PAGE_RATIO, "avg_chars_per_page": MIN_AVG_CHARS_PER_PAGE},
+    }
+
+
+def detect_scanned(pdf_path: str, sample_pages: int = 3) -> bool:
+    """检测 PDF 是否为扫描件（无可搜索文字）。薄包装，兼容既有调用方。
+
+    v10.6 起内部走 probe_text_layer 全页密度判定；sample_pages 参数保留
+    但不再使用（避免破坏既有调用签名）。
+    """
+    return probe_text_layer(pdf_path)["kind"] == "scanned"
 
 
 def main():
@@ -72,6 +122,10 @@ def main():
     parser.add_argument("--out", help="输出文本文件路径（默认打印到 stdout）")
     parser.add_argument(
         "--pages", help="页码范围，如 '1-10'；默认全部"
+    )
+    parser.add_argument(
+        "--probe", action="store_true",
+        help="只做体检路由探测：输出 kind/action JSON（不提取文字）",
     )
     args = parser.parse_args()
 
@@ -85,6 +139,13 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+
+    # 体检路由：--probe 只输出路由决策 JSON（供建底座登记，决策可追溯）
+    if args.probe:
+        import json
+        info = probe_text_layer(args.pdf)
+        print(json.dumps(info, ensure_ascii=False, indent=2))
+        return
 
     if detect_scanned(args.pdf):
         print(

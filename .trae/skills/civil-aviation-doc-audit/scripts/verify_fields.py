@@ -5,20 +5,20 @@
 混合 OCR 架构 v3.0 的核心组件。接收 OCR 混淆检测结果（存疑字段清单），
 裁剪存疑区域图片，输出结构化任务清单，由 AI 智能体自动读图验证，最后合并结果。
 
-三条复核路径（自动选择，也可 --verify-path 手动指定）：
+复核路径（v10.6 起由 vision_reviewer 能力探测自动选择，也可 --verify-path 手动指定）：
   ┌────────┬──────────────┬────────────────────────────────────────────┐
   │ 路径   │ 名称         │ 触发条件                                    │
   ├────────┼──────────────┼────────────────────────────────────────────┤
-  │ B(默认)│ 智能体复核    │ 在智能体中运行（TRAE/豆包/Kimi 等）          │
-  │        │              │ 脚本裁剪图片+输出任务清单，智能体自动读图验证 │
+  │ B(默认)│ 智能体复核    │ 探测到宿主带视觉（AGENT_VISION=1 或显式传入  │
+  │        │              │ has_agent=True）→ 任务清单+裁图，智能体读图   │
   │        │              │ 全自动，零成本，无需用户参与                  │
   │ A      │ API 复核      │ 用户配置了 Vision API Key                    │
   │        │              │ 脚本自动调用 API，只发存疑字段               │
-  │ C      │ 增强重跑      │ 无 API 且智能体无 Vision 能力                │
-  │        │              │ 高 DPI + 图像预处理，只重跑存疑页             │
+  │ C      │ 规则兜底      │ v10.6：无宿主视觉且无 API（探测落 rule 档）  │
+  │        │              │ 不生成空等读图任务，存疑项交 Chat-Verify 人工 │
   └────────┴──────────────┴────────────────────────────────────────────┘
 
-路径 B（智能体复核）是默认路径，工作流程：
+路径 B（智能体复核）工作流程：
   1. 脚本裁剪存疑字段对应的原图区域 → PNG 文件
   2. 脚本输出结构化任务清单 → verify_tasks.json
   3. AI 智能体读取任务清单，逐个读取裁剪图片，用自身 Vision 能力验证字段
@@ -28,7 +28,7 @@
 
 使用方式：
 
-  # 一键自动（默认路径 B：智能体自动复核）
+  # 一键自动（能力探测选路径：宿主视觉→B / API→A / 全无→C 人工核对）
   python verify_fields.py auto <原始文件> <混淆检测结果.json> --data <数据JSON> --out <输出目录>
   # → 输出 verify_tasks.json + crops/ 目录，AI 智能体自动读图验证后输出 verify_results.json
   # → AI 智能体执行: python verify_fields.py merge <verify_results.json> --data <数据JSON>
@@ -56,27 +56,48 @@ from PIL import Image
 
 def select_verify_path(
     has_api: bool = False,
-    has_agent: bool = True,
+    has_agent: Optional[bool] = None,
     force_path: Optional[str] = None,
 ) -> str:
     """
     根据可用资源自动选择复核路径。
 
-    默认选择路径 B（智能体复核）：skill 运行在 AI 智能体中，
-    智能体自身具备 Vision 能力，直接读图验证，零成本、全自动。
+    v10.6：has_agent 默认值从硬编码 True 改为 None（走能力探测）。
+    旧默认 True 的根因：在 WorkBuddy 等无视觉模型的宿主上，
+    "智能体复核"任务写出来永远没人读 → 任务空等。现在由
+    vision_reviewer.confirm_vision_capability() 证据驱动选档，
+    无宿主视觉时落规则兜底/人工核对，不再空等。
 
     Args:
         has_api: 是否有可用的 Vision API Key
-        has_agent: 是否在智能体环境中运行（默认 True）
+        has_agent: 是否在带视觉的智能体环境中运行。
+                   None（默认）→ 走 vision_reviewer 能力探测；
+                   True/False  → 显式指定（外部接口兼容，语义不变）
         force_path: 手动指定路径（"agent"/"api"）
 
     Returns:
-        "agent" / "api"
+        "agent" / "api" / "rule"
+        （"rule" = 无宿主视觉且无 API：跳过自动复核，
+          存疑项全部交 Chat-Verify 人工核对，G-1.9 闸门照常生效）
     """
     if force_path:
         return force_path
 
-    # 路径 B：智能体复核（默认首选——零成本、高精度、全自动）
+    # v10.6：默认（None）走能力探测，不再无脑 agent
+    if has_agent is None:
+        try:
+            import vision_reviewer as _vr
+            level = _vr.confirm_vision_capability()["level"]
+        except Exception:
+            level = None
+        if level == "host_agent":
+            return "agent"
+        if level == "api":
+            return "api"
+        # rule / noop / 探测异常兜底 → 规则档（不空等）
+        return "rule"
+
+    # 路径 B：智能体复核（显式指定时——零成本、高精度、全自动）
     if has_agent:
         return "agent"
 
@@ -874,14 +895,18 @@ def auto_verify(
     Returns:
         路径 B: {"path": "agent", "tasks": {...}, "agent_action": {...}}
         路径 A: {"path": "api", "verify_results": {...}, "merged_data": {...}}
+        规则档(v10.6): {"path": "rule", "tasks": {...}, "next_action": "human_verify"} —
+        无宿主视觉且无 API 时不空等，存疑项交 Chat-Verify 人工核对
     """
     # 检测可用 API
     sys.path.insert(0, str(Path(__file__).parent))
     from vision_providers import detect_available_providers
     has_api = len(detect_available_providers()) > 0
 
-    # 选择路径
-    path = select_verify_path(has_api=has_api, has_agent=True, force_path=force_path)
+    # v10.6：不再硬编码 has_agent=True —— 默认走 vision_reviewer 能力探测，
+    # 无宿主视觉且无 API 时落 "rule" 档（任务照常准备供人工核对，但不再
+    # 生成"等 AI 读图"的空等）。操作者可设 AGENT_VISION=1 显式声明宿主带视觉。
+    path = select_verify_path(has_api=has_api, force_path=force_path)
 
     print(f"  [i] 复核路径: {path}", file=sys.stderr)
 
@@ -892,6 +917,23 @@ def auto_verify(
         return {"path": path, "verify_results": {"status": "no_suspects"}, "merged_data": data}
 
     # 步骤 2：执行复核
+    if path == "rule":
+        # v10.6 规则兜底档：无宿主视觉且无 API —— 不空等。
+        # 任务清单与裁图照常落盘（人工核对时人还能对着图看），
+        # 存疑项全部交 Chat-Verify 人工核对，G-1.9 闸门照常生效
+        # （AI 复核是"减负"不是"放行"，落不下自动复核就明确走人工）。
+        print("  [i] 无宿主视觉且无 API：跳过自动复核，存疑项进入 Chat-Verify 人工核对", file=sys.stderr)
+        return {
+            "path": "rule",
+            "tasks": tasks,
+            "next_action": "human_verify",
+            "note": (
+                "未探测到宿主视觉与 Vision API。存疑字段不自动复核，"
+                "全部进入人工核对（Chat-Verify）。若宿主实际带视觉模型，"
+                "可设环境变量 AGENT_VISION=1 后重跑以启用智能体复核。"
+            ),
+        }
+
     if path == "agent":
         # 路径 B：智能体自动复核
         # 脚本输出结构化任务清单，AI 智能体自动读图验证

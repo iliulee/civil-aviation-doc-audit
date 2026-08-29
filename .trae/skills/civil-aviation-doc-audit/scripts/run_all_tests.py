@@ -63,7 +63,11 @@ def main():
             ["scripts/test_inferred_values.py"], "推断规则测试")))
         # v9.6 隐患销号套件：每个已查实根因一条测试，红=复发，改完必须全绿
         results.append(("单元测试: 隐患销号", run_pytest(
-            ["scripts/test_regression_hazards.py"], "隐患销号回归（H-1~H-7）")))
+            ["scripts/test_regression_hazards.py"], "隐患销号回归（H-1~H-8）")))
+        # v10.6 OCR 复核升级回归（H-9 裁图复核真实现/H-10 文本层体检路由/H-11 视觉调度降级
+        # /H-12 缓存补复核/H-13 PDF 裁图坐标系对齐）
+        results.append(("单元测试: OCR 复核升级", run_pytest(
+            ["scripts/test_ocr_verify_upgrade.py"], "OCR 复核升级（H-9~H-13）")))
         # v10.0 出口闸门+纯电子表场景：G-0/对账/force禁用/电子表行数/验钞机
         results.append(("单元测试: 闸门与电子表", run_pytest(
             ["scripts/test_gate_and_ledger.py"], "G-0/对账闸门/force禁用/电子表行数/报告质检")))
